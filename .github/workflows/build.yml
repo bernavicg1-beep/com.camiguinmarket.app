@@ -45,19 +45,51 @@ jobs:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          # Ang mga value mismo dili gayud i-print, status ra (na-set o kulang).
           if [ -n "$MAPS_API_KEY" ] && [ -n "$MAPBOX_ACCESS_TOKEN" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
+            available=true
           else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "Wala ma-set ang MAPS_API_KEY o MAPBOX_ACCESS_TOKEN: gilaktawan ang release build."
+            available=false
           fi
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "signing=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "signing=false" >> "$GITHUB_OUTPUT"
-            echo "Wala ma-set ang KEYSTORE_BASE64: unsigned ang release APK."
-          fi
+          if [ -n "$KEYSTORE_BASE64" ]; then signing=true; else signing=false; fi
+
+          echo "available=$available" >> "$GITHUB_OUTPUT"
+          echo "signing=$signing" >> "$GITHUB_OUTPUT"
+
+          mark() { if [ -n "$1" ]; then echo "✅ na-set"; else echo "❌ kulang"; fi; }
+
+          {
+            echo "## Status sa build secrets"
+            echo ""
+            echo "| Secret | Status | Alang sa unsa |"
+            echo "|---|---|---|"
+            echo "| \`MAPS_API_KEY\` | $(mark "$MAPS_API_KEY") | Google map, ruta A→B, place search |"
+            echo "| \`MAPBOX_ACCESS_TOKEN\` | $(mark "$MAPBOX_ACCESS_TOKEN") | Mapbox map sa WebView |"
+            echo "| \`KEYSTORE_BASE64\` | $(mark "$KEYSTORE_BASE64") | signed release APK |"
+            echo "| \`KEYSTORE_PASSWORD\` | $(mark "$KEYSTORE_PASSWORD") | signing |"
+            echo "| \`KEY_ALIAS\` | $(mark "$KEY_ALIAS") | signing |"
+            echo "| \`KEY_PASSWORD\` | $(mark "$KEY_PASSWORD") | signing |"
+            echo ""
+            if [ "$available" = "true" ]; then
+              if [ "$signing" = "true" ]; then
+                echo "Ang release build modagan niini nga run (signed)."
+              else
+                echo "Ang release build modagan niini nga run (unsigned)."
+              fi
+            else
+              echo "⚠️ **Gilaktawan ang release build** kay kulang ang \`MAPS_API_KEY\` o \`MAPBOX_ACCESS_TOKEN\`. Idugang kini sa Settings → Secrets and variables → Actions, dayon i-run pag-usab ang workflow."
+              echo ""
+              echo "Ang debug APK niini nga run **walay Maps API key**, busa dili mo-render ang sulod-app nga Google map niini."
+            fi
+            if [ "$signing" != "true" ]; then
+              echo ""
+              echo "Wala \`KEYSTORE_BASE64\`: kon modagan ang release build, **unsigned** ang APK ug dili kini ma-install."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # I-decode ang keystore gikan sa secret (base64) ngadto sa runner temp.
       - name: Decode keystore
