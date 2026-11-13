@@ -143,6 +143,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var mapListing by remember { mutableStateOf<Listing?>(null) }
     var mapboxListing by remember { mutableStateOf<Listing?>(null) }
     var showAllMap by remember { mutableStateOf(false) }
+    var showCompare by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     DisposableEffect(Unit) {
@@ -168,6 +169,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 title = { Text("Camiguin Market") },
                 actions = {
                     TextButton(onClick = { showAllMap = true }) { Text("🗺️ Mapa") }
+                    TextButton(onClick = { showCompare = true }) { Text("⚖️ Itandi") }
                     TextButton(onClick = onLogout) { Text("Log out") }
                 }
             )
@@ -268,6 +270,11 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             },
             onOpenMapbox = { mapListing = null; mapboxListing = l }
         )
+    }
+
+    // Itandi ang ruta A→B sa Google Map ug Mapbox (pareho nga coordinates).
+    if (showCompare) {
+        RouteCompareDialog(onDismiss = { showCompare = false })
     }
 
     // Tanan nga seller pins sa usa ka mapa (search bar + ruta A→B).

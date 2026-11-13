@@ -83,11 +83,21 @@
     var pointB = null;
     var tapTarget = null;                      // "A" | "B" | null
     var routeReady = false;
+    var pendingRoute = null;                   // A/B nga gipadala sa wala pa ma-load ang mapa
+
+    // Stub: kon moabot ang setRoute sa wala pa ang initMap, ipundo lang una.
+    window.setRoute = function (aLat, aLng, bLat, bLng) {
+        pendingRoute = [aLat, aLng, bLat, bLng];
+    };
 
     function android() {
-        return (window.AndroidMap && typeof window.AndroidMap.onPick === "function")
-            ? window.AndroidMap
-            : null;
+        return window.AndroidMap || null;
+    }
+
+    // Padaganon ang function kung andam na ang style sa mapa.
+    function whenLoaded(fn) {
+        if (!map) { return; }
+        if (map.isStyleLoaded()) { fn(); } else { map.once("load", fn); }
     }
 
     function directionsLink(lat, lng) {
@@ -194,6 +204,12 @@
                 var km = (route.distance / 1000).toFixed(2);
                 var mins = Math.max(1, Math.round(route.duration / 60));
                 stats.textContent = "📏 " + km + " km • ⏱️ " + mins + " min";
+
+                // Ipasa ang numero ngadto sa Android (para itandi sa Google Map).
+                var bridge = android();
+                if (bridge && typeof bridge.onRoute === "function") {
+                    bridge.onRoute(route.distance, route.duration);
+                }
             })
             .catch(function () {
                 stats.textContent = "Napakyas ang pagkuha sa ruta.";
@@ -344,9 +360,32 @@
                 setRoutePoint("B", config.routeB.lng, config.routeB.lat);
             }
 
+            // Kon may A ug B na daan (compare mode), ipakita dayon ang ruta.
+            if (showRoute && config.routeA) {
+                setRoutePoint("A", config.routeA.lng, config.routeA.lat);
+                if (config.autoRoute) { buildRoute(); }
+            }
+
+            // A/B nga napundo sa wala pa ma-load ang mapa.
+            if (pendingRoute) {
+                window.setRoute(
+                    pendingRoute[0], pendingRoute[1], pendingRoute[2], pendingRoute[3]
+                );
+                pendingRoute = null;
+            }
+
             var bridge = android();
             if (bridge) { bridge.onReady(); }
         });
+
+        // Gitawag gikan sa Android aron itakda ang A ug B dayon kuhaon ang ruta.
+        window.setRoute = function (aLat, aLng, bLat, bLng) {
+            whenLoaded(function () {
+                setRoutePoint("A", aLng, aLat);
+                setRoutePoint("B", bLng, bLat);
+                buildRoute();
+            });
+        };
 
         document.getElementById("searchBtn").addEventListener("click", runSearch);
         document.getElementById("searchBox").addEventListener("keyup", function (e) {

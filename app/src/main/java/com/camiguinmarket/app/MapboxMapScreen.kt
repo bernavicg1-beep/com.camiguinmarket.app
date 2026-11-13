@@ -33,7 +33,11 @@ fun MapboxMapScreen(
     showSearch: Boolean = false,
     showRoute: Boolean = false,
     sellers: List<Listing> = emptyList(),
+    routeA: LatLng? = null,
+    routeB: LatLng? = null,
+    autoRoute: Boolean = false,
     onPicked: ((Double, Double) -> Unit)? = null,
+    onRouteResult: ((Double, Double) -> Unit)? = null,
     onBack: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -49,11 +53,19 @@ fun MapboxMapScreen(
             },
             directionsHandler = { lat, lng ->
                 openDirections(context, LatLng(lat, lng), label)
+            },
+            routeHandler = { distanceMeters, durationSeconds ->
+                status = "Mapbox ruta: " +
+                    formatRouteStats(distanceMeters, durationSeconds)
+                onRouteResult?.invoke(distanceMeters, durationSeconds)
             }
         )
     }
 
-    val config = remember(latitude, longitude, label, pickMode, showSearch, showRoute, sellers) {
+    val config = remember(
+        latitude, longitude, label, pickMode, showSearch, showRoute, sellers,
+        routeA, routeB, autoRoute
+    ) {
         val sellerArray = JSONArray()
         sellersWithLocation(sellers).forEach { listing ->
             sellerArray.put(
@@ -77,6 +89,12 @@ fun MapboxMapScreen(
             .put("showRoute", showRoute)
             .put("sellers", sellerArray)
             .put("routeB", JSONObject().put("lat", latitude).put("lng", longitude))
+            .put(
+                "routeA",
+                routeA?.let { JSONObject().put("lat", it.latitude).put("lng", it.longitude) }
+                    ?: JSONObject.NULL
+            )
+            .put("autoRoute", autoRoute)
             .toString()
     }
 
@@ -111,6 +129,7 @@ fun MapboxMapScreen(
                     )
                 }
             } else {
+                var webView by remember { mutableStateOf<WebView?>(null) }
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
@@ -120,14 +139,125 @@ fun MapboxMapScreen(
                             webViewClient = WebViewClient()
                             addJavascriptInterface(bridge, "AndroidMap")
                             loadUrl("file:///android_asset/mapbox_map.html")
-                        }
+                        }.also { webView = it }
                     },
                     update = { web ->
                         // Kung nahuman na og load ang HTML, ipasa ang config.
                         web.evaluateJavascript("window.initMap($config);", null)
                     }
                 )
+
+                // Ipasa ang A ug B ngadto sa Mapbox map (compare mode).
+                val routeRequest = if (routeA != null && routeB != null) routeA to routeB else null
+                LaunchedEffect(webView, routeRequest, config) {
+                    if (routeRequest != null) {
+                        webView?.evaluateJavascript(
+                            "window.initMap($config); if (window.setRoute) { window.setRoute(" +
+                                "${routeRequest.first.latitude},${routeRequest.first.longitude}," +
+                                "${routeRequest.second.latitude},${routeRequest.second.longitude}); }",
+                            null
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+/**
+ * Lean nga Mapbox view (walay top bar) alang sa compare screen:
+ * nagpakita sa ruta A→B ug nagbalik sa distance/duration ngadto sa Android.
+ */
+@Composable
+fun MapboxRouteView(
+    latitude: Double,
+    longitude: Double,
+    routeA: LatLng?,
+    routeB: LatLng?,
+    sellers: List<Listing> = emptyList(),
+    nonce: Int = 0,
+    modifier: Modifier = Modifier,
+    onRouteResult: ((Double, Double) -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val token = BuildConfig.MAPBOX_ACCESS_TOKEN
+    var status by remember { mutableStateOf("Nagkarga sa Mapbox…") }
+
+    val bridge = remember {
+        MapboxBridge(
+            readyHandler = { status = "Andam na ang Mapbox map." },
+            pickHandler = { _, _ -> },
+            directionsHandler = { lat, lng ->
+                openDirections(context, LatLng(lat, lng), "Seller Pickup Location")
+            },
+            routeHandler = { distanceMeters, durationSeconds ->
+                status = "Mapbox ruta: " + formatRouteStats(distanceMeters, durationSeconds)
+                onRouteResult?.invoke(distanceMeters, durationSeconds)
+            }
+        )
+    }
+
+    val config = remember(latitude, longitude, routeA, routeB, sellers) {
+        JSONObject()
+            .put("token", token)
+            .put("lat", latitude)
+            .put("lng", longitude)
+            .put("label", "Seller Pickup Location")
+            .put("pickMode", false)
+            .put("showSearch", false)
+            .put("showRoute", true)
+            .put("sellers", JSONArray())
+            .put(
+                "routeA",
+                routeA?.let { JSONObject().put("lat", it.latitude).put("lng", it.longitude) }
+                    ?: JSONObject.NULL
+            )
+            .put(
+                "routeB",
+                routeB?.let { JSONObject().put("lat", it.latitude).put("lng", it.longitude) }
+                    ?: JSONObject().put("lat", latitude).put("lng", longitude)
+            )
+            .put("autoRoute", routeA != null && routeB != null)
+            .toString()
+    }
+
+    if (token.isBlank()) {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Text(
+                "Walay Mapbox access token.\nIdugang ang MAPBOX_ACCESS_TOKEN sa local.properties.",
+                modifier = Modifier.padding(24.dp),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        return
+    }
+
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                webViewClient = WebViewClient()
+                addJavascriptInterface(bridge, "AndroidMap")
+                loadUrl("file:///android_asset/mapbox_map.html")
+            }.also { webView = it }
+        },
+        update = { web ->
+            web.evaluateJavascript("window.initMap($config);", null)
+        }
+    )
+
+    val routeRequest = if (routeA != null && routeB != null) routeA to routeB else null
+    LaunchedEffect(webView, routeRequest, nonce, config) {
+        if (routeRequest != null) {
+            webView?.evaluateJavascript(
+                "window.initMap($config); if (window.setRoute) { window.setRoute(" +
+                    "${routeRequest.first.latitude},${routeRequest.first.longitude}," +
+                    "${routeRequest.second.latitude},${routeRequest.second.longitude}); }",
+                null
+            )
         }
     }
 }
@@ -136,7 +266,8 @@ fun MapboxMapScreen(
 class MapboxBridge(
     private val readyHandler: () -> Unit,
     private val pickHandler: (Double, Double) -> Unit,
-    private val directionsHandler: (Double, Double) -> Unit
+    private val directionsHandler: (Double, Double) -> Unit,
+    private val routeHandler: (Double, Double) -> Unit
 ) {
     @JavascriptInterface
     fun onReady() = readyHandler()
@@ -146,6 +277,11 @@ class MapboxBridge(
 
     @JavascriptInterface
     fun onDirections(lat: Double, lng: Double) = directionsHandler(lat, lng)
+
+    /** Gisugo niini ang JavaScript: onRoute(distanceMeters, durationSeconds). */
+    @JavascriptInterface
+    fun onRoute(distanceMeters: Double, durationSeconds: Double) =
+        routeHandler(distanceMeters, durationSeconds)
 }
 
 @Composable

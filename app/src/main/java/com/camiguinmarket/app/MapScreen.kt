@@ -57,8 +57,19 @@ val mapsApiKey: String
 data class MapRoute(
     val points: List<LatLng>,
     val distanceText: String,
-    val durationText: String
+    val durationText: String,
+    val distanceMeters: Int,
+    val durationSeconds: Int
 )
+
+/** "12.40 km • 21 min" gikan sa meters/seconds (pareho ang format sa Mapbox). */
+fun formatRouteStats(distanceMeters: Double, durationSeconds: Double): String =
+    String.format(
+        Locale.US,
+        "%.2f km • %d min",
+        distanceMeters / 1000.0,
+        maxOf(1, Math.round(durationSeconds / 60.0))
+    )
 
 /** Kinsa ang mosunod nga tap sa mapa. */
 private enum class TapTarget { NONE, ROUTE_A, ROUTE_B }
@@ -144,11 +155,15 @@ suspend fun fetchRoute(
         if (points.isEmpty()) {
             return@withContext Result.failure(IllegalStateException("Walay ruta nga nakit-an."))
         }
+        val distance = leg.getJSONObject("distance")
+        val duration = leg.getJSONObject("duration")
         Result.success(
             MapRoute(
                 points = points,
-                distanceText = leg.getJSONObject("distance").optString("text"),
-                durationText = leg.getJSONObject("duration").optString("text")
+                distanceText = distance.optString("text"),
+                durationText = duration.optString("text"),
+                distanceMeters = distance.optInt("value"),
+                durationSeconds = duration.optInt("value")
             )
         )
     } catch (e: Exception) {
@@ -439,7 +454,8 @@ fun CamiguinMarketMapScreen(
             routeLoading = false
             result.onSuccess { r ->
                 route = r
-                status = "Ruta A→B: ${r.distanceText} • ${r.durationText}"
+                status = "Ruta A→B (Google): " +
+                    formatRouteStats(r.distanceMeters.toDouble(), r.durationSeconds.toDouble())
                 val builder = LatLngBounds.Builder()
                 r.points.forEach { builder.include(it) }
                 cameraPositionState.animate(
@@ -705,7 +721,10 @@ fun CamiguinMarketMapScreen(
                     }
                     route?.let { r ->
                         Text(
-                            "📏 ${r.distanceText} • ⏱️ ${r.durationText}",
+                            "📏 " + formatRouteStats(
+                                r.distanceMeters.toDouble(),
+                                r.durationSeconds.toDouble()
+                            ),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         TextButton(
