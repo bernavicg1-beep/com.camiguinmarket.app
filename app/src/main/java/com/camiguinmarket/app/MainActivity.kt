@@ -142,6 +142,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var selected by remember { mutableStateOf<Listing?>(null) }
     var mapListing by remember { mutableStateOf<Listing?>(null) }
     var mapboxListing by remember { mutableStateOf<Listing?>(null) }
+    var showAllMap by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     DisposableEffect(Unit) {
@@ -165,7 +166,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Camiguin Market") },
-                actions = { TextButton(onClick = onLogout) { Text("Log out") } }
+                actions = {
+                    TextButton(onClick = { showAllMap = true }) { Text("🗺️ Mapa") }
+                    TextButton(onClick = onLogout) { Text("Log out") }
+                }
             )
         },
         floatingActionButton = {
@@ -263,6 +267,18 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 mapListing = null
             },
             onOpenMapbox = { mapListing = null; mapboxListing = l }
+        )
+    }
+
+    // Tanan nga seller pins sa usa ka mapa (search bar + ruta A→B).
+    if (showAllMap) {
+        AllSellersMapDialog(
+            listings = filtered,
+            onSellerClick = { l ->
+                showAllMap = false
+                selected = l
+            },
+            onDismiss = { showAllMap = false }
         )
     }
 

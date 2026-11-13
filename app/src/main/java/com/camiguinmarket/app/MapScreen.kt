@@ -9,10 +9,17 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -23,9 +30,16 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.maps.android.compose.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import java.util.Locale
 
 /** Sentro sa Camiguin Island (Mambajao area). */
@@ -33,6 +47,148 @@ val CamiguinCenter = LatLng(9.1732, 124.7290)
 
 const val ISLAND_ZOOM = 11f
 const val FOCUS_ZOOM = 16f
+const val ROUTE_ZOOM = 12f
+
+/** Google Maps API key gikan sa local.properties / CI secrets (BuildConfig). */
+val mapsApiKey: String
+    get() = BuildConfig.MAPS_API_KEY
+
+/** Ruta gikan sa Google Directions API. */
+data class MapRoute(
+    val points: List<LatLng>,
+    val distanceText: String,
+    val durationText: String
+)
+
+/** Kinsa ang mosunod nga tap sa mapa. */
+private enum class TapTarget { NONE, ROUTE_A, ROUTE_B }
+
+/** Usa ka resulta sa search bar (seller pin o lugar). */
+data class MapSearchResult(
+    val label: String,
+    val detail: String,
+    val point: LatLng,
+    val seller: Listing? = null
+)
+
+/** Decode sa "encoded polyline" sa Directions API. */
+fun decodePolyline(encoded: String): List<LatLng> {
+    val points = mutableListOf<LatLng>()
+    var index = 0
+    var lat = 0
+    var lng = 0
+    while (index < encoded.length) {
+        var shift = 0
+        var result = 0
+        var b: Int
+        do {
+            b = encoded[index++].code - 63
+            result = result or ((b and 0x1f) shl shift)
+            shift += 5
+        } while (b >= 0x20)
+        lat += if (result and 1 != 0) (result shr 1).inv() else result shr 1
+
+        shift = 0
+        result = 0
+        do {
+            b = encoded[index++].code - 63
+            result = result or ((b and 0x1f) shl shift)
+            shift += 5
+        } while (b >= 0x20)
+        lng += if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        points.add(LatLng(lat / 1e5, lng / 1e5))
+    }
+    return points
+}
+
+private fun httpGetJson(url: String): JSONObject {
+    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 10_000
+        readTimeout = 10_000
+    }
+    try {
+        val text = connection.inputStream.bufferedReader().use { it.readText() }
+        return JSONObject(text)
+    } finally {
+        connection.disconnect()
+    }
+}
+
+/** Ruta A→B (driving, walking, o bicycling) pinaagi sa Google Directions API. */
+suspend fun fetchRoute(
+    origin: LatLng,
+    destination: LatLng,
+    key: String,
+    travelMode: String = "driving"
+): Result<MapRoute> = withContext(Dispatchers.IO) {
+    if (key.isBlank()) {
+        return@withContext Result.failure(IllegalStateException("Walay Google Maps API key."))
+    }
+    try {
+        val url = "https://maps.googleapis.com/maps/api/directions/json" +
+            "?origin=${origin.latitude},${origin.longitude}" +
+            "&destination=${destination.latitude},${destination.longitude}" +
+            "&mode=$travelMode&language=en&key=$key"
+        val json = httpGetJson(url)
+        val status = json.optString("status")
+        if (status != "OK") {
+            val message = json.optString("error_message").ifBlank { "Directions status: $status" }
+            return@withContext Result.failure(IllegalStateException(message))
+        }
+        val route = json.getJSONArray("routes").getJSONObject(0)
+        val leg = route.getJSONArray("legs").getJSONObject(0)
+        val points = decodePolyline(
+            route.getJSONObject("overview_polyline").optString("points")
+        )
+        if (points.isEmpty()) {
+            return@withContext Result.failure(IllegalStateException("Walay ruta nga nakit-an."))
+        }
+        Result.success(
+            MapRoute(
+                points = points,
+                distanceText = leg.getJSONObject("distance").optString("text"),
+                durationText = leg.getJSONObject("duration").optString("text")
+            )
+        )
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+}
+
+/** Pangita og lugar sa Camiguin pinaagi sa Google Geocoding API. */
+suspend fun geocodePlace(query: String, key: String): Result<MapSearchResult> =
+    withContext(Dispatchers.IO) {
+        if (key.isBlank()) {
+            return@withContext Result.failure(IllegalStateException("Walay Google Maps API key."))
+        }
+        try {
+            val q = URLEncoder.encode("$query, Camiguin, Philippines", "UTF-8")
+            val url = "https://maps.googleapis.com/maps/api/geocode/json" +
+                "?address=$q&region=ph&key=$key"
+            val json = httpGetJson(url)
+            val status = json.optString("status")
+            if (status != "OK") {
+                val message = json.optString("error_message").ifBlank { "Geocoding status: $status" }
+                return@withContext Result.failure(IllegalStateException(message))
+            }
+            val first = json.getJSONArray("results").getJSONObject(0)
+            val location = first.getJSONObject("geometry").getJSONObject("location")
+            Result.success(
+                MapSearchResult(
+                    label = first.optString("formatted_address"),
+                    detail = "Lugar sa Camiguin",
+                    point = LatLng(location.getDouble("lat"), location.getDouble("lng"))
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+/** Mga seller nga may coordinates (pang-search ug pins). */
+fun sellersWithLocation(listings: List<Listing>): List<Listing> =
+    listings.filter { it.latitude != null && it.longitude != null }
 
 fun formatCoordinates(point: LatLng): String =
     String.format(Locale.US, "%.5f, %.5f", point.latitude, point.longitude)
@@ -95,8 +251,15 @@ fun CamiguinMarketMapScreen(
     sellerSnippet: String = "Camiguin Market seller",
     initialCustomerLocation: LatLng? = null,
     pickMode: Boolean = false,
+    showSearch: Boolean = false,
+    showRoute: Boolean = false,
+    showPickupMarker: Boolean = true,
+    initialRouteB: LatLng? = null,
+    sellers: List<Listing> = emptyList(),
+    apiKey: String = mapsApiKey,
     modifier: Modifier = Modifier,
     onPickLocation: ((LatLng) -> Unit)? = null,
+    onSellerClick: ((Listing) -> Unit)? = null,
     onBack: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -113,6 +276,20 @@ fun CamiguinMarketMapScreen(
             else "Pindota ang 📍 Use My Current Location aron makita asa ka karon."
         )
     }
+
+    // Ruta A→B.
+    var tapTarget by remember { mutableStateOf(TapTarget.NONE) }
+    var pointA by remember { mutableStateOf<LatLng?>(null) }
+    var pointB by remember(sellerLocation, showRoute) { mutableStateOf(initialRouteB) }
+    var route by remember { mutableStateOf<MapRoute?>(null) }
+    var routeLoading by remember { mutableStateOf(false) }
+
+    // Search bar sa ibabaw sa mapa.
+    var searchQuery by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
+    var searchNote by remember { mutableStateOf<String?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var searchedPlace by remember { mutableStateOf<LatLng?>(null) }
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
@@ -148,6 +325,7 @@ fun CamiguinMarketMapScreen(
     fun onPointFound(point: LatLng) {
         customerLocation = point
         focusTarget = point
+        if (showRoute && pointA == null) pointA = point
         status = "Nakita na ang imong current location."
     }
 
@@ -188,6 +366,91 @@ fun CamiguinMarketMapScreen(
         }
     }
 
+    fun runSearch() {
+        val q = searchQuery.trim()
+        searchNote = null
+        if (q.isEmpty()) {
+            searchResults = emptyList()
+            return
+        }
+        val local = sellersWithLocation(sellers).filter {
+            it.title.contains(q, true) || it.description.contains(q, true) ||
+                it.town.contains(q, true) || it.category.contains(q, true) ||
+                it.sellerName.contains(q, true)
+        }
+        if (local.isNotEmpty()) {
+            searchResults = local.take(6).map { listing ->
+                MapSearchResult(
+                    label = listing.title.ifBlank { "Seller" },
+                    detail = listOf(listing.sellerName, listing.town)
+                        .filter { it.isNotBlank() }.joinToString(" • "),
+                    point = LatLng(listing.latitude!!, listing.longitude!!),
+                    seller = listing
+                )
+            }
+            status = "Nakita ang ${local.size} ka seller pin."
+            return
+        }
+        if (apiKey.isBlank()) {
+            searchResults = emptyList()
+            searchNote = "Walay seller nga nakit-an. Idugang ang MAPS_API_KEY aron makapangita og lugar."
+            return
+        }
+        searching = true
+        scope.launch {
+            val result = geocodePlace(q, apiKey)
+            searching = false
+            result.onSuccess { place ->
+                searchResults = listOf(place)
+                searchedPlace = place.point
+                focusTarget = place.point
+                status = "Nakita ang lugar: ${place.label}"
+            }.onFailure { e ->
+                searchResults = emptyList()
+                searchNote = e.message ?: "Wala makita ang lugar."
+            }
+        }
+    }
+
+    fun selectResult(result: MapSearchResult) {
+        searchResults = emptyList()
+        searchedPlace = result.point
+        focusTarget = result.point
+        if (showRoute) pointB = result.point
+        status = "${result.label} — ${formatCoordinates(result.point)}"
+        result.seller?.let { seller -> onSellerClick?.invoke(seller) }
+    }
+
+    fun buildRoute() {
+        val start = pointA
+        val end = pointB
+        if (start == null || end == null) {
+            status = "Kinahanglan ang Point A (start) ug Point B (destination)."
+            return
+        }
+        if (apiKey.isBlank()) {
+            status = "Walay MAPS_API_KEY. Idugang sa local.properties o GitHub secrets."
+            return
+        }
+        routeLoading = true
+        status = "Ginakuha ang ruta A→B…"
+        scope.launch {
+            val result = fetchRoute(start, end, apiKey)
+            routeLoading = false
+            result.onSuccess { r ->
+                route = r
+                status = "Ruta A→B: ${r.distanceText} • ${r.durationText}"
+                val builder = LatLngBounds.Builder()
+                r.points.forEach { builder.include(it) }
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngBounds(builder.build(), 120)
+                )
+            }.onFailure { e ->
+                status = "Napakyas ang ruta: ${e.message}"
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -212,47 +475,170 @@ fun CamiguinMarketMapScreen(
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            GoogleMap(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(isMyLocationEnabled = hasPermission),
-                uiSettings = MapUiSettings(
-                    zoomControlsEnabled = true,
-                    myLocationButtonEnabled = false,
-                    compassEnabled = true
-                ),
-                onMapClick = { point ->
-                    if (pickMode || isSelecting) {
-                        pickupLocation = point
-                        status = "Napili ang pickup location. Pindota ang 💾 Save Pickup Location."
-                        isSelecting = false
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState,
+                    properties = MapProperties(isMyLocationEnabled = hasPermission),
+                    uiSettings = MapUiSettings(
+                        zoomControlsEnabled = true,
+                        myLocationButtonEnabled = false,
+                        compassEnabled = true
+                    ),
+                    onMapClick = { point ->
+                        when {
+                            tapTarget == TapTarget.ROUTE_A -> {
+                                pointA = point
+                                tapTarget = TapTarget.NONE
+                                status = "Point A na-set: ${formatCoordinates(point)}"
+                            }
+                            tapTarget == TapTarget.ROUTE_B -> {
+                                pointB = point
+                                tapTarget = TapTarget.NONE
+                                status = "Point B na-set: ${formatCoordinates(point)}"
+                            }
+                            pickMode || isSelecting -> {
+                                pickupLocation = point
+                                status = "Napili ang pickup location. Pindota ang 💾 Save Pickup Location."
+                                isSelecting = false
+                            }
+                        }
+                    }
+                ) {
+                    if (showPickupMarker) {
+                        Marker(
+                            state = rememberMarkerState(position = pickupLocation),
+                            title = sellerLabel,
+                            snippet = sellerSnippet
+                        )
+                    }
+                    customerLocation?.let { point ->
+                        Marker(
+                            state = rememberMarkerState(position = point),
+                            title = "My Current Location",
+                            snippet = "Ikaw karon"
+                        )
+                    }
+                    // Tanan nga seller pins (listahan sa mga listing nga may coordinates).
+                    sellersWithLocation(sellers).forEach { listing ->
+                        val lat = listing.latitude
+                        val lng = listing.longitude
+                        if (lat != null && lng != null) {
+                            key(listing.id) {
+                                Marker(
+                                    state = rememberMarkerState(position = LatLng(lat, lng)),
+                                    title = listing.title.ifBlank { "Seller" },
+                                    snippet = "${listing.sellerName} • ₱%.2f".format(listing.price),
+                                    onClick = { _ ->
+                                        onSellerClick?.invoke(listing)
+                                        true
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    searchedPlace?.let { point ->
+                        key(point) {
+                            Marker(
+                                state = rememberMarkerState(position = point),
+                                title = "Gipangita nga lugar",
+                                snippet = formatCoordinates(point)
+                            )
+                        }
+                    }
+                    // Ruta A→B: ang linya sa dalan.
+                    route?.let { r ->
+                        Polyline(
+                            points = r.points,
+                            color = Color(0xFF1B7F5C),
+                            width = 12f
+                        )
+                    }
+                    pointA?.let { start ->
+                        Marker(
+                            state = rememberMarkerState(position = start),
+                            title = "Point A (start)",
+                            snippet = formatCoordinates(start)
+                        )
+                    }
+                    pointB?.let { end ->
+                        Marker(
+                            state = rememberMarkerState(position = end),
+                            title = "Point B (destination)",
+                            snippet = formatCoordinates(end)
+                        )
                     }
                 }
-            ) {
-                Marker(
-                    state = rememberMarkerState(position = pickupLocation),
-                    title = sellerLabel,
-                    snippet = sellerSnippet
-                )
-                customerLocation?.let { point ->
-                    Marker(
-                        state = rememberMarkerState(position = point),
-                        title = "My Current Location",
-                        snippet = "Ikaw karon"
-                    )
+
+                if (showSearch) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        tonalElevation = 4.dp,
+                        shadowElevation = 4.dp
+                    ) {
+                        Column(Modifier.padding(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    placeholder = { Text("Pangita og lugar o seller…") },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Button(
+                                    enabled = !searching,
+                                    onClick = { runSearch() }
+                                ) { Text(if (searching) "…" else "🔍") }
+                            }
+                            searchNote?.let { note ->
+                                Text(
+                                    note,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            if (searchResults.isNotEmpty()) {
+                                Column(Modifier.padding(top = 4.dp)) {
+                                    searchResults.forEach { result ->
+                                        Column(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clickable { selectResult(result) }
+                                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                if (result.seller == null) "🔎 ${result.label}"
+                                                else "📍 ${result.label}",
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Text(result.detail, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier
+                    .heightIn(max = 300.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "Pickup coordinates: ${formatCoordinates(pickupLocation)}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                if (showPickupMarker) {
+                    Text(
+                        text = "Pickup coordinates: ${formatCoordinates(pickupLocation)}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
 
                 Button(
                     onClick = { getCurrentLocation() },
@@ -272,7 +658,9 @@ fun CamiguinMarketMapScreen(
                         onClick = { onPickLocation?.invoke(pickupLocation) },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("💾 Save Pickup Location") }
-                } else {
+                }
+
+                if (showPickupMarker && !pickMode) {
                     OutlinedButton(
                         onClick = {
                             isSelecting = true
@@ -282,17 +670,64 @@ fun CamiguinMarketMapScreen(
                     ) { Text("📌 Select Pickup Location") }
                 }
 
-                Button(
-                    onClick = {
-                        openDirections(context, pickupLocation, sellerLabel)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("🧭 Get Directions to Seller") }
+                if (showRoute) {
+                    Text("Ruta A→B", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "A: ${pointA?.let { formatCoordinates(it) } ?: "wala pa ma-set"}\n" +
+                            "B: ${pointB?.let { formatCoordinates(it) } ?: "wala pa ma-set"}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                tapTarget = TapTarget.ROUTE_A
+                                status = "Pindota ang mapa aron ibutang ang Point A (start)."
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("🅰️ Set A") }
+                        OutlinedButton(
+                            onClick = {
+                                tapTarget = TapTarget.ROUTE_B
+                                status = "Pindota ang mapa aron ibutang ang Point B (destination)."
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("🅱️ Set B") }
+                    }
+                    Button(
+                        enabled = pointA != null && pointB != null && !routeLoading,
+                        onClick = { buildRoute() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (routeLoading) "Ginakuha ang ruta…" else "🧭 Ipakita ang Ruta A→B")
+                    }
+                    route?.let { r ->
+                        Text(
+                            "📏 ${r.distanceText} • ⏱️ ${r.durationText}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        TextButton(
+                            onClick = { route = null; status = "Giklar ang ruta." },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🗑️ Klarohon ang ruta") }
+                    }
+                }
 
-                OutlinedButton(
-                    onClick = { openMapPreview(context, pickupLocation, sellerLabel) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("🗺️ View Map sa Google Maps App") }
+                if (showPickupMarker) {
+                    Button(
+                        onClick = {
+                            openDirections(context, pickupLocation, sellerLabel)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("🧭 Get Directions to Seller") }
+
+                    OutlinedButton(
+                        onClick = { openMapPreview(context, pickupLocation, sellerLabel) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("🗺️ View Map sa Google Maps App") }
+                }
             }
         }
     }
@@ -355,6 +790,8 @@ fun SellerMapDialog(
                     sellerLocation = LatLng(lat, lng),
                     sellerLabel = listing.title.ifBlank { "Seller Pickup Location" },
                     sellerSnippet = "${listing.sellerName} • ${listing.town}",
+                    showRoute = true,
+                    initialRouteB = LatLng(lat, lng),
                     onBack = onDismiss,
                     modifier = Modifier.weight(1f)
                 )
@@ -365,6 +802,39 @@ fun SellerMapDialog(
                     ) { Text("🌐 Tan-awa sa Mapbox (web map)") }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Tanan nga seller pins sa usa ka mapa, uban ang search bar sa ibabaw
+ * ug ruta A→B. Tap sa pin aron makita ang detalye sa listing.
+ */
+@Composable
+fun AllSellersMapDialog(
+    listings: List<Listing>,
+    apiKey: String = mapsApiKey,
+    onSellerClick: ((Listing) -> Unit)? = null,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(Modifier.fillMaxSize()) {
+            CamiguinMarketMapScreen(
+                sellerLocation = CamiguinCenter,
+                sellerLabel = "Camiguin Market",
+                sellerSnippet = "Pili og seller pin",
+                showSearch = true,
+                showRoute = true,
+                showPickupMarker = false,
+                sellers = listings,
+                apiKey = apiKey,
+                onSellerClick = onSellerClick,
+                onBack = onDismiss,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

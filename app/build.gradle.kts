@@ -40,6 +40,8 @@ android {
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
         // Gigamit sa Mapbox WebView screen.
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$mapboxAccessToken\"")
+        // Gigamit sa Directions API (ruta A→B) ug Geocoding API (search bar).
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
     }
 
     buildTypes {
