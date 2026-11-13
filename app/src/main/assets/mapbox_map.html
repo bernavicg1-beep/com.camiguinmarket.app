@@ -94,6 +94,13 @@
         return window.AndroidMap || null;
     }
 
+    // Mensahe kon walay internet o napakyas ang tawag sa Mapbox API.
+    function offlineMessage() {
+        return (navigator.onLine === false)
+            ? "Walay internet connection. I-check ang data o WiFi."
+            : "Napakyas ang pagkuha sa datos. Sulayi pag-usab.";
+    }
+
     // Padaganon ang function kung andam na ang style sa mapa.
     function whenLoaded(fn) {
         if (!map) { return; }
@@ -178,6 +185,10 @@
             stats.textContent = "Kinahanglan ang Point A (start) ug Point B (destination).";
             return;
         }
+        if (navigator.onLine === false) {
+            stats.textContent = "Walay internet connection. I-check ang data o WiFi.";
+            return;
+        }
         stats.textContent = "Ginakuha ang ruta…";
         var url = "https://api.mapbox.com/directions/v5/mapbox/driving/" +
             pointA.lng + "," + pointA.lat + ";" + pointB.lng + "," + pointB.lat +
@@ -186,6 +197,12 @@
         fetch(url)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                // Kon invalid ang token o may error, ipakita ang mensahe sa Mapbox.
+                if (data.message) {
+                    stats.textContent = "Mapbox: " + data.message +
+                        " (i-check ang MAPBOX_ACCESS_TOKEN).";
+                    return;
+                }
                 if (!data.routes || !data.routes.length) {
                     stats.textContent = "Walay ruta nga nakit-an.";
                     return;
@@ -212,7 +229,7 @@
                 }
             })
             .catch(function () {
-                stats.textContent = "Napakyas ang pagkuha sa ruta.";
+                stats.textContent = offlineMessage();
             });
     }
 
@@ -276,6 +293,12 @@
             return;
         }
 
+        if (navigator.onLine === false) {
+            document.getElementById("results").innerHTML =
+                "<div class='result'>Walay internet connection. I-check ang data o WiFi.</div>";
+            return;
+        }
+
         var url = "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
             encodeURIComponent(q + ", Camiguin, Philippines") +
             ".json?country=ph&limit=5&proximity=124.7290,9.1732&access_token=" + accessToken;
@@ -283,6 +306,12 @@
         fetch(url)
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (data.message) {
+                    document.getElementById("results").innerHTML =
+                        "<div class='result'>Mapbox: " + data.message +
+                        " (i-check ang MAPBOX_ACCESS_TOKEN).</div>";
+                    return;
+                }
                 var places = (data.features || []).map(function (f) {
                     return {
                         title: "🔎 " + f.text,
@@ -299,7 +328,7 @@
             })
             .catch(function () {
                 document.getElementById("results").innerHTML =
-                    "<div class='result'>Napakyas ang pagpangita.</div>";
+                    "<div class='result'>" + offlineMessage() + "</div>";
             });
     }
 

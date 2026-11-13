@@ -67,7 +67,7 @@ fun RouteCompareScreen(
             scope.launch {
                 fetchRoute(a, b, apiKey)
                     .onSuccess { googleRoute = it }
-                    .onFailure { googleError = it.message }
+                    .onFailure { googleError = friendlyMapError(it) }
                 googleLoading = false
             }
         }
@@ -111,6 +111,14 @@ fun RouteCompareScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(status, style = MaterialTheme.typography.bodySmall)
+                if (apiKey.isBlank()) {
+                    Text(
+                        "⚠️ Walay MAPS_API_KEY: dili maka-compute ang Google side. " +
+                            "Idugang kini sa local.properties o GitHub secrets.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Text(
                     "A: ${pointA?.let { formatCoordinates(it) } ?: "wala pa"}  •  " +
                         "B: ${pointB?.let { formatCoordinates(it) } ?: "wala pa"}",
@@ -131,10 +139,17 @@ fun RouteCompareScreen(
                     ) { Text("🧭 Itandi") }
                 }
                 Text(
-                    "Google: " + (googleStats ?: googleError
+                    "Google: " + (googleStats
                         ?: if (googleLoading) "nagkalkulo…" else "wala pa"),
                     style = MaterialTheme.typography.bodyMedium
                 )
+                googleError?.let { error ->
+                    Text(
+                        error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Text(
                     "Mapbox: " + (mapboxText ?: "wala pa"),
                     style = MaterialTheme.typography.bodyMedium

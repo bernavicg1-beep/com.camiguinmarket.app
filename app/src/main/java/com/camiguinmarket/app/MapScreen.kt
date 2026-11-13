@@ -37,9 +37,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLEncoder
+import java.net.UnknownHostException
 import java.util.Locale
 
 /** Sentro sa Camiguin Island (Mambajao area). */
@@ -112,6 +115,33 @@ fun decodePolyline(encoded: String): List<LatLng> {
     return points
 }
 
+/**
+ * Mahigalaon nga mensahe alang sa user: offline, gisalikway ang key, o limit.
+ * Ang hilaw nga mensahe sa exception dili maayo ipakita sa user.
+ */
+fun friendlyMapError(e: Throwable?): String {
+    val raw = e?.message.orEmpty()
+    return when {
+        e is UnknownHostException ->
+            "Walay internet connection. I-check ang data o WiFi, dayon sulayi pag-usab."
+        e is SocketTimeoutException ->
+            "Hinay ang connection. Sulayi pag-usab."
+        e is ConnectException ->
+            "Dili maka-connect sa map service. Sulayi pag-usab."
+        raw.contains("REQUEST_DENIED", true) ->
+            "Gisalikway ang Google Maps API key. I-check kon naka-enable ang " +
+                "Directions API ug Geocoding API ug husto ang key restrictions."
+        raw.contains("OVER_QUERY_LIMIT", true) || raw.contains("OVER_DAILY_LIMIT", true) ->
+            "Nakaabot na sa limit sa Google Maps API. Sulayi ugma o i-check ang billing."
+        raw.contains("ZERO_RESULTS", true) ->
+            "Walay ruta o lugar nga nakit-an niini nga pangita."
+        raw.contains("Not Authorized", true) || raw.contains("Invalid Token", true) ->
+            "Gisalikway ang Mapbox token. I-check ang MAPBOX_ACCESS_TOKEN."
+        raw.isBlank() -> "Napakyas ang pagkuha sa datos. Sulayi pag-usab."
+        else -> raw
+    }
+}
+
 private fun httpGetJson(url: String): JSONObject {
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
@@ -119,8 +149,21 @@ private fun httpGetJson(url: String): JSONObject {
         readTimeout = 10_000
     }
     try {
-        val text = connection.inputStream.bufferedReader().use { it.readText() }
-        return JSONObject(text)
+        val code = connection.responseCode
+        if (code in 200..299) {
+            val text = connection.inputStream.bufferedReader().use { it.readText() }
+            return JSONObject(text)
+        }
+        // Ang Google API mobalik og JSON error; basahon nato ang error_message.
+        val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val message = try {
+            JSONObject(body).optString("error_message")
+        } catch (_: Exception) {
+            ""
+        }
+        throw IllegalStateException(
+            if (message.isNotBlank()) message else "HTTP $code gikan sa map service."
+        )
     } finally {
         connection.disconnect()
     }
@@ -408,7 +451,8 @@ fun CamiguinMarketMapScreen(
         }
         if (apiKey.isBlank()) {
             searchResults = emptyList()
-            searchNote = "Walay seller nga nakit-an. Idugang ang MAPS_API_KEY aron makapangita og lugar."
+            searchNote = "Walay seller nga nakit-an. Wala pa ma-set ang MAPS_API_KEY, " +
+                "busa dili maka-search og lugar."
             return
         }
         searching = true
@@ -422,7 +466,7 @@ fun CamiguinMarketMapScreen(
                 status = "Nakita ang lugar: ${place.label}"
             }.onFailure { e ->
                 searchResults = emptyList()
-                searchNote = e.message ?: "Wala makita ang lugar."
+                searchNote = friendlyMapError(e)
             }
         }
     }
@@ -447,6 +491,7 @@ fun CamiguinMarketMapScreen(
             status = "Walay MAPS_API_KEY. Idugang sa local.properties o GitHub secrets."
             return
         }
+        if (status.contains("Walay internet", true)) status = "Gikuha pag-usab ang ruta…"
         routeLoading = true
         status = "Ginakuha ang ruta A→B…"
         scope.launch {
@@ -462,7 +507,7 @@ fun CamiguinMarketMapScreen(
                     CameraUpdateFactory.newLatLngBounds(builder.build(), 120)
                 )
             }.onFailure { e ->
-                status = "Napakyas ang ruta: ${e.message}"
+                status = "Napakyas ang ruta: ${friendlyMapError(e)}"
             }
         }
     }
@@ -490,6 +535,16 @@ fun CamiguinMarketMapScreen(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium
             )
+
+            if (apiKey.isBlank() && (showRoute || showSearch)) {
+                Text(
+                    text = "⚠️ Walay MAPS_API_KEY: dili moandar ang ruta ug ang place search. " +
+                        "Idugang kini sa local.properties o GitHub secrets.",
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 GoogleMap(
