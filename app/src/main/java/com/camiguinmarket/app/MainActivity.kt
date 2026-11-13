@@ -3,6 +3,7 @@ package com.camiguinmarket.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +45,9 @@ data class Listing(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Target SDK 36: enforced ang edge-to-edge, busa i-enable nga tarong
+        // ang window aron dili ma-tabunan sa system bars ang sulod.
+        enableEdgeToEdge()
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(
@@ -80,7 +84,9 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
 
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier.fillMaxSize()
+            .padding(WindowInsets.systemBars.asPaddingValues())
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Text("Camiguin Market 🛒", style = MaterialTheme.typography.headlineMedium)
@@ -178,7 +184,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Baligya") }
         }
     ) { pad ->
-        Column(Modifier.padding(pad).padding(horizontal = 12.dp)) {
+        Column(Modifier.padding(pad).padding(horizontal = 12.dp).navigationBarsPadding()) {
             OutlinedTextField(
                 query, { query = it }, label = { Text("Pangita…") },
                 singleLine = true, modifier = Modifier.fillMaxWidth()
