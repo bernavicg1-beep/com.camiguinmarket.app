@@ -14,6 +14,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.google.android.gms.maps.model.LatLng
 import androidx.compose.ui.window.DialogProperties
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -29,6 +30,9 @@ fun MapboxMapScreen(
     longitude: Double,
     label: String = "Seller Pickup Location",
     pickMode: Boolean = false,
+    showSearch: Boolean = false,
+    showRoute: Boolean = false,
+    sellers: List<Listing> = emptyList(),
     onPicked: ((Double, Double) -> Unit)? = null,
     onBack: (() -> Unit)? = null
 ) {
@@ -49,13 +53,30 @@ fun MapboxMapScreen(
         )
     }
 
-    val config = remember(latitude, longitude, label, pickMode) {
+    val config = remember(latitude, longitude, label, pickMode, showSearch, showRoute, sellers) {
+        val sellerArray = JSONArray()
+        sellersWithLocation(sellers).forEach { listing ->
+            sellerArray.put(
+                JSONObject()
+                    .put("id", listing.id)
+                    .put("title", listing.title.ifBlank { "Seller" })
+                    .put("seller", listing.sellerName)
+                    .put("town", listing.town)
+                    .put("price", listing.price)
+                    .put("lat", listing.latitude)
+                    .put("lng", listing.longitude)
+            )
+        }
         JSONObject()
             .put("token", token)
             .put("lat", latitude)
             .put("lng", longitude)
             .put("label", label)
             .put("pickMode", pickMode)
+            .put("showSearch", showSearch)
+            .put("showRoute", showRoute)
+            .put("sellers", sellerArray)
+            .put("routeB", JSONObject().put("lat", latitude).put("lng", longitude))
             .toString()
     }
 
@@ -132,6 +153,7 @@ fun MapboxMapDialog(
     latitude: Double,
     longitude: Double,
     label: String,
+    sellers: List<Listing> = emptyList(),
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -143,6 +165,9 @@ fun MapboxMapDialog(
                 latitude = latitude,
                 longitude = longitude,
                 label = label,
+                showSearch = true,
+                showRoute = true,
+                sellers = sellers,
                 onBack = onDismiss
             )
         }

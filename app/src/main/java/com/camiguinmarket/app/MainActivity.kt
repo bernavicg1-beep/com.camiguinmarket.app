@@ -288,6 +288,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             latitude = l.latitude ?: CamiguinCenter.latitude,
             longitude = l.longitude ?: CamiguinCenter.longitude,
             label = l.title.ifBlank { "Seller Pickup Location" },
+            sellers = filtered,
             onDismiss = { mapboxListing = null }
         )
     }

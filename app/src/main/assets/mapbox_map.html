@@ -15,6 +15,26 @@
         #setup { position: absolute; inset: 0; display: none; align-items: center;
                  justify-content: center; padding: 24px; text-align: center; background: #fff; }
         #setup.show { display: flex; }
+
+        .panel { position: absolute; left: 8px; right: 8px; background: #fff;
+                 border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.25);
+                 padding: 8px; z-index: 5; font-size: 13px; color: #222; }
+        #searchPanel { top: 8px; display: none; }
+        #searchPanel.show { display: block; }
+        #routePanel { bottom: 8px; display: none; }
+        #routePanel.show { display: block; }
+        .row { display: flex; gap: 6px; align-items: center; }
+        .row + .row { margin-top: 6px; }
+        input { flex: 1; min-width: 0; padding: 8px; font-size: 14px;
+                border: 1px solid #ccc; border-radius: 8px; }
+        button { padding: 8px 10px; font-size: 13px; border: 1px solid #1b7f5c;
+                 background: #1b7f5c; color: #fff; border-radius: 8px; }
+        button.ghost { background: #fff; color: #1b7f5c; }
+        #results { margin-top: 6px; max-height: 34vh; overflow-y: auto; }
+        .result { padding: 7px 4px; border-top: 1px solid #eee; }
+        .result .t { font-weight: bold; }
+        .result .s { color: #666; font-size: 12px; }
+        #routeInfo, #routeStats { font-size: 12px; color: #444; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -22,13 +42,47 @@
 <div id="map"></div>
 <div id="setup">Walay Mapbox access token. Idugang ang MAPBOX_ACCESS_TOKEN sa local.properties.</div>
 
+<div id="searchPanel" class="panel">
+    <div class="row">
+        <input id="searchBox" type="text" placeholder="Pangita og lugar o seller…" />
+        <button id="searchBtn">🔍</button>
+    </div>
+    <div id="results"></div>
+</div>
+
+<div id="routePanel" class="panel">
+    <div><b>Ruta A→B</b></div>
+    <div id="routeInfo">A: wala pa ma-set • B: wala pa ma-set</div>
+    <div class="row">
+        <button id="setA" class="ghost">🅰️ Set A</button>
+        <button id="setB" class="ghost">🅱️ Set B</button>
+    </div>
+    <div class="row">
+        <button id="routeBtn">🧭 Ipakita ang Ruta A→B</button>
+        <button id="clearBtn" class="ghost">🗑️</button>
+    </div>
+    <div id="routeStats"></div>
+</div>
+
 <script>
     var map = null;
     var initialized = false;
     var pickMode = false;
     var label = "Seller Pickup Location";
+    var accessToken = "";
+    var sellerLocation = null;                 // ang listing/pickup pin
+    var showRoute = false;
+    var sellers = [];                          // tanan listing nga may pin
+    var sellerMarkers = {};
     var sellerMarker = null;
     var pickMarker = null;
+    var searchMarker = null;
+    var markerA = null;
+    var markerB = null;
+    var pointA = null;
+    var pointB = null;
+    var tapTarget = null;                      // "A" | "B" | null
+    var routeReady = false;
 
     function android() {
         return (window.AndroidMap && typeof window.AndroidMap.onPick === "function")
@@ -56,6 +110,183 @@
         return new mapboxgl.Popup({ offset: 25 }).setDOMContent(content);
     }
 
+    function sellerPin(s) {
+        var content = document.createElement("div");
+        content.innerHTML = "<h3 style='margin:0 0 4px'>" + s.title + "</h3>" +
+            "<p style='margin:0'>" + s.seller + " • ₱" + Number(s.price).toFixed(2) +
+            "<br>" + s.town + "</p>";
+        content.appendChild(directionsLink(s.lat, s.lng));
+        return new mapboxgl.Popup({ offset: 25 }).setDOMContent(content);
+    }
+
+    function fmt(p) {
+        return p.lat.toFixed(5) + ", " + p.lng.toFixed(5);
+    }
+
+    function updateRouteInfo() {
+        document.getElementById("routeInfo").textContent =
+            "A: " + (pointA ? fmt(pointA) : "wala pa ma-set") +
+            " • B: " + (pointB ? fmt(pointB) : "wala pa ma-set");
+    }
+
+    function setRoutePoint(which, lng, lat) {
+        var marker = new mapboxgl.Marker({ color: which === "A" ? "#2ecc71" : "#e74c3c" })
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+        if (which === "A") {
+            if (markerA) { markerA.remove(); }
+            markerA = marker;
+            pointA = { lat: lat, lng: lng };
+        } else {
+            if (markerB) { markerB.remove(); }
+            markerB = marker;
+            pointB = { lat: lat, lng: lng };
+        }
+        updateRouteInfo();
+    }
+
+    function ensureRouteLayer() {
+        if (map.getSource("route")) { return; }
+        map.addSource("route", {
+            type: "geojson",
+            data: { type: "Feature", geometry: { type: "LineString", coordinates: [] } }
+        });
+        map.addLayer({
+            id: "route-line",
+            type: "line",
+            source: "route",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { "line-color": "#1b7f5c", "line-width": 5 }
+        });
+        routeReady = true;
+    }
+
+    function buildRoute() {
+        var stats = document.getElementById("routeStats");
+        if (!pointA || !pointB) {
+            stats.textContent = "Kinahanglan ang Point A (start) ug Point B (destination).";
+            return;
+        }
+        stats.textContent = "Ginakuha ang ruta…";
+        var url = "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+            pointA.lng + "," + pointA.lat + ";" + pointB.lng + "," + pointB.lat +
+            "?geometries=geojson&overview=full&access_token=" + accessToken;
+
+        fetch(url)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.routes || !data.routes.length) {
+                    stats.textContent = "Walay ruta nga nakit-an.";
+                    return;
+                }
+                var route = data.routes[0];
+                ensureRouteLayer();
+                map.getSource("route").setData({
+                    type: "Feature",
+                    geometry: { type: "LineString", coordinates: route.geometry.coordinates }
+                });
+
+                var bounds = new mapboxgl.LngLatBounds();
+                route.geometry.coordinates.forEach(function (c) { bounds.extend(c); });
+                map.fitBounds(bounds, { padding: 60 });
+
+                var km = (route.distance / 1000).toFixed(2);
+                var mins = Math.max(1, Math.round(route.duration / 60));
+                stats.textContent = "📏 " + km + " km • ⏱️ " + mins + " min";
+            })
+            .catch(function () {
+                stats.textContent = "Napakyas ang pagkuha sa ruta.";
+            });
+    }
+
+    function clearRoute() {
+        if (map.getSource("route")) {
+            map.getSource("route").setData({
+                type: "Feature", geometry: { type: "LineString", coordinates: [] }
+            });
+        }
+        document.getElementById("routeStats").textContent = "";
+    }
+
+    function showResults(rows) {
+        var box = document.getElementById("results");
+        box.innerHTML = "";
+        rows.forEach(function (r) {
+            var div = document.createElement("div");
+            div.className = "result";
+            var t = document.createElement("div");
+            t.className = "t";
+            t.textContent = r.title;
+            var s = document.createElement("div");
+            s.className = "s";
+            s.textContent = r.subtitle;
+            div.appendChild(t);
+            div.appendChild(s);
+            div.addEventListener("click", function () {
+                box.innerHTML = "";
+                map.flyTo({ center: [r.lng, r.lat], zoom: 15 });
+                if (r.marker) { r.marker.togglePopup(); }
+                if (r.place) {
+                    if (searchMarker) { searchMarker.remove(); }
+                    searchMarker = new mapboxgl.Marker({ color: "#8e44ad" })
+                        .setLngLat([r.lng, r.lat])
+                        .addTo(map);
+                }
+            });
+            box.appendChild(div);
+        });
+    }
+
+    function runSearch() {
+        var q = document.getElementById("searchBox").value.trim();
+        if (!q) { document.getElementById("results").innerHTML = ""; return; }
+
+        var needle = q.toLowerCase();
+        var local = sellers.filter(function (s) {
+            return s.title.toLowerCase().indexOf(needle) >= 0 ||
+                s.seller.toLowerCase().indexOf(needle) >= 0 ||
+                s.town.toLowerCase().indexOf(needle) >= 0;
+        });
+
+        if (local.length) {
+            showResults(local.slice(0, 6).map(function (s) {
+                return {
+                    title: "📍 " + s.title,
+                    subtitle: s.seller + " • ₱" + Number(s.price).toFixed(2) + " • " + s.town,
+                    lat: s.lat, lng: s.lng, marker: sellerMarkers[s.id] || null
+                };
+            }));
+            return;
+        }
+
+        var url = "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+            encodeURIComponent(q + ", Camiguin, Philippines") +
+            ".json?country=ph&limit=5&proximity=124.7290,9.1732&access_token=" + accessToken;
+
+        fetch(url)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var places = (data.features || []).map(function (f) {
+                    return {
+                        title: "🔎 " + f.text,
+                        subtitle: f.place_name,
+                        lat: f.center[1], lng: f.center[0], place: true
+                    };
+                });
+                if (places.length) {
+                    showResults(places);
+                } else {
+                    document.getElementById("results").innerHTML =
+                        "<div class='result'>Walay nakit-an nga lugar o seller.</div>";
+                }
+            })
+            .catch(function () {
+                document.getElementById("results").innerHTML =
+                    "<div class='result'>Napakyas ang pagpangita.</div>";
+            });
+    }
+
     // Gitawag gikan sa Android (MapboxMapScreen) pinaagi sa evaluateJavascript.
     window.initMap = function (config) {
         if (initialized) { return; }              // idempotent: dili mobalik og buhat sa mapa
@@ -66,15 +297,23 @@
         initialized = true;
 
         mapboxgl.accessToken = config.token;
+        accessToken = config.token;
         label = config.label || label;
         pickMode = !!config.pickMode;
+        showRoute = !!config.showRoute;
+        sellers = config.sellers || [];
+        sellerLocation = { lat: config.lat, lng: config.lng };
+
+        document.getElementById("searchPanel").className =
+            config.showSearch ? "panel show" : "panel";
+        document.getElementById("routePanel").className = showRoute ? "panel show" : "panel";
 
         map = new mapboxgl.Map({
             container: "map",
             style: "mapbox://styles/mapbox/streets-v12",
             center: [config.lng, config.lat],   // [longitude, latitude]
-            zoom: 14,
-            pitch: 30
+            zoom: sellers.length > 1 ? 10 : 14,
+            pitch: sellers.length > 1 ? 0 : 30
         });
 
         map.addControl(new mapboxgl.NavigationControl(), "top-right");
@@ -92,12 +331,50 @@
                 .setPopup(showPin(config.lat, config.lng, "Dinhi mokuha ang customer."))
                 .addTo(map);
 
+            // Tanan nga seller nga may pickup pin.
+            sellers.forEach(function (s) {
+                sellerMarkers[s.id] = new mapboxgl.Marker({ color: "#1e90ff" })
+                    .setLngLat([s.lng, s.lat])
+                    .setPopup(sellerPin(s))
+                    .addTo(map);
+            });
+
+            // Point B default: ang listing nga giablihan (kon naa).
+            if (showRoute && config.routeB) {
+                setRoutePoint("B", config.routeB.lng, config.routeB.lat);
+            }
+
             var bridge = android();
             if (bridge) { bridge.onReady(); }
         });
 
-        // Tap sa mapa: sa pick mode, ibalhin ang pickup pin ug ipahibalo ang Android.
+        document.getElementById("searchBtn").addEventListener("click", runSearch);
+        document.getElementById("searchBox").addEventListener("keyup", function (e) {
+            if (e.key === "Enter") { runSearch(); }
+        });
+
+        document.getElementById("setA").addEventListener("click", function () {
+            tapTarget = "A";
+            document.getElementById("routeStats").textContent =
+                "Pindota ang mapa aron ibutang ang Point A (start).";
+        });
+        document.getElementById("setB").addEventListener("click", function () {
+            tapTarget = "B";
+            document.getElementById("routeStats").textContent =
+                "Pindota ang mapa aron ibutang ang Point B (destination).";
+        });
+        document.getElementById("routeBtn").addEventListener("click", buildRoute);
+        document.getElementById("clearBtn").addEventListener("click", clearRoute);
+
+        // Tap sa mapa: point A/B, o pickup pin sa pick mode.
         map.on("click", function (e) {
+            if (tapTarget) {
+                var which = tapTarget;
+                tapTarget = null;
+                setRoutePoint(which, e.lngLat.lng, e.lngLat.lat);
+                return;
+            }
+
             if (!pickMode) { return; }
 
             var lng = e.lngLat.lng;
