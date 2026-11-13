@@ -1,0 +1,15 @@
+# Sekreto: MAPS_API_KEY ug MAPBOX_ACCESS_TOKEN
+local.properties
+
+# Gradle / Android build outputs
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+captures/
+.DS_Store

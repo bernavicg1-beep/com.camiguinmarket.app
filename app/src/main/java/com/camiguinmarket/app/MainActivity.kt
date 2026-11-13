@@ -12,10 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
+import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -33,7 +35,10 @@ data class Listing(
     val sellerId: String = "",
     val sellerName: String = "",
     val contact: String = "",
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    // Pickup location sa seller (pin sa Google Map).
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 class MainActivity : ComponentActivity() {
@@ -135,6 +140,9 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var showPost by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Listing?>(null) }
+    var mapListing by remember { mutableStateOf<Listing?>(null) }
+    var mapboxListing by remember { mutableStateOf<Listing?>(null) }
+    val context = LocalContext.current
 
     DisposableEffect(Unit) {
         val reg = db.collection("listings")
@@ -178,7 +186,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(filtered, key = { it.id }) { l ->
-                        Card(Modifier.fillMaxWidth(), onClick = { selected = l }) {
+                        Card(onClick = { selected = l }, modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(l.title, style = MaterialTheme.typography.titleMedium)
                                 Text("₱%.2f".format(l.price), color = MaterialTheme.colorScheme.primary)
@@ -193,6 +201,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
 
     if (showPost) PostDialog(uid, displayName, db) { showPost = false }
     selected?.let { l ->
+        val sellerLat = l.latitude
+        val sellerLng = l.longitude
         AlertDialog(
             onDismissRequest = { selected = null },
             confirmButton = { TextButton(onClick = { selected = null }) { Text("Sira") } },
@@ -210,8 +220,59 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                     Text("Seller: ${l.sellerName}")
                     Text("Lugar: ${l.town}")
                     Text("Contact: ${l.contact}")
+                    Spacer(Modifier.height(8.dp))
+                    Text("Pickup location: ${coordinatesLabel(l) ?: "wala pa ma-set"}")
+
+                    if (sellerLat != null && sellerLng != null) {
+                        Button(
+                            onClick = { selected = null; mapListing = l },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🗺️ View Map") }
+                        OutlinedButton(
+                            onClick = {
+                                openDirections(
+                                    context,
+                                    LatLng(sellerLat, sellerLng),
+                                    l.title
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🧭 Get Directions") }
+                        TextButton(
+                            onClick = { selected = null; mapboxListing = l },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🌐 Tan-awa sa Mapbox (web)") }
+                    } else if (l.sellerId == uid) {
+                        Button(
+                            onClick = { selected = null; mapListing = l },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("📍 I-set ang Pickup Location") }
+                    }
                 }
             }
+        )
+    }
+
+    // Option A: native Google Map sulod sa app.
+    mapListing?.let { l ->
+        SellerMapDialog(
+            listing = l,
+            onDismiss = { mapListing = null },
+            onSaveLocation = { point ->
+                saveListingLocation(db, l.id, point) { }
+                mapListing = null
+            },
+            onOpenMapbox = { mapListing = null; mapboxListing = l }
+        )
+    }
+
+    // Option B: Mapbox GL JS nga naa sa WebView.
+    mapboxListing?.let { l ->
+        MapboxMapDialog(
+            latitude = l.latitude ?: CamiguinCenter.latitude,
+            longitude = l.longitude ?: CamiguinCenter.longitude,
+            label = l.title.ifBlank { "Seller Pickup Location" },
+            onDismiss = { mapboxListing = null }
         )
     }
 }
@@ -234,6 +295,8 @@ fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: 
     var contact by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(categories[1]) }
     var town by remember { mutableStateOf(towns[0]) }
+    var pickup by remember { mutableStateOf<LatLng?>(null) }
+    var showPicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onClose,
@@ -254,6 +317,17 @@ fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: 
                 ChipRow(categories.drop(1), category) { category = it }
                 Text("Lugar", style = MaterialTheme.typography.labelMedium)
                 ChipRow(towns, town) { town = it }
+
+                Spacer(Modifier.height(8.dp))
+                Text("Pickup location", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    pickup?.let { "Napili: ${formatCoordinates(it)}" }
+                        ?: "Wala pa makapili og pickup point."
+                )
+                OutlinedButton(
+                    onClick = { showPicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("📌 Pili og Pickup Location sa Mapa") }
             }
         },
         confirmButton = {
@@ -265,7 +339,8 @@ fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: 
                             title = title.trim(), description = desc.trim(),
                             price = price.toDouble(), category = category, town = town,
                             sellerId = uid, sellerName = sellerName, contact = contact.trim(),
-                            createdAt = System.currentTimeMillis()
+                            createdAt = System.currentTimeMillis(),
+                            latitude = pickup?.latitude, longitude = pickup?.longitude
                         )
                     )
                     onClose()
@@ -274,4 +349,12 @@ fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: 
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Kanselar") } }
     )
+
+    if (showPicker) {
+        PickupLocationPickerDialog(
+            initial = pickup,
+            onPicked = { pickup = it },
+            onDismiss = { showPicker = false }
+        )
+    }
 }

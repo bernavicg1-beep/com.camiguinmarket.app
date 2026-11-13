@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Camiguin Market Map</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.0/mapbox-gl.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .mapboxgl-popup-content { border-radius: 8px; padding: 12px; font-size: 14px; color: #333; }
+        #setup { position: absolute; inset: 0; display: none; align-items: center;
+                 justify-content: center; padding: 24px; text-align: center; background: #fff; }
+        #setup.show { display: flex; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="setup">Walay Mapbox access token. Idugang ang MAPBOX_ACCESS_TOKEN sa local.properties.</div>
+
+<script>
+    var map = null;
+    var initialized = false;
+    var pickMode = false;
+    var label = "Seller Pickup Location";
+    var sellerMarker = null;
+    var pickMarker = null;
+
+    function android() {
+        return (window.AndroidMap && typeof window.AndroidMap.onPick === "function")
+            ? window.AndroidMap
+            : null;
+    }
+
+    function directionsLink(lat, lng) {
+        var a = document.createElement("a");
+        a.href = "#";
+        a.textContent = "🧭 Get Directions";
+        a.style.cssText = "display:inline-block;margin-top:8px;font-weight:bold;text-decoration:none;color:#1e90ff";
+        a.addEventListener("click", function (e) {
+            e.preventDefault();
+            var bridge = android();
+            if (bridge) { bridge.onDirections(lat, lng); }
+        });
+        return a;
+    }
+
+    function showPin(lat, lng, message) {
+        var content = document.createElement("div");
+        content.innerHTML = "<h3 style='margin:0 0 4px'>" + label + "</h3><p style='margin:0'>" + message + "</p>";
+        content.appendChild(directionsLink(lat, lng));
+        return new mapboxgl.Popup({ offset: 25 }).setDOMContent(content);
+    }
+
+    // Gitawag gikan sa Android (MapboxMapScreen) pinaagi sa evaluateJavascript.
+    window.initMap = function (config) {
+        if (initialized) { return; }              // idempotent: dili mobalik og buhat sa mapa
+        if (!config || !config.token) {
+            document.getElementById("setup").classList.add("show");
+            return;
+        }
+        initialized = true;
+
+        mapboxgl.accessToken = config.token;
+        label = config.label || label;
+        pickMode = !!config.pickMode;
+
+        map = new mapboxgl.Map({
+            container: "map",
+            style: "mapbox://styles/mapbox/streets-v12",
+            center: [config.lng, config.lat],   // [longitude, latitude]
+            zoom: 14,
+            pitch: 30
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+        map.addControl(new mapboxgl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserHeading: true
+        }), "top-right");
+
+        map.on("load", function () {
+            // Pin sa seller / pickup point.
+            sellerMarker = new mapboxgl.Marker({ color: "#ff4757" })
+                .setLngLat([config.lng, config.lat])
+                .setPopup(showPin(config.lat, config.lng, "Dinhi mokuha ang customer."))
+                .addTo(map);
+
+            var bridge = android();
+            if (bridge) { bridge.onReady(); }
+        });
+
+        // Tap sa mapa: sa pick mode, ibalhin ang pickup pin ug ipahibalo ang Android.
+        map.on("click", function (e) {
+            if (!pickMode) { return; }
+
+            var lng = e.lngLat.lng;
+            var lat = e.lngLat.lat;
+
+            if (pickMarker) { pickMarker.remove(); }
+            pickMarker = new mapboxgl.Marker({ color: "#1e90ff" })
+                .setLngLat([lng, lat])
+                .setPopup(showPin(lat, lng, "Bag-ong pickup point."))
+                .addTo(map);
+
+            var bridge = android();
+            if (bridge) { bridge.onPick(lat, lng); }
+        });
+    };
+</script>
+
+</body>
+</html>
