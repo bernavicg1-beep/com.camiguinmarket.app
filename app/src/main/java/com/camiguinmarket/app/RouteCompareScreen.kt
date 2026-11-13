@@ -243,7 +243,7 @@ private fun CompareGoogleMap(
         pointA?.let { start ->
             key("A", start) {
                 Marker(
-                    state = rememberMarkerState(position = start),
+                    state = rememberUpdatedMarkerState(position = start),
                     title = "Point A (Google)",
                     snippet = formatCoordinates(start)
                 )
@@ -252,7 +252,7 @@ private fun CompareGoogleMap(
         pointB?.let { end ->
             key("B", end) {
                 Marker(
-                    state = rememberMarkerState(position = end),
+                    state = rememberUpdatedMarkerState(position = end),
                     title = "Point B (Google)",
                     snippet = formatCoordinates(end)
                 )

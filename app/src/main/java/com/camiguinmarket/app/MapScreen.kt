@@ -578,14 +578,14 @@ fun CamiguinMarketMapScreen(
                 ) {
                     if (showPickupMarker) {
                         Marker(
-                            state = rememberMarkerState(position = pickupLocation),
+                            state = rememberUpdatedMarkerState(position = pickupLocation),
                             title = sellerLabel,
                             snippet = sellerSnippet
                         )
                     }
                     customerLocation?.let { point ->
                         Marker(
-                            state = rememberMarkerState(position = point),
+                            state = rememberUpdatedMarkerState(position = point),
                             title = "My Current Location",
                             snippet = "Ikaw karon"
                         )
@@ -597,7 +597,7 @@ fun CamiguinMarketMapScreen(
                         if (lat != null && lng != null) {
                             key(listing.id) {
                                 Marker(
-                                    state = rememberMarkerState(position = LatLng(lat, lng)),
+                                    state = rememberUpdatedMarkerState(position = LatLng(lat, lng)),
                                     title = listing.title.ifBlank { "Seller" },
                                     snippet = "${listing.sellerName} • ₱%.2f".format(listing.price),
                                     onClick = { _ ->
@@ -611,7 +611,7 @@ fun CamiguinMarketMapScreen(
                     searchedPlace?.let { point ->
                         key(point) {
                             Marker(
-                                state = rememberMarkerState(position = point),
+                                state = rememberUpdatedMarkerState(position = point),
                                 title = "Gipangita nga lugar",
                                 snippet = formatCoordinates(point)
                             )
@@ -627,14 +627,14 @@ fun CamiguinMarketMapScreen(
                     }
                     pointA?.let { start ->
                         Marker(
-                            state = rememberMarkerState(position = start),
+                            state = rememberUpdatedMarkerState(position = start),
                             title = "Point A (start)",
                             snippet = formatCoordinates(start)
                         )
                     }
                     pointB?.let { end ->
                         Marker(
-                            state = rememberMarkerState(position = end),
+                            state = rememberUpdatedMarkerState(position = end),
                             title = "Point B (destination)",
                             snippet = formatCoordinates(end)
                         )
