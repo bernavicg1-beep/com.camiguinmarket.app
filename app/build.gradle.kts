@@ -24,6 +24,12 @@ fun secret(name: String): String =
 val mapsApiKey: String = secret("MAPS_API_KEY")
 val mapboxAccessToken: String = secret("MAPBOX_ACCESS_TOKEN")
 
+// Keystore alang sa release APK. Kon wala niini, unsigned ang release APK.
+val releaseKeystoreFile: String = secret("RELEASE_KEYSTORE_FILE")
+val releaseKeystorePassword: String = secret("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias: String = secret("RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String = secret("RELEASE_KEY_PASSWORD")
+
 android {
     namespace = "com.camiguinmarket.app"
     // compileSdk 35 ang gikinahanglan sa maps-compose 6.x ug Compose 2024.11.00.
@@ -44,9 +50,23 @@ android {
         buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
     }
 
+    signingConfigs {
+        // Buhaton lang kon may keystore nga gihatag (CI o local.properties).
+        if (releaseKeystoreFile.isNotBlank()) {
+            create("release") {
+                storeFile = file(releaseKeystoreFile)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // null kon walay keystore: unsigned ang APK (installable lang kon i-sign).
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {

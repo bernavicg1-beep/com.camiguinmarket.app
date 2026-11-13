@@ -56,16 +56,42 @@ property (`-PMAPS_API_KEY=...`), o environment variable — wala gayud isulat sa
 Sa GitHub: **Settings → Secrets and variables → Actions**, idugang ang
 `MAPS_API_KEY` ug `MAPBOX_ACCESS_TOKEN`.
 
+### Pag-sign sa release APK (opsyonal)
+
+Kon gusto nimo og **installable** nga release APK, idugang kini nga secrets:
+
+| Secret | Unsa kini |
+|---|---|
+| `KEYSTORE_BASE64` | Ang imong keystore file, gi-encode sa base64: `base64 -w0 release.keystore` |
+| `KEYSTORE_PASSWORD` | Ang store password |
+| `KEY_ALIAS` | Ang key alias |
+| `KEY_PASSWORD` | Ang key password |
+
+Kon naa ang `KEYSTORE_BASE64`, i-decode sa CI ang keystore ngadto sa runner temp,
+mo-himo og `release` signing config, ug **signed** ang mogawas (`app-release.apk`).
+Kon wala, **unsigned** ang APK (`app-release-unsigned.apk`) ug dili kini ma-install.
+
+Sa lokal nga machine, ihatag kini isip environment variables o Gradle properties
+(`RELEASE_KEYSTORE_FILE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
+`RELEASE_KEY_PASSWORD`) — o isulat sa `local.properties` nga dili ma-commit:
+
+```properties
+RELEASE_KEYSTORE_FILE=/home/ikaw/release.keystore
+RELEASE_KEYSTORE_PASSWORD=…
+RELEASE_KEY_ALIAS=…
+RELEASE_KEY_PASSWORD=…
+```
+
 ## Pag-build
 
 ```bash
 gradle assembleDebug        # debug APK: app/build/outputs/apk/debug/app-debug.apk
-gradle assembleRelease      # release APK (unsigned, walay keystore dinhi)
+gradle assembleRelease      # release APK (signed kon may keystore, kon wala unsigned)
 ```
 
 Ang `.github/workflows/build.yml` mo-build sa debug APK sa matag push sa `main`,
 ug mo-upload niini isip artifact. Kon naa ang duha ka secret, mo-build usab kini
-sa release variant (unsigned) ug i-upload isip `CamiguinMarket-release-apk`.
+sa release variant ug i-upload isip `CamiguinMarket-release-apk`.
 
 ## Wala pa ma-test
 

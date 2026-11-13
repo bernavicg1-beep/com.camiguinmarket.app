@@ -44,6 +44,7 @@ jobs:
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -n "$MAPS_API_KEY" ] && [ -n "$MAPBOX_ACCESS_TOKEN" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
@@ -51,11 +52,30 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "Wala ma-set ang MAPS_API_KEY o MAPBOX_ACCESS_TOKEN: gilaktawan ang release build."
           fi
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+            echo "Wala ma-set ang KEYSTORE_BASE64: unsigned ang release APK."
+          fi
 
-      # Unsigned ang release APK kay walay keystore niini nga repo; i-sign kini
-      # sa Play Console o sa imong kaugalingon nga keystore kon i-release na.
+      # I-decode ang keystore gikan sa secret (base64) ngadto sa runner temp.
+      - name: Decode keystore
+        if: steps.secrets.outputs.available == 'true' && steps.secrets.outputs.signing == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore"
+
+      # Kon naa ang KEYSTORE_BASE64, signed ang APK; kon wala, unsigned.
       - name: Build release APK
         if: steps.secrets.outputs.available == 'true'
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.secrets.outputs.signing == 'true' && format('{0}/release.keystore', runner.temp) || '' }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: >-
           gradle assembleRelease --no-daemon
           -PMAPS_API_KEY="${{ secrets.MAPS_API_KEY }}"
