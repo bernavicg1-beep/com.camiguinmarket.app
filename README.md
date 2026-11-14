@@ -192,8 +192,12 @@ ug mabasa kini sa bisan kinsang naka-log in.
 - **CI sa functions:** ang `.github/workflows/functions.yml` mag-deploy kon
   mausab ang `functions/**`. Gikinahanglan ang GitHub secret
   **`FIREBASE_SERVICE_ACCOUNT`** (service account JSON sa Firebase project) —
-  kon wala kini, mapakyas ang workflow sa "Check deploy secret" step. Ang
-  Firebase project gina-set sa `.firebaserc`.
+  kon wala kini, mapakyas ang workflow sa "Prepare service account" step. Ang
+  secret mahimong JSON mismo o **base64** sa JSON — gi-detect kini sa workflow ug
+  gi-print ang `client_email`/`project_id` (dili ang key) aron sayon ma-diagnose.
+  Ang Firebase project gina-set sa `.firebaserc`. Gikinahanglan usab ang
+  **Blaze plan** ug mga API (Cloud Functions, Cloud Build, Artifact Registry,
+  Eventarc) nga naka-enable.
 
 ### Share ug offline cart
 
