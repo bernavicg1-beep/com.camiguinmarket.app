@@ -107,16 +107,6 @@ private fun themePrefs(context: Context) =
 
 fun loadDarkMode(context: Context): Boolean = themePrefs(context).getBoolean("dark", false)
 
-/** Verification email cooldown so it cannot be spammed (60s). */
-fun verifyCooldownUntil(context: Context): Long =
-    context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
-        .getLong("verify_last", 0L) + 60_000L
-
-fun markVerifySent(context: Context) {
-    context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
-        .edit().putLong("verify_last", System.currentTimeMillis()).apply()
-}
-
 fun saveDarkMode(context: Context, dark: Boolean) {
     themePrefs(context).edit().putBoolean("dark", dark).apply()
 }

@@ -283,60 +283,6 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
     }
 }
 
-/** Reminder when the signed-in user's email is not verified yet. */
-@Composable
-fun VerifyEmailBanner(auth: FirebaseAuth) {
-    val user = auth.currentUser ?: return
-    if (user.isEmailVerified) return
-    val context = LocalContext.current
-    var info by remember { mutableStateOf<String?>(null) }
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    var cooldownUntil by remember { mutableStateOf(verifyCooldownUntil(context)) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            kotlinx.coroutines.delay(1000)
-        }
-    }
-    val remaining = ((cooldownUntil - now) / 1000).coerceAtLeast(0)
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Text(
-                "Your email is not verified yet.",
-                style = MaterialTheme.typography.labelSmall
-            )
-            Row {
-                TextButton(
-                    enabled = remaining <= 0L,
-                    onClick = {
-                        user.sendEmailVerification()
-                            .addOnSuccessListener {
-                                markVerifySent(context)
-                                cooldownUntil = verifyCooldownUntil(context)
-                                info = "Verification email sent again."
-                            }
-                            .addOnFailureListener { info = it.localizedMessage }
-                    }
-                ) {
-                    Text(
-                        if (remaining > 0L) "Resend (${remaining}s)"
-                        else "Resend",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                TextButton(onClick = {
-                    user.reload().addOnSuccessListener {
-                        info = if (auth.currentUser?.isEmailVerified == true)
-                            "Verified ✅ (reopen if the app didn't refresh)"
-                        else "Still not verified."
-                    }
-                }) { Text("Already verified?", style = MaterialTheme.typography.labelSmall) }
-            }
-            info?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarketScreen(
@@ -393,18 +339,6 @@ fun MarketScreen(
         selected = l
     }
 
-    // An unverified email cannot post or check out.
-    fun requireVerified(action: () -> Unit) {
-        if (auth.currentUser?.isEmailVerified == true) {
-            action()
-        } else {
-            Toast.makeText(
-                context,
-                "Verify your email first using the link we sent.",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
     var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
     var priceFilter by remember { mutableStateOf("All") }
     var sort by remember { mutableStateOf("Bag-o") }
@@ -544,7 +478,6 @@ fun MarketScreen(
                     onChats = { overlay = "inbox" },
                     onNotifications = { overlay = "notifications" }
                 )
-                VerifyEmailBanner(auth)
                 }
             } else {
                 Row(
@@ -581,13 +514,13 @@ fun MarketScreen(
         bottomBar = {
             if (overlay == null) {
                 BottomNavBar(tab, cartCount) { picked ->
-                    if (picked == MarketTab.Sell) requireVerified { showPost = true } else tab = picked
+                    if (picked == MarketTab.Sell) showPost = true else tab = picked
                 }
             }
         },
         floatingActionButton = {
             if (overlay == null && tab == MarketTab.Home) {
-                ExtendedFloatingActionButton(onClick = { requireVerified { showPost = true } }) { Text("+ Baligya") }
+                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Baligya") }
             }
         }
     ) { pad ->
@@ -682,7 +615,7 @@ fun MarketScreen(
                         onAllCategories = { tab = MarketTab.Categories },
                         onMap = { showAllMap = true },
                         onCompare = { showCompare = true },
-                        onSell = { requireVerified { showPost = true } }
+                        onSell = { showPost = true }
                     )
 
                     MarketTab.Categories -> CategoriesTab(
@@ -711,7 +644,7 @@ fun MarketScreen(
                     MarketTab.Cart -> CartScreen(
                         uid = uid,
                         onBrowse = { tab = MarketTab.Home },
-                        onCheckout = { items -> requireVerified {
+                        onCheckout = { items ->
                             checkoutCart(db, uid, displayName, items) { err ->
                                 Toast.makeText(
                                     context,
@@ -719,7 +652,7 @@ fun MarketScreen(
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
-                        } }
+                        }
                     )
 
                     MarketTab.Profile -> ProfileScreen(
@@ -764,7 +697,7 @@ fun MarketScreen(
                         onAllCategories = { tab = MarketTab.Categories },
                         onMap = { showAllMap = true },
                         onCompare = { showCompare = true },
-                        onSell = { requireVerified { showPost = true } }
+                        onSell = { showPost = true }
                     )
                 }
             }
