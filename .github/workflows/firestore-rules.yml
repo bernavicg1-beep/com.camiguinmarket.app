@@ -109,9 +109,31 @@ jobs:
           python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$key"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$key" >> "$GITHUB_ENV"
 
+          # Ang email sa service account dili sekreto, ug makatabang sa pag-diagnose.
+          python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print('Service account:', d.get('client_email'), '| project:', d.get('project_id'))" "$key" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy firestore.rules (service account)
+        id: deploy_sa
         if: steps.creds.outputs.method == 'service_account'
-        run: firebase deploy --only firestore:rules --non-interactive
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          firebase deploy --only firestore:rules --non-interactive 2>&1 \
+            | tee "$RUNNER_TEMP/deploy.log"
+
+      # Aron makita ang hinungdan sa run summary (walay secret nga i-print).
+      - name: Ipakita ang error kon ni-fail
+        if: steps.creds.outputs.method == 'service_account' && steps.deploy_sa.outcome == 'failure'
+        run: |
+          {
+            echo "## ❌ Ni-fail ang deploy sa Firestore rules"
+            echo ""
+            echo '```'
+            grep -iE "error|denied|permission|403|404|invalid|forbidden|missing|firebaserules|project" "$RUNNER_TEMP/deploy.log" \
+              | grep -viE "^\s*$" | head -15
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Deploy firestore.rules (FIREBASE_TOKEN)
         if: steps.creds.outputs.method == 'token'
