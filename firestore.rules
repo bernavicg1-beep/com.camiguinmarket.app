@@ -10,6 +10,9 @@ rules_version = '2';
 //
 // I-deploy:  firebase deploy --only firestore:rules
 // (o i-paste sa Firebase Console → Firestore → Rules).
+//
+// Awtomatiko usab kining ma-deploy sa GitHub Actions (Firestore rules workflow)
+// ug ma-test sa Firestore emulator sa wala pa kini mo-abot sa production.
 
 service cloud.firestore {
   match /databases/{database}/documents {
