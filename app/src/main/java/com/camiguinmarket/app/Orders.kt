@@ -258,7 +258,7 @@ fun updateOrderStatus(db: FirebaseFirestore, order: Order, status: String) {
 
 /** Sales summary sa seller: kita, bag-o, gikumpirma, tapos. */
 @Composable
-fun SellerStats(uid: String) {
+fun SellerStats(uid: String, myListings: List<Listing>) {
     val db = remember { FirebaseFirestore.getInstance() }
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
 
@@ -338,6 +338,12 @@ fun SellerStats(uid: String) {
                 )
                 StatCard("${done.size}", "Tapos", Modifier.weight(1f))
             }
+            Spacer(Modifier.height(8.dp))
+            StatCard(
+                "${myListings.sumOf { it.views }}",
+                "Views sa akong listing",
+                Modifier.fillMaxWidth()
+            )
         }
     }
 }

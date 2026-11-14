@@ -308,6 +308,19 @@ fun MarketScreen(
         }
         selected = l
     }
+
+    // Ang wala pa ma-verify nga email dili makabaligya o maka-checkout.
+    fun requireVerified(action: () -> Unit) {
+        if (auth.currentUser?.isEmailVerified == true) {
+            action()
+        } else {
+            Toast.makeText(
+                context,
+                "I-verify una ang imong email gikan sa link nga among gipadala.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
     var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
     var priceFilter by remember { mutableStateOf("Tanan") }
     var sort by remember { mutableStateOf("Bag-o") }
@@ -374,13 +387,7 @@ fun MarketScreen(
             (town == "Tanan" || it.town == town) &&
             matchesPrice(it.price, priceFilter) &&
             (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true))
-    }.let { list ->
-        when (sort) {
-            "Presyo ↑" -> list.sortedBy { it.price }
-            "Presyo ↓" -> list.sortedByDescending { it.price }
-            else -> list
-        }
-    }
+    }.let { list -> sortListings(list, sort) }
 
     Scaffold(
         topBar = {
@@ -431,13 +438,13 @@ fun MarketScreen(
         bottomBar = {
             if (overlay == null) {
                 BottomNavBar(tab, cartCount) { picked ->
-                    if (picked == MarketTab.Sell) showPost = true else tab = picked
+                    if (picked == MarketTab.Sell) requireVerified { showPost = true } else tab = picked
                 }
             }
         },
         floatingActionButton = {
             if (overlay == null && tab == MarketTab.Home) {
-                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Baligya") }
+                ExtendedFloatingActionButton(onClick = { requireVerified { showPost = true } }) { Text("+ Baligya") }
             }
         }
     ) { pad ->
@@ -530,10 +537,11 @@ fun MarketScreen(
                         onAllCategories = { tab = MarketTab.Categories },
                         onMap = { showAllMap = true },
                         onCompare = { showCompare = true },
-                        onSell = { showPost = true }
+                        onSell = { requireVerified { showPost = true } }
                     )
 
                     MarketTab.Categories -> CategoriesTab(
+                        ownerUid = uid,
                         category = category,
                         onCategory = { category = it },
                         priceFilter = priceFilter,
@@ -558,7 +566,7 @@ fun MarketScreen(
                     MarketTab.Cart -> CartScreen(
                         uid = uid,
                         onBrowse = { tab = MarketTab.Home },
-                        onCheckout = { items ->
+                        onCheckout = { items -> requireVerified {
                             checkoutCart(db, uid, displayName, items) { err ->
                                 Toast.makeText(
                                     context,
@@ -566,7 +574,7 @@ fun MarketScreen(
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
-                        }
+                        } }
                     )
 
                     MarketTab.Profile -> ProfileScreen(
@@ -610,7 +618,7 @@ fun MarketScreen(
                         onAllCategories = { tab = MarketTab.Categories },
                         onMap = { showAllMap = true },
                         onCompare = { showCompare = true },
-                        onSell = { showPost = true }
+                        onSell = { requireVerified { showPost = true } }
                     )
                 }
             }

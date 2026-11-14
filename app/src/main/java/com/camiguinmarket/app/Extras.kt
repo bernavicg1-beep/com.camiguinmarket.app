@@ -193,7 +193,14 @@ enum class MarketTab(val label: String, val icon: ImageVector) {
 
 /** Ang mga kategorya sa grid (emoji ang icon, walay dugang nga library). */
 val priceFilters = listOf("Tanan", "Ubos sa ₱50", "₱50–₱200", "₱200–₱500", "Sobras ₱500")
-val sortOptions = listOf("Bag-o", "Presyo ↑", "Presyo ↓")
+val sortOptions = listOf("Bag-o", "Presyo ↑", "Presyo ↓", "Trending")
+
+fun sortListings(list: List<Listing>, sort: String): List<Listing> = when (sort) {
+    "Presyo ↑" -> list.sortedBy { it.price }
+    "Presyo ↓" -> list.sortedByDescending { it.price }
+    "Trending" -> list.sortedByDescending { it.views }
+    else -> list
+}
 
 fun matchesPrice(price: Double, filter: String): Boolean = when (filter) {
     "Ubos sa ₱50" -> price < 50
@@ -649,7 +656,8 @@ fun ListingCard(
     isFavorite: Boolean,
     onOpen: () -> Unit,
     onFavorite: () -> Unit,
-    onAddToCart: () -> Unit
+    onAddToCart: () -> Unit,
+    showViews: Boolean = false
 ) {
     Card(
         onClick = onOpen,
@@ -701,6 +709,13 @@ fun ListingCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (showViews) {
+                    Text(
+                        "👁 ${listing.views} ka views",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandBlue
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 Button(
                     onClick = onAddToCart,
@@ -1204,7 +1219,7 @@ fun ProfileScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        SellerStats(uid)
+        SellerStats(uid, myListings)
 
         Spacer(Modifier.height(16.dp))
 
@@ -1314,6 +1329,10 @@ fun HomeTab(
     onCompare: () -> Unit,
     onSell: () -> Unit
 ) {
+    val trending = listings.filter { it.views > 0 }
+        .sortedByDescending { it.views }
+        .take(5)
+
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1439,6 +1458,24 @@ fun HomeTab(
             }
         }
         item { CategoryGrid(category, onCategory) }
+        if (trending.isNotEmpty()) {
+            item { SectionTitle("🔥 Trending karon") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(trending, key = { it.id }) { l ->
+                        Box(Modifier.width(300.dp)) {
+                            ListingCard(
+                                listing = l,
+                                isFavorite = favorites.contains(l.id),
+                                onOpen = { onOpen(l) },
+                                onFavorite = { onFavorite(l) },
+                                onAddToCart = { onAddToCart(l) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         item {
             SectionTitle("Featured Products") {
                 TextButton(onClick = onMap) { Text("🗺️ Mapa") }
@@ -1466,7 +1503,8 @@ fun HomeTab(
                 isFavorite = favorites.contains(l.id),
                 onOpen = { onOpen(l) },
                 onFavorite = { onFavorite(l) },
-                onAddToCart = { onAddToCart(l) }
+                onAddToCart = { onAddToCart(l) },
+                showViews = l.sellerId == uid
             )
         }
         item { Spacer(Modifier.height(8.dp)) }
@@ -1475,6 +1513,7 @@ fun HomeTab(
 
 @Composable
 fun CategoriesTab(
+    ownerUid: String,
     category: String,
     onCategory: (String) -> Unit,
     priceFilter: String,
@@ -1518,7 +1557,8 @@ fun CategoriesTab(
                 isFavorite = favorites.contains(l.id),
                 onOpen = { onOpen(l) },
                 onFavorite = { onFavorite(l) },
-                onAddToCart = { onAddToCart(l) }
+                onAddToCart = { onAddToCart(l) },
+                showViews = l.sellerId == ownerUid
             )
         }
         item { Spacer(Modifier.height(8.dp)) }

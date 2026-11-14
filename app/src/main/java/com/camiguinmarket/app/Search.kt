@@ -40,13 +40,7 @@ fun GlobalSearchScreen(
             (town == "Tanan" || it.town == town) &&
             matchesPrice(it.price, priceFilter) &&
             (q.isBlank() || it.title.contains(q, true) || it.description.contains(q, true))
-    }.let { list ->
-        when (sort) {
-            "Presyo ↑" -> list.sortedBy { it.price }
-            "Presyo ↓" -> list.sortedByDescending { it.price }
-            else -> list
-        }
-    }
+    }.let { list -> sortListings(list, sort) }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

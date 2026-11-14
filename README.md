@@ -150,6 +150,15 @@ ug mabasa kini sa bisan kinsang naka-log in.
   modugang ang `views` sa listing; makita kini isip `👁 12 ka views`.
   Ang rules nagtugot sa **+1 ra gayud** ug niini nga field ra.
 
+### Views sa seller, verified-only posting ug trending
+
+- Ang **tag-iya** makakita sa `👁 N ka views` sa iyang kaugalingong listing card,
+  ug dunay **Views sa akong listing** nga stat sa Profile → Baligya.
+- Ang wala pa **ma-verify** nga email **dili makabaligya** ug **dili maka-checkout** —
+  dunay toast nga nagpahinumdom sa verification link.
+- Bag-ong sort option: **Trending** (base sa views), ug dunay **🔥 Trending karon**
+  nga horizontal list sa Home (top 5, views > 0).
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
