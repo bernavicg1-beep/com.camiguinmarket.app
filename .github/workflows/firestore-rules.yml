@@ -105,15 +105,37 @@ jobs:
           key="$RUNNER_TEMP/firebase-service-account.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$key"
           chmod 600 "$key"
-          # I-check nga balido ang JSON (walay value nga i-print).
-          python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$key"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$key" >> "$GITHUB_ENV"
+          # I-check nga tinuod nga service account key (walay value nga i-print).
+          python3 - "$key" <<'PY'
+          import json, sys
 
-          # Ang email sa service account dili sekreto, ug makatabang sa pag-diagnose.
-          python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print('Service account:', d.get('client_email'), '| project:', d.get('project_id'))" "$key" >> "$GITHUB_STEP_SUMMARY"
+          path = sys.argv[1]
+          try:
+              data = json.load(open(path))
+          except json.JSONDecodeError:
+              print("::error::Dili balido nga JSON ang FIREBASE_SERVICE_ACCOUNT.")
+              sys.exit(1)
+
+          required = ("project_id", "private_key", "client_email", "token_uri")
+          missing = [k for k in required if not data.get(k)]
+          if data.get("type") != "service_account":
+              missing.append("type=service_account")
+
+          if missing:
+              print("::error::Sayop ang sulod sa FIREBASE_SERVICE_ACCOUNT — kulang: " + ", ".join(missing))
+              print("Kini nga secret kinahanglan ang PRIVATE KEY JSON (dunay private_key, client_email,"
+                    " project_id) gikan sa Firebase Console → Project settings → Service accounts →"
+                    " Generate new private key. Dili kini ang google-services.json.")
+              sys.exit(1)
+
+          print(f"Service account: {data['client_email']} | project: {data['project_id']}")
+          PY
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$key" >> "$GITHUB_ENV"
 
       - name: Deploy firestore.rules (service account)
         if: steps.creds.outputs.method == 'service_account'
+        env:
+          NO_COLOR: "1"
         run: |
           set +e
           firebase deploy --only firestore:rules --non-interactive \
