@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
@@ -276,7 +277,9 @@ fun sendChatMessage(
     chatRef.update(
         mapOf(
             "updatedAt" to System.currentTimeMillis(),
-            "lastMessage" to text.trim()
+            "lastMessage" to text.trim(),
+            // Kon ang pikas wala pa kaabli sa chat, dugangi ang iyang unread badge.
+            "unread.$otherUid" to FieldValue.increment(1)
         )
     )
     db.collection("chats").document(id).get().addOnSuccessListener { snap ->
@@ -301,7 +304,9 @@ fun sendChatMessage(
 fun BrandHeader(
     cartCount: Int,
     unreadCount: Int,
+    chatUnread: Int,
     onCart: () -> Unit,
+    onChats: () -> Unit,
     onNotifications: () -> Unit
 ) {
     Surface(color = Color.White, shadowElevation = 2.dp) {
@@ -330,6 +335,7 @@ fun BrandHeader(
                 Text("Buy Local. Support Camiguin.", style = MaterialTheme.typography.labelSmall)
             }
             IconTextButton(icon = Icons.Filled.ShoppingCart, badge = cartCount, onClick = onCart)
+            IconTextButton(icon = Icons.Filled.Chat, badge = chatUnread, onClick = onChats)
             IconTextButton(icon = Icons.Filled.Notifications, badge = unreadCount, onClick = onNotifications)
         }
     }
@@ -770,7 +776,12 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     var text by remember { mutableStateOf("") }
     val chatId = remember(otherUid) { chatIdFor(uid, otherUid) }
 
-    LaunchedEffect(chatId) { ensureChat(db, uid, otherUid, otherName, listingTitle) }
+    LaunchedEffect(chatId) {
+        ensureChat(db, uid, otherUid, otherName, listingTitle)
+        // Giablihan na ang thread: klarohon ang akong unread count.
+        db.collection("chats").document(chatId)
+            .update("unread.$uid", 0)
+    }
 
     DisposableEffect(chatId) {
         val reg = db.collection("chats").document(chatId).collection("messages")

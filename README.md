@@ -53,6 +53,13 @@ Ang mga icon Material icons na (`material-icons-extended`), dili na emoji.
   seller dunay kaugalingong order), dayon i-empty ang cart ug pahibaloon ang seller.
 - Ang Profile → **Mga Order** dunay duha ka filter: *Ako ang mipalit* ug *Ako ang
   gibaligya*. Ang status: `pending` → `confirmed` → `done`.
+- Ang **seller** dunay `Kumpirmahon` ug `Tapos na` nga mga button (sa list ug sa
+  detalye), ug makita dayon ang kausaban kay live ang order list.
+- Pindota ang order aron maabli ang **detalye**: litrato, presyo × quantity, total,
+  buyer/seller, contact, status timeline, ug `Chat sa buyer`/`Chat sa seller`.
+- Ang **chat unread badge** makita sa chat icon sa header. Ang unread gina-track sa
+  `chats/{chatId}.unread.{uid}` — modaghan kon dunay mosulat ug mobalik sa 0 kon
+  ablihan ang thread.
 - Walay composite index nga gikinahanglan: `whereEqualTo` ra ang query ug i-sort sa app.
 
 Kini nga mga feature dunay kaugalingong Firestore collections: `carts/{uid}/items`,

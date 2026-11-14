@@ -183,6 +183,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
     var chatWith by remember { mutableStateOf<Pair<String, String>?>(null) }
     var chatListing by remember { mutableStateOf<Listing?>(null) }
+    var chatUnread by remember { mutableStateOf(0) }
+    var orderDetail by remember { mutableStateOf<Order?>(null) }
 
     DisposableEffect(Unit) {
         val reg = db.collection("carts").document(uid).collection("items")
@@ -196,6 +198,18 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
         val reg = db.collection("notifications").document(uid).collection("items")
             .whereEqualTo("read", false)
             .addSnapshotListener { snap, _ -> unread = snap?.size() ?: 0 }
+        onDispose { reg.remove() }
+    }
+
+    // Sum sa akong unread sa tanan chat thread (badge sa header).
+    DisposableEffect(Unit) {
+        val reg = db.collection("chats")
+            .whereArrayContains("participants", uid)
+            .addSnapshotListener { snap, _ ->
+                chatUnread = snap?.documents.orEmpty().sumOf { d ->
+                    ((d.get("unread") as? Map<*, *>)?.get(uid) as? Number)?.toInt() ?: 0
+                }
+            }
         onDispose { reg.remove() }
     }
 
@@ -231,7 +245,9 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 BrandHeader(
                     cartCount = cartCount,
                     unreadCount = unread,
+                    chatUnread = chatUnread,
                     onCart = { tab = MarketTab.Cart },
+                    onChats = { overlay = "inbox" },
                     onNotifications = { overlay = "notifications" }
                 )
             } else {
@@ -251,6 +267,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                             "favorites" -> "Paborito"
                             "notifications" -> "Notifications"
                             "orders" -> "Mga Order"
+                            "order" -> "Detalye sa Order"
                             "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
@@ -282,7 +299,22 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
 
                 "notifications" -> NotificationsScreen(uid)
 
-                "orders" -> OrdersScreen(uid)
+                "orders" -> OrdersScreen(uid) { order ->
+                    orderDetail = order
+                    overlay = "order"
+                }
+
+                "order" -> orderDetail?.let { order ->
+                    OrderDetailScreen(
+                        order = order,
+                        uid = uid,
+                        onChat = { otherId, otherName ->
+                            chatListing = null
+                            chatWith = otherId to otherName
+                            overlay = "chat"
+                        }
+                    )
+                }
 
                 "inbox" -> InboxScreen(uid) { thread ->
                     chatListing = null

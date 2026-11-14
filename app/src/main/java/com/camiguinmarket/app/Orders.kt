@@ -97,24 +97,24 @@ fun checkoutCart(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrdersScreen(uid: String) {
+fun OrdersScreen(uid: String, onOpen: (Order) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     var asBuyer by remember { mutableStateOf(true) }
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(asBuyer) {
+    DisposableEffect(asBuyer) {
         loading = true
         val field = if (asBuyer) "buyerId" else "sellerId"
         // Dili kinahanglan og composite index: i-sort sa app.
-        db.collection("orders").whereEqualTo(field, uid).get()
-            .addOnSuccessListener { snap ->
-                orders = snap.documents
+        val reg = db.collection("orders").whereEqualTo(field, uid)
+            .addSnapshotListener { snap, _ ->
+                orders = snap?.documents.orEmpty()
                     .mapNotNull { d -> d.toObject(Order::class.java)?.copy(id = d.id) }
                     .sortedByDescending { it.createdAt }
                 loading = false
             }
-            .addOnFailureListener { loading = false }
+        onDispose { reg.remove() }
     }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
@@ -149,7 +149,12 @@ fun OrdersScreen(uid: String) {
 
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(orders, key = { it.id }) { order ->
-                    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        onClick = { onOpen(order) },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                      Column {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(BrandSky),
@@ -185,6 +190,15 @@ fun OrdersScreen(uid: String) {
                             }
                             StatusChip(order.status)
                         }
+                        if (!asBuyer && order.status != "done") {
+                            SellerActions(
+                                status = order.status,
+                                modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                                onConfirm = { updateOrderStatus(db, order.id, "confirmed") },
+                                onDone = { updateOrderStatus(db, order.id, "done") }
+                            )
+                        }
+                      }
                     }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -207,6 +221,133 @@ fun StatusChip(status: String) {
             color = Color.White,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
+}
+
+/** Ang seller ra ang makagamit niini (gitugotan sa Firestore rules). */
+fun updateOrderStatus(db: FirebaseFirestore, orderId: String, status: String) {
+    db.collection("orders").document(orderId).update("status", status)
+}
+
+@Composable
+fun SellerActions(
+    status: String,
+    modifier: Modifier = Modifier,
+    onConfirm: () -> Unit,
+    onDone: () -> Unit
+) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (status == "pending") {
+            Button(onClick = onConfirm, shape = RoundedCornerShape(14.dp)) {
+                Text("Kumpirmahon")
+            }
+        }
+        Button(
+            onClick = onDone,
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
+        ) { Text("Tapos na") }
+    }
+}
+
+@Composable
+fun OrderDetailScreen(order: Order, uid: String, onChat: (String, String) -> Unit) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    val isSeller = order.sellerId == uid
+    val otherId = if (isSeller) order.buyerId else order.sellerId
+    val otherName = if (isSeller) order.buyerName else order.sellerName
+
+    Column(
+        Modifier.fillMaxSize().padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(BrandSky),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (order.imageUrl.isNotBlank()) RemoteImage(order.imageUrl, Modifier.fillMaxSize())
+                        else Icon(Icons.Filled.Storefront, contentDescription = null, tint = BrandBlue)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(order.listingTitle, fontWeight = FontWeight.Bold)
+                        Text("₱%.2f × %d".format(order.price, order.quantity))
+                        Text(
+                            "Total: ₱%.2f".format(order.total),
+                            color = BrandBlue,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    StatusChip(order.status)
+                }
+                Spacer(Modifier.height(10.dp))
+                Divider()
+                Spacer(Modifier.height(10.dp))
+                Text("Buyer: ${order.buyerName}", style = MaterialTheme.typography.bodySmall)
+                Text("Seller: ${order.sellerName}", style = MaterialTheme.typography.bodySmall)
+                if (order.town.isNotBlank()) {
+                    Text("Lugar: ${order.town}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (order.contact.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Phone, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(order.contact, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
+        Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Status", fontWeight = FontWeight.Bold)
+                OrderStep("Na-order", "pending", order.status)
+                OrderStep("Gikumpirma sa seller", "confirmed", order.status)
+                OrderStep("Tapos na", "done", order.status)
+            }
+        }
+
+        if (isSeller && order.status != "done") {
+            SellerActions(
+                status = order.status,
+                onConfirm = { updateOrderStatus(db, order.id, "confirmed") },
+                onDone = { updateOrderStatus(db, order.id, "done") }
+            )
+        }
+
+        OutlinedButton(
+            onClick = { onChat(otherId, otherName) },
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(if (isSeller) "Chat sa buyer" else "Chat sa seller")
+        }
+    }
+}
+
+@Composable
+fun OrderStep(label: String, step: String, current: String) {
+    val order = listOf("pending", "confirmed", "done")
+    val reached = order.indexOf(current) >= order.indexOf(step)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(10.dp)
+                .clip(RoundedCornerShape(50))
+                .background(if (reached) BrandGreen else Color.LightGray)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (reached) Color.Black else Color.Gray,
+            fontWeight = if (current == step) FontWeight.Bold else FontWeight.Normal
         )
     }
 }
