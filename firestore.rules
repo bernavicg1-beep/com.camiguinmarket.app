@@ -63,6 +63,12 @@ service cloud.firestore {
         && request.resource.data.sellerId == request.auth.uid
         && validListing(request.resource.data);
 
+      // Ang views makadugang ang bisan kinsang naka-log in, +1 ra gayud ug
+      // walay lain nga field nga mausab.
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+        && request.resource.data.views == resource.data.get('views', 0) + 1;
+
       // Gigamit usab ni sa account deletion (papason ang tanan listing sa user),
       // ug sa moderation.
       allow delete: if request.auth != null

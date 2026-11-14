@@ -458,6 +458,7 @@ fun BrandHeader(
     cartCount: Int,
     unreadCount: Int,
     chatUnread: Int,
+    onSearch: () -> Unit,
     onCart: () -> Unit,
     onChats: () -> Unit,
     onNotifications: () -> Unit
@@ -487,6 +488,7 @@ fun BrandHeader(
                 )
                 Text("Buy Local. Support Camiguin.", style = MaterialTheme.typography.labelSmall)
             }
+            IconTextButton(icon = Icons.Filled.Search, badge = 0, onClick = onSearch)
             IconTextButton(icon = Icons.Filled.ShoppingCart, badge = cartCount, onClick = onCart)
             IconTextButton(icon = Icons.Filled.Chat, badge = chatUnread, onClick = onChats)
             IconTextButton(icon = Icons.Filled.Notifications, badge = unreadCount, onClick = onNotifications)

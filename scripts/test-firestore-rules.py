@@ -381,6 +381,35 @@ check("saved: uban dili makasulat", "POST", "/savedSearches/u1/items", 403,
       uid="u2", body=saved_doc, doc_id="s2")
 
 
+# --- views -------------------------------------------------------------------
+def listing_with_views(base, views):
+    doc = json.loads(json.dumps(base))
+    doc["fields"]["views"] = {"integerValue": str(views)}
+    return doc
+
+
+# appdoc1 gibuhat sa miaging mga test; kuhaa ang kasamtangan nga views.
+import urllib.request as _req
+
+
+def listing_views_patch(base, views, title=None):
+    doc = listing_with_views(base, views)
+    if title is not None:
+        doc["fields"]["title"] = {"stringValue": title}
+    return doc
+
+
+# Bag-ong listing kay ang appdoc1 napapas na sa miaging test.
+check("views: listing alang sa views", "POST", "/listings", 200,
+      uid="u1", body=app_listing("u1"), doc_id="viewdoc1")
+check("views: laing user makadugang +1", "PATCH", "/listings/viewdoc1", 200,
+      uid="u2", body=listing_views_patch(app_listing("u1"), 1))
+check("views: dili makadugang og sobra sa +1", "PATCH", "/listings/viewdoc1", 403,
+      uid="u2", body=listing_views_patch(app_listing("u1"), 3))
+check("views: dili makailis sa titulo", "PATCH", "/listings/viewdoc1", 403,
+      uid="u2", body=listing_views_patch(app_listing("u1"), 2, title="Gi-hack"))
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

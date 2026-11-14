@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.net.HttpURLConnection
@@ -68,7 +69,9 @@ data class Listing(
     // Download URL sa litrato sa Firebase Storage ("" = walay litrato).
     val imageUrl: String = "",
     // Tanan nga litrato (ang `imageUrl` mao ang una, alang sa daan nga cards).
-    val imageUrls: List<String> = emptyList()
+    val imageUrls: List<String> = emptyList(),
+    // Ihap sa pag-abli sa detalye (gina-increment sa bisan kinsang naka-log in).
+    val views: Long = 0L
 )
 
 class MainActivity : ComponentActivity() {
@@ -118,6 +121,7 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var isRegister by remember { mutableStateOf(false) }
+    var showReset by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
@@ -162,7 +166,10 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
                             auth.currentUser?.updateProfile(
                                 com.google.firebase.auth.UserProfileChangeRequest.Builder()
                                     .setDisplayName(name.trim()).build()
-                            )?.addOnCompleteListener { onDone() } ?: onDone()
+                            )?.addOnCompleteListener {
+                                auth.currentUser?.sendEmailVerification()
+                                onDone()
+                            } ?: onDone()
                         } else onDone()
                     } else error = t.exception?.localizedMessage ?: "Napakyas"
                 }
@@ -170,6 +177,86 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
         ) { Text(if (isRegister) "Mag-register" else "Log in") }
         TextButton(onClick = { isRegister = !isRegister }) {
             Text(if (isRegister) "Naa nay account? Log in" else "Wala pay account? Mag-register")
+        }
+        if (!isRegister) {
+            TextButton(onClick = { showReset = true }) {
+                Text("Nakalimot sa password?")
+            }
+        }
+    }
+
+    if (showReset) {
+        var resetEmail by remember { mutableStateOf(email) }
+        var resetMsg by remember { mutableStateOf<String?>(null) }
+        AlertDialog(
+            onDismissRequest = { showReset = false },
+            title = { Text("I-reset ang password") },
+            text = {
+                Column {
+                    Text("Ipadala namo ang link sa imong email.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        resetEmail,
+                        { resetEmail = it },
+                        label = { Text("Email") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    resetMsg?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(it, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (resetEmail.isBlank()) {
+                        resetMsg = "Isulat ang email."
+                    } else {
+                        auth.sendPasswordResetEmail(resetEmail.trim())
+                            .addOnSuccessListener {
+                                resetMsg = "Gipadala ang reset link. Tan-awa ang imong email."
+                            }
+                            .addOnFailureListener { e ->
+                                resetMsg = e.localizedMessage ?: "Napakyas."
+                            }
+                    }
+                }) { Text("Ipadala") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReset = false }) { Text("Sira") }
+            }
+        )
+    }
+}
+
+/** Pahinumdom kon wala pa ma-verify ang email sa naka-log in nga user. */
+@Composable
+fun VerifyEmailBanner(auth: FirebaseAuth) {
+    val user = auth.currentUser ?: return
+    if (user.isEmailVerified) return
+    var info by remember { mutableStateOf<String?>(null) }
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            Text(
+                "Wala pa ma-verify ang imong email.",
+                style = MaterialTheme.typography.labelSmall
+            )
+            Row {
+                TextButton(onClick = {
+                    user.sendEmailVerification()
+                        .addOnSuccessListener { info = "Gipadala pag-usab ang verification email." }
+                        .addOnFailureListener { info = it.localizedMessage }
+                }) { Text("Ipadala pag-usab", style = MaterialTheme.typography.labelSmall) }
+                TextButton(onClick = {
+                    user.reload().addOnSuccessListener {
+                        info = if (auth.currentUser?.isEmailVerified == true)
+                            "Na-verify na ✅ (pag-reopen kon wala ma-refresh ang app)"
+                        else "Wala pa gihapon ma-verify."
+                    }
+                }) { Text("Na-verify na?", style = MaterialTheme.typography.labelSmall) }
+            }
+            info?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         }
     }
 }
@@ -211,6 +298,16 @@ fun MarketScreen(
     var reportListing by remember { mutableStateOf<Listing?>(null) }
     var ratingOrder by remember { mutableStateOf<Order?>(null) }
     var reviewsSeller by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val viewed = remember { mutableSetOf<String>() }
+
+    // Ablihan ang detalye ug ihapon ang view (dili sa tag-iya, kausa kada session).
+    fun openListing(l: Listing) {
+        if (l.sellerId != uid && viewed.add(l.id)) {
+            db.collection("listings").document(l.id)
+                .update("views", FieldValue.increment(1))
+        }
+        selected = l
+    }
     var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
     var priceFilter by remember { mutableStateOf("Tanan") }
     var sort by remember { mutableStateOf("Bag-o") }
@@ -288,14 +385,18 @@ fun MarketScreen(
     Scaffold(
         topBar = {
             if (overlay == null) {
+                Column {
                 BrandHeader(
                     cartCount = cartCount,
                     unreadCount = unread,
                     chatUnread = chatUnread,
+                    onSearch = { overlay = "search" },
                     onCart = { tab = MarketTab.Cart },
                     onChats = { overlay = "inbox" },
                     onNotifications = { overlay = "notifications" }
                 )
+                VerifyEmailBanner(auth)
+                }
             } else {
                 Row(
                     Modifier
@@ -317,6 +418,7 @@ fun MarketScreen(
                             "moderation" -> "Moderation"
                             "reviews" -> "Mga Review"
                             "saved" -> "Saved searches"
+                            "search" -> "Search"
                             "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
@@ -355,6 +457,15 @@ fun MarketScreen(
                         overlay = "order"
                     },
                     onRate = { ratingOrder = it }
+                )
+
+                "search" -> GlobalSearchScreen(
+                    uid = uid,
+                    listings = listings,
+                    favorites = favorites,
+                    onOpen = { openListing(it) },
+                    onFavorite = { l -> toggleFavorite(db, uid, l) { } },
+                    onAddToCart = { l -> addToCart(db, uid, l, displayName) { } }
                 )
 
                 "moderation" -> ModerationScreen(uid, isAdmin)
@@ -407,7 +518,7 @@ fun MarketScreen(
                         onSort = { sort = it },
                         listings = filtered,
                         favorites = favorites,
-                        onOpen = { selected = it },
+                        onOpen = { openListing(it) },
                         onFavorite = { l -> toggleFavorite(db, uid, l) { } },
                         onAddToCart = { l ->
                             addToCart(db, uid, l, displayName) { err ->
@@ -433,7 +544,7 @@ fun MarketScreen(
                         onTown = { town = it },
                         listings = filtered,
                         favorites = favorites,
-                        onOpen = { selected = it },
+                        onOpen = { openListing(it) },
                         onFavorite = { l -> toggleFavorite(db, uid, l) { } },
                         onAddToCart = { l ->
                             addToCart(db, uid, l, displayName) { err ->
@@ -487,7 +598,7 @@ fun MarketScreen(
                         onSort = { sort = it },
                         listings = filtered,
                         favorites = favorites,
-                        onOpen = { selected = it },
+                        onOpen = { openListing(it) },
                         onFavorite = { l -> toggleFavorite(db, uid, l) { } },
                         onAddToCart = { l ->
                             addToCart(db, uid, l, displayName) { err ->
@@ -587,6 +698,10 @@ fun MarketScreen(
                         Spacer(Modifier.height(8.dp))
                     }
                     Text("₱%.2f".format(l.price), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "👁 ${l.views} ka views",
+                        style = MaterialTheme.typography.labelSmall
+                    )
                     Text(l.description)
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

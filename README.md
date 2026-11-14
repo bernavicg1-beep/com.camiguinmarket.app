@@ -138,6 +138,18 @@ ug mabasa kini sa bisan kinsang naka-log in.
 - **Manage saved searches:** Profile → **Saved searches** — pindoton aron magamit
   ang filter, usbon ang pangan (✏️), o tangtangon (🗑️).
 
+### Global search, email verification ug listing views
+
+- **Search icon sa header** → global search screen: query, category, lungsod,
+  presyo, sort, ug history — tanan sa usa ka dapit.
+- **Email verification:** human sa register, gipadalhan dayon og verification email;
+  samtang wala pa ma-verify, dunay banner sa taas nga dunay *Ipadala pag-usab* ug
+  *Na-verify na?*. Dunay **Nakalimot sa password?** sa login
+  (`sendPasswordResetEmail`).
+- **Listing views:** kada abli sa detalye (dili sa tag-iya, kausa kada session)
+  modugang ang `views` sa listing; makita kini isip `👁 12 ka views`.
+  Ang rules nagtugot sa **+1 ra gayud** ug niini nga field ra.
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
@@ -242,6 +254,8 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
 - **savedSearches** — ang tag-iya ra ang makabasa/makasulat.
+- **listings.views** — bisan kinsang naka-log in makadugang og **+1** ra niini nga
+  field (`diff().affectedKeys().hasOnly(['views'])`).
 - **ratings** — create ra sa buyer sa `done` nga order (doc id = order id);
   mabasa sa naka-log in; dili ma-edit o mapapas.
 - **reports** — makahimo ang bisan kinsang naka-log in sa iyang kaugalingong
