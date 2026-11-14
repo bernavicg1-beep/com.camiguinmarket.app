@@ -56,6 +56,8 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
             ViewsChart(mergedViews(myListings), "Tanang listing • kataposang 7 ka adlaw")
             Spacer(Modifier.height(8.dp))
         }
+        MonthlySalesChart(orders)
+        Spacer(Modifier.height(8.dp))
 
         if (myListings.isEmpty()) {
             Text("Wala pa kay listing. Pindota ang + Baligya aron makasugod.")
@@ -161,6 +163,67 @@ fun ViewsChart(viewsByDay: Map<String, Long>, subtitle: String = "Kataposang 7 k
             Spacer(Modifier.height(4.dp))
             Text(
                 "Karon: ${totals.last()} ka views • 7 ka adlaw: ${totals.sum()}",
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+    }
+}
+
+/** Bar chart sa kita (₱) kada bulan sa kataposang 6 ka bulan. */
+@Composable
+fun MonthlySalesChart(orders: List<Order>) {
+    val months = (5 downTo 0).map { offset ->
+        java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.DAY_OF_MONTH, 1)
+            add(java.util.Calendar.MONTH, -offset)
+        }
+    }
+    val labelFmt = java.text.SimpleDateFormat("MMM", java.util.Locale.US)
+    val labels = months.map { labelFmt.format(it.time) }
+    val keys = months.map { it.get(java.util.Calendar.YEAR) * 100 + it.get(java.util.Calendar.MONTH) }
+    val paid = orders.filter { it.status != "cancelled" }
+    val sums = keys.map { key ->
+        paid.filter { o ->
+            val c = java.util.Calendar.getInstance().apply { timeInMillis = o.createdAt }
+            c.get(java.util.Calendar.YEAR) * 100 + c.get(java.util.Calendar.MONTH) == key
+        }.sumOf { it.total }
+    }
+    val max = (sums.maxOrNull() ?: 0.0).coerceAtLeast(1.0)
+
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Kita kada bulan", fontWeight = FontWeight.Bold)
+            Text("Kataposang 6 ka bulan (walay cancelled)", style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(8.dp))
+            Canvas(Modifier.fillMaxWidth().height(110.dp)) {
+                val slot = size.width / sums.size
+                val barW = slot * 0.55f
+                sums.forEachIndexed { i, value ->
+                    val h = (value / max).toFloat() * (size.height - 6f)
+                    drawRoundRect(
+                        color = BrandGreen,
+                        topLeft = androidx.compose.ui.geometry.Offset(
+                            x = i * slot + (slot - barW) / 2f,
+                            y = size.height - h
+                        ),
+                        size = androidx.compose.ui.geometry.Size(barW, h),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f)
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth()) {
+                labels.forEach { label ->
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Kini nga bulan: ₱%.2f".format(sums.last()),
                 style = MaterialTheme.typography.labelMedium
             )
         }

@@ -184,7 +184,15 @@ ug mabasa kini sa bisan kinsang naka-log in.
   adlaw) ug sa **status**, ug ang CSV nag-export sa nahisubo ra nga mga order
   (`CSV (n)`).
 - Ang matag listing sa Stats screen **mapindot** aron makita ang kaugalingong
-  7-day views chart.
+  7-day views chart, ug dunay **kita kada bulan** nga chart (6 ka bulan, walay
+  cancelled orders).
+- **Push → screen:** ang tap sa notification moabli sa app ug modiretso sa
+  **order detail** o sa **chat** (`type=order|chat` + `orderId`/`chatId` extras;
+  `singleTop` + `onNewIntent`).
+- **CI sa functions:** ang `.github/workflows/functions.yml` mag-deploy kon
+  mausab ang `functions/**`. Gikinahanglan ang GitHub secret
+  **`FIREBASE_SERVICE_ACCOUNT`** (service account JSON sa Firebase project) —
+  kon wala kini, mapakyas ang workflow sa "Check deploy secret" step.
 
 ### Share ug offline cart
 

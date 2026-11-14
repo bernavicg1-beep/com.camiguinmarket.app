@@ -79,8 +79,28 @@ data class Listing(
 )
 
 class MainActivity : ComponentActivity() {
+    // Tap sa push notification: "order:<id>" o "chat:<id>".
+    private var pushTarget by mutableStateOf<String?>(null)
+
+    /** Basahon ang extras sa notification intent. */
+    private fun readPushTarget(intent: Intent?): String? {
+        val type = intent?.getStringExtra("type") ?: return null
+        return when (type) {
+            "order" -> intent.getStringExtra("orderId")?.let { "order:$it" }
+            "chat" -> intent.getStringExtra("chatId")?.let { "chat:$it" }
+            else -> null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pushTarget = readPushTarget(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pushTarget = readPushTarget(intent)
         // Target SDK 36: enforced ang edge-to-edge, busa i-enable nga tarong
         // ang window aron dili ma-tabunan sa system bars ang sulod.
         enableEdgeToEdge()
@@ -91,7 +111,11 @@ class MainActivity : ComponentActivity() {
                 colorScheme = if (dark) marketDarkColorScheme else marketColorScheme
             ) {
                 Surface(Modifier.fillMaxSize()) {
-                    AppRoot(dark) { value ->
+                    AppRoot(
+                        dark = dark,
+                        pushTarget = pushTarget,
+                        onPushHandled = { pushTarget = null }
+                    ) { value ->
                         dark = value
                         saveDarkMode(context, value)
                     }
@@ -102,7 +126,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppRoot(dark: Boolean, onToggleDark: (Boolean) -> Unit) {
+fun AppRoot(
+    dark: Boolean,
+    pushTarget: String?,
+    onPushHandled: () -> Unit,
+    onToggleDark: (Boolean) -> Unit
+) {
     val auth = remember { FirebaseAuth.getInstance() }
     var user by remember { mutableStateOf(auth.currentUser) }
     if (user == null) {
@@ -112,6 +141,8 @@ fun AppRoot(dark: Boolean, onToggleDark: (Boolean) -> Unit) {
             uid = user!!.uid,
             displayName = user!!.displayName ?: user!!.email ?: "Seller",
             dark = dark,
+            pushTarget = pushTarget,
+            onPushHandled = onPushHandled,
             onToggleDark = onToggleDark
         ) {
             auth.signOut(); user = null
@@ -294,6 +325,8 @@ fun MarketScreen(
     uid: String,
     displayName: String,
     dark: Boolean,
+    pushTarget: String?,
+    onPushHandled: () -> Unit,
     onToggleDark: (Boolean) -> Unit,
     onLogout: () -> Unit
 ) {
@@ -359,6 +392,36 @@ fun MarketScreen(
     var sort by remember { mutableStateOf("Bag-o") }
     var chatUnread by remember { mutableStateOf(0) }
     var orderDetail by remember { mutableStateOf<Order?>(null) }
+
+    // Deep link gikan sa push notification: ablihan ang order o ang chat.
+    LaunchedEffect(pushTarget, uid) {
+        val target = pushTarget ?: return@LaunchedEffect
+        val parts = target.split(":", limit = 2)
+        val id = parts.getOrNull(1) ?: return@LaunchedEffect
+        when (parts[0]) {
+            "order" -> db.collection("orders").document(id).get()
+                .addOnSuccessListener { d ->
+                    d.toObject(Order::class.java)?.copy(id = d.id)?.let { order ->
+                        orderDetail = order
+                        overlay = "order"
+                    }
+                }
+
+            "chat" -> db.collection("chats").document(id).get()
+                .addOnSuccessListener { d ->
+                    val participants = (d.get("participants") as? List<*>)
+                        ?.filterIsInstance<String>().orEmpty()
+                    val other = participants.firstOrNull { it != uid }
+                    if (other != null) {
+                        val names = d.get("names") as? Map<*, *>
+                        chatListing = null
+                        chatWith = other to (names?.get(other) as? String ?: "User")
+                        overlay = "chat"
+                    }
+                }
+        }
+        onPushHandled()
+    }
     var isAdmin by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {

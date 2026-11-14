@@ -1,6 +1,8 @@
 package com.camiguinmarket.app
 
 import android.app.NotificationChannel
+import android.app.PendingIntent
+import android.content.Intent
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -37,10 +39,10 @@ class MarketMessagingService : FirebaseMessagingService() {
         val body = message.notification?.body
             ?: message.data["message"]
             ?: return
-        show(title, body)
+        show(title, body, message.data)
     }
 
-    private fun show(title: String, body: String) {
+    private fun show(title: String, body: String, data: Map<String, String>) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "market_updates"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -58,12 +60,25 @@ class MarketMessagingService : FirebaseMessagingService() {
         ) {
             return
         }
+        // Tap: ablihan ang app dayon ang order o chat nga kalabotan niini.
+        val tapIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            data.forEach { (k, v) -> putExtra(k, v) }
+        }
+        val tap = PendingIntent.getActivity(
+            this,
+            System.currentTimeMillis().toInt(),
+            tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
+            .setContentIntent(tap)
             .build()
         manager.notify(System.currentTimeMillis().toInt(), notification)
     }
