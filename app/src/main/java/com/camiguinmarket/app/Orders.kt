@@ -19,7 +19,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // ---------------------------------------------------------------------------
 // Orders (Firestore: orders/{autoId})
@@ -122,6 +129,11 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
             Icon(Icons.Filled.ReceiptLong, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
             Text("Mga Order", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            TextButton(onClick = { shareOrdersCsv(ctx, orders) }) {
+                Text("CSV", style = MaterialTheme.typography.labelMedium)
+            }
         }
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -217,6 +229,34 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
             }
         }
     }
+}
+
+/** I-export ang mga order ngadto sa CSV ug i-share pinaagi sa Android share sheet. */
+fun shareOrdersCsv(context: Context, orders: List<Order>) {
+    if (orders.isEmpty()) return
+    val header = "order_id,listing,price,quantity,total,buyer,seller,contact,town,status,created_at"
+    fun esc(v: String): String = "\"" + v.replace("\"", "\"\"") + "\""
+    val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+    val rows = orders.joinToString("\n") { o ->
+        listOf(
+            o.id, o.listingTitle, "%.2f".format(o.price), o.quantity.toString(),
+            "%.2f".format(o.total), o.buyerName, o.sellerName, o.contact, o.town,
+            o.status, fmt.format(Date(o.createdAt))
+        ).joinToString(",") { esc(it) }
+    }
+    val file = File(context.cacheDir, "orders.csv")
+    file.writeText(header + "\n" + rows)
+    val uri = FileProvider.getUriForFile(
+        context,
+        context.packageName + ".fileprovider",
+        file
+    )
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/csv"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "I-export ang orders"))
 }
 
 @Composable

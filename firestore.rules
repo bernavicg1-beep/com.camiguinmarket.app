@@ -68,7 +68,8 @@ service cloud.firestore {
       allow update: if request.auth != null
         && (
           (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['views', 'viewsByDay'])
             && request.resource.data.get('views', 0) == resource.data.get('views', 0) + 1
           ) || (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cartAdds'])
@@ -84,6 +85,11 @@ service cloud.firestore {
 
     // Cart: ang user ra ang makabasa/makasulat sa iyang kaugalingong cart.
     match /carts/{userId}/items/{itemId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // FCM tokens sa user: kaugalingon ra ang makabasa/makasulat.
+    match /users/{userId}/tokens/{tokenId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 

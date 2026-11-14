@@ -73,7 +73,9 @@ data class Listing(
     // Ihap sa pag-abli sa detalye (gina-increment sa bisan kinsang naka-log in).
     val views: Long = 0L,
     // Ihap sa pagdugang sa cart.
-    val cartAdds: Long = 0L
+    val cartAdds: Long = 0L,
+    // Views kada adlaw: {"2026-11-14": 5}
+    val viewsByDay: Map<String, Long> = emptyMap()
 )
 
 class MainActivity : ComponentActivity() {
@@ -328,8 +330,14 @@ fun MarketScreen(
     // Ablihan ang detalye ug ihapon ang view (dili sa tag-iya, kausa kada session).
     fun openListing(l: Listing) {
         if (l.sellerId != uid && viewed.add(l.id)) {
-            db.collection("listings").document(l.id)
-                .update("views", FieldValue.increment(1))
+            val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(java.util.Date())
+            db.collection("listings").document(l.id).update(
+                mapOf(
+                    "views" to FieldValue.increment(1),
+                    "viewsByDay.$day" to FieldValue.increment(1)
+                )
+            )
         }
         selected = l
     }
@@ -366,6 +374,25 @@ fun MarketScreen(
             .whereEqualTo("read", false)
             .addSnapshotListener { snap, _ -> unread = snap?.size() ?: 0 }
         onDispose { reg.remove() }
+    }
+
+    // FCM: i-save ang token aron makapadala ang server og push notifications.
+    LaunchedEffect(uid) {
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                db.collection("users").document(uid).collection("tokens").document(token)
+                    .set(mapOf("token" to token, "updatedAt" to System.currentTimeMillis()))
+            }
+    }
+
+    // POST_NOTIFICATIONS (Android 13+) alang sa push ug lokal nga notifications.
+    val notifPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     // Admin kon dunay `admins/{uid}` document (gina-set sa Console).

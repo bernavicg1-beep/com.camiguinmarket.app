@@ -385,6 +385,34 @@ check("cartAdds: dili makadugang og sobra sa +1", "PATCH", "/listings/cartdoc1",
       uid="u2", mask="cartAdds", body=listing_cart_patch(app_listing("u1"), 7))
 
 
+# --- viewsByDay ---------------------------------------------------------------
+def listing_daily_patch(base, views, day_count, day="2026-11-14"):
+    doc = json.loads(json.dumps(base))
+    doc["fields"]["views"] = {"integerValue": str(views)}
+    doc["fields"]["viewsByDay"] = {
+        "mapValue": {"fields": {day: {"integerValue": str(day_count)}}}
+    }
+    return doc
+
+
+check("viewsByDay: listing alang sa chart", "POST", "/listings", 200,
+      uid="u1", body=app_listing("u1"), doc_id="daydoc1")
+check("viewsByDay: makadugang sa adlaw ug total", "PATCH", "/listings/daydoc1", 200,
+      uid="u2", mask="views&updateMask.fieldPaths=viewsByDay",
+      body=listing_daily_patch(app_listing("u1"), 1, 1))
+
+
+# --- fcm tokens ---------------------------------------------------------------
+token_doc = {"fields": {
+    "token": {"stringValue": "abc123"},
+    "updatedAt": {"integerValue": "1"},
+}}
+check("fcm: tag-iya makasulat sa token", "POST", "/users/u1/tokens", 200,
+      uid="u1", body=token_doc, doc_id="tok1")
+check("fcm: tag-iya makabasa sa token", "GET", "/users/u1/tokens", 200, uid="u1")
+check("fcm: uban dili makabasa sa token", "GET", "/users/u1/tokens", 403, uid="u2")
+
+
 # --- saved searches ----------------------------------------------------------
 saved_doc = {"fields": {
     "query": {"stringValue": "saging"},

@@ -168,6 +168,19 @@ ug mabasa kini sa bisan kinsang naka-log in.
   ug magpakita og countdown aron dili spam.
 - Ang **🔥 Trending karon** naa na usab sa **Categories** tab.
 
+### Views chart, CSV export ug push notifications
+
+- Ang **Stats sa listing** dunay **bar chart sa views kada adlaw** (7 ka adlaw) gikan
+  sa `viewsByDay` map; ang `openListing` nag-increment sa `views` ug
+  `viewsByDay."YYYY-MM-DD"` sa usa ka update.
+- **CSV export:** ang Orders screen dunay **CSV** button — maghimo og `orders.csv`
+  sa cache ug moabli sa Android share sheet (`FileProvider`).
+- **Push notifications (FCM):** ang app nag-register sa token ngadto sa
+  `users/{uid}/tokens/{token}` ug dunay `MarketMessagingService` nga magpakita sa
+  notification. **Ang pagpadala niini nagkinahanglan og backend/Cloud Function**
+  nga dunay service account kay wala kini server sa repo — andam na ang app sa
+  pagdawat, apan dili pa kini makapadala.
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
@@ -272,7 +285,8 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
 - **savedSearches** — ang tag-iya ra ang makabasa/makasulat.
-- **listings.views / listings.cartAdds** — bisan kinsang naka-log in makadugang og
+- **users/{uid}/tokens** — FCM tokens, kaugalingon ra.
+- **listings.views / viewsByDay / cartAdds** — bisan kinsang naka-log in makadugang og
   **+1** ra niini nga field (`hasOnly(['views'])` o `hasOnly(['cartAdds'])`), ug
   gigamit ang `get(field, 0)` sa duha ka side aron dili mo-error kon wala pa ang field.
 - **ratings** — create ra sa buyer sa `done` nga order (doc id = order id);

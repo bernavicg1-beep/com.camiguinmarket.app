@@ -1,6 +1,7 @@
 package com.camiguinmarket.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,6 +52,10 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
             style = MaterialTheme.typography.labelSmall
         )
         Spacer(Modifier.height(8.dp))
+        if (myListings.isNotEmpty()) {
+            ViewsChart(myListings)
+            Spacer(Modifier.height(8.dp))
+        }
 
         if (myListings.isEmpty()) {
             Text("Wala pa kay listing. Pindota ang + Baligya aron makasugod.")
@@ -82,6 +87,61 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Bar chart sa views kada adlaw (7 ka adlaw) alang sa tanang listing sa seller. */
+@Composable
+fun ViewsChart(myListings: List<Listing>) {
+    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+    val days = (6 downTo 0).map { offset ->
+        val c = java.util.Calendar.getInstance()
+        c.add(java.util.Calendar.DAY_OF_YEAR, -offset)
+        fmt.format(c.time)
+    }
+    val totals = days.map { d -> myListings.sumOf { it.viewsByDay[d] ?: 0L } }
+    val max = (totals.maxOrNull() ?: 0L).coerceAtLeast(1L)
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Views kada adlaw", fontWeight = FontWeight.Bold)
+            Text("Kataposang 7 ka adlaw", style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(8.dp))
+            Canvas(Modifier.fillMaxWidth().height(110.dp)) {
+                val slot = size.width / days.size
+                val barW = slot * 0.55f
+                totals.forEachIndexed { i, value ->
+                    val h = (value.toFloat() / max) * (size.height - 6f)
+                    drawRoundRect(
+                        color = BrandBlue,
+                        topLeft = androidx.compose.ui.geometry.Offset(
+                            x = i * slot + (slot - barW) / 2f,
+                            y = size.height - h
+                        ),
+                        size = androidx.compose.ui.geometry.Size(barW, h),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f)
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth()) {
+                days.forEachIndexed { i, d ->
+                    Text(
+                        d.substring(5).replace("-", "/"),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Karon: ${totals.last()} ka views • 7 ka adlaw: ${totals.sum()}",
+                style = MaterialTheme.typography.labelMedium
+            )
         }
     }
 }
