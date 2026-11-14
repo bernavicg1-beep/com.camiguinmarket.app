@@ -192,7 +192,8 @@ ug mabasa kini sa bisan kinsang naka-log in.
 - **CI sa functions:** ang `.github/workflows/functions.yml` mag-deploy kon
   mausab ang `functions/**`. Gikinahanglan ang GitHub secret
   **`FIREBASE_SERVICE_ACCOUNT`** (service account JSON sa Firebase project) —
-  kon wala kini, mapakyas ang workflow sa "Check deploy secret" step.
+  kon wala kini, mapakyas ang workflow sa "Check deploy secret" step. Ang
+  Firebase project gina-set sa `.firebaserc`.
 
 ### Share ug offline cart
 
