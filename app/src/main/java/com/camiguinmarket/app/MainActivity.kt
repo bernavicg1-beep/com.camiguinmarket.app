@@ -71,7 +71,9 @@ data class Listing(
     // Tanan nga litrato (ang `imageUrl` mao ang una, alang sa daan nga cards).
     val imageUrls: List<String> = emptyList(),
     // Ihap sa pag-abli sa detalye (gina-increment sa bisan kinsang naka-log in).
-    val views: Long = 0L
+    val views: Long = 0L,
+    // Ihap sa pagdugang sa cart.
+    val cartAdds: Long = 0L
 )
 
 class MainActivity : ComponentActivity() {
@@ -235,7 +237,17 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
 fun VerifyEmailBanner(auth: FirebaseAuth) {
     val user = auth.currentUser ?: return
     if (user.isEmailVerified) return
+    val context = LocalContext.current
     var info by remember { mutableStateOf<String?>(null) }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    var cooldownUntil by remember { mutableStateOf(verifyCooldownUntil(context)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val remaining = ((cooldownUntil - now) / 1000).coerceAtLeast(0)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             Text(
@@ -243,11 +255,24 @@ fun VerifyEmailBanner(auth: FirebaseAuth) {
                 style = MaterialTheme.typography.labelSmall
             )
             Row {
-                TextButton(onClick = {
-                    user.sendEmailVerification()
-                        .addOnSuccessListener { info = "Gipadala pag-usab ang verification email." }
-                        .addOnFailureListener { info = it.localizedMessage }
-                }) { Text("Ipadala pag-usab", style = MaterialTheme.typography.labelSmall) }
+                TextButton(
+                    enabled = remaining <= 0L,
+                    onClick = {
+                        user.sendEmailVerification()
+                            .addOnSuccessListener {
+                                markVerifySent(context)
+                                cooldownUntil = verifyCooldownUntil(context)
+                                info = "Gipadala pag-usab ang verification email."
+                            }
+                            .addOnFailureListener { info = it.localizedMessage }
+                    }
+                ) {
+                    Text(
+                        if (remaining > 0L) "Ipadala pag-usab (${remaining}s)"
+                        else "Ipadala pag-usab",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
                 TextButton(onClick = {
                     user.reload().addOnSuccessListener {
                         info = if (auth.currentUser?.isEmailVerified == true)
@@ -426,6 +451,7 @@ fun MarketScreen(
                             "reviews" -> "Mga Review"
                             "saved" -> "Saved searches"
                             "search" -> "Search"
+                            "stats" -> "Stats sa listing"
                             "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
@@ -474,6 +500,8 @@ fun MarketScreen(
                     onFavorite = { l -> toggleFavorite(db, uid, l) { } },
                     onAddToCart = { l -> addToCart(db, uid, l, displayName) { } }
                 )
+
+                "stats" -> ListingStatsScreen(uid, listings.filter { it.sellerId == uid })
 
                 "moderation" -> ModerationScreen(uid, isAdmin)
 
@@ -590,6 +618,7 @@ fun MarketScreen(
                         onInbox = { overlay = "inbox" },
                         onModeration = { overlay = "moderation" },
                         onSavedSearches = { overlay = "saved" },
+                        onListingStats = { overlay = "stats" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }
                     )

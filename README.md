@@ -159,6 +159,15 @@ ug mabasa kini sa bisan kinsang naka-log in.
 - Bag-ong sort option: **Trending** (base sa views), ug dunay **🔥 Trending karon**
   nga horizontal list sa Home (top 5, views > 0).
 
+### Per-listing stats, verification cooldown ug trending sa Categories
+
+- **Profile → Stats sa listing**: kada listing dunay **views**, **cart adds**
+  (`cartAdds` field, gina-increment sa transaction ni `addToCart`) ug **ihap sa
+  orders**. Usa ra ka `orders` query (`sellerId`), gi-group sa app — walay index.
+- Ang **Ipadala pag-usab** sa verification dunay **60s cooldown** (`ui_prefs`),
+  ug magpakita og countdown aron dili spam.
+- Ang **🔥 Trending karon** naa na usab sa **Categories** tab.
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
@@ -263,8 +272,9 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
 - **savedSearches** — ang tag-iya ra ang makabasa/makasulat.
-- **listings.views** — bisan kinsang naka-log in makadugang og **+1** ra niini nga
-  field (`diff().affectedKeys().hasOnly(['views'])`).
+- **listings.views / listings.cartAdds** — bisan kinsang naka-log in makadugang og
+  **+1** ra niini nga field (`hasOnly(['views'])` o `hasOnly(['cartAdds'])`), ug
+  gigamit ang `get(field, 0)` sa duha ka side aron dili mo-error kon wala pa ang field.
 - **ratings** — create ra sa buyer sa `done` nga order (doc id = order id);
   mabasa sa naka-log in; dili ma-edit o mapapas.
 - **reports** — makahimo ang bisan kinsang naka-log in sa iyang kaugalingong

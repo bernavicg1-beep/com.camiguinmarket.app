@@ -51,12 +51,15 @@ def token(uid):
     return f"{header}.{payload}."
 
 
-def request(method, path, uid=None, body=None, doc_id=None, order_by=None):
+def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=None):
     params = []
     if doc_id:
         params.append("documentId=" + doc_id)
     if order_by:
         params.append("orderBy=" + order_by.replace(" ", "%20"))
+    if mask:
+        # Pareho sa app: update() sa usa ra ka field (increment).
+        params.append("updateMask.fieldPaths=" + mask)
     url = BASE + path + ("?" + "&".join(params) if params else "")
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -365,6 +368,23 @@ check("rating: laing user dili makahatag", "POST", "/ratings", 403,
 check("rating: mabasa sa naka-log in", "GET", "/ratings/o4", 200, uid="u3")
 
 
+# --- cartAdds ----------------------------------------------------------------
+def listing_cart_patch(base, cart_adds, views=1):
+    # PATCH dinhi nag-replace sa tibuok doc, busa tipigan ang kasamtangang views.
+    doc = json.loads(json.dumps(base))
+    doc["fields"]["views"] = {"integerValue": str(views)}
+    doc["fields"]["cartAdds"] = {"integerValue": str(cart_adds)}
+    return doc
+
+
+check("cartAdds: listing alang sa cart stats", "POST", "/listings", 200,
+      uid="u1", body=app_listing("u1"), doc_id="cartdoc1")
+check("cartAdds: laing user makadugang +1", "PATCH", "/listings/cartdoc1", 200,
+      uid="u2", mask="cartAdds", body=listing_cart_patch(app_listing("u1"), 1))
+check("cartAdds: dili makadugang og sobra sa +1", "PATCH", "/listings/cartdoc1", 403,
+      uid="u2", mask="cartAdds", body=listing_cart_patch(app_listing("u1"), 7))
+
+
 # --- saved searches ----------------------------------------------------------
 saved_doc = {"fields": {
     "query": {"stringValue": "saging"},
@@ -403,7 +423,7 @@ def listing_views_patch(base, views, title=None):
 check("views: listing alang sa views", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="viewdoc1")
 check("views: laing user makadugang +1", "PATCH", "/listings/viewdoc1", 200,
-      uid="u2", body=listing_views_patch(app_listing("u1"), 1))
+      uid="u2", mask="views", body=listing_views_patch(app_listing("u1"), 1))
 check("views: dili makadugang og sobra sa +1", "PATCH", "/listings/viewdoc1", 403,
       uid="u2", body=listing_views_patch(app_listing("u1"), 3))
 check("views: dili makailis sa titulo", "PATCH", "/listings/viewdoc1", 403,

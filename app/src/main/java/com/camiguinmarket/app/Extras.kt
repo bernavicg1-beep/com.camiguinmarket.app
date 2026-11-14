@@ -107,6 +107,16 @@ private fun themePrefs(context: Context) =
 
 fun loadDarkMode(context: Context): Boolean = themePrefs(context).getBoolean("dark", false)
 
+/** Cooldown sa verification email aron dili spam (60s). */
+fun verifyCooldownUntil(context: Context): Long =
+    context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
+        .getLong("verify_last", 0L) + 60_000L
+
+fun markVerifySent(context: Context) {
+    context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
+        .edit().putLong("verify_last", System.currentTimeMillis()).apply()
+}
+
 fun saveDarkMode(context: Context, dark: Boolean) {
     themePrefs(context).edit().putBoolean("dark", dark).apply()
 }
@@ -277,6 +287,7 @@ fun addToCart(
         return
     }
     val ref = db.collection("carts").document(uid).collection("items").document(listing.id)
+    val listingRef = db.collection("listings").document(listing.id)
     db.runTransaction { tx ->
         val snap = tx.get(ref)
         if (snap.exists()) {
@@ -297,6 +308,8 @@ fun addToCart(
                 )
             )
         }
+        // Stats sa seller: ihapon ang pagdugang sa cart.
+        tx.update(listingRef, "cartAdds", FieldValue.increment(1))
         null
     }.addOnSuccessListener {
         notifyUser(
@@ -1186,6 +1199,7 @@ fun ProfileScreen(
     onInbox: () -> Unit,
     onModeration: () -> Unit,
     onSavedSearches: () -> Unit,
+    onListingStats: () -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -1246,6 +1260,12 @@ fun ProfileScreen(
             Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
             Text("Saved searches")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onListingStats, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Stats sa listing")
         }
         if (isAdmin) {
             Spacer(Modifier.height(8.dp))
@@ -1528,6 +1548,10 @@ fun CategoriesTab(
     onFavorite: (Listing) -> Unit,
     onAddToCart: (Listing) -> Unit
 ) {
+    val trending = listings.filter { it.views > 0 }
+        .sortedByDescending { it.views }
+        .take(5)
+
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1548,6 +1572,25 @@ fun CategoriesTab(
             }
         }
         item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
+        if (trending.isNotEmpty()) {
+            item { SectionTitle("🔥 Trending karon") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(trending, key = { it.id }) { l ->
+                        Box(Modifier.width(300.dp)) {
+                            ListingCard(
+                                listing = l,
+                                isFavorite = favorites.contains(l.id),
+                                onOpen = { onOpen(l) },
+                                onFavorite = { onFavorite(l) },
+                                onAddToCart = { onAddToCart(l) },
+                                showViews = l.sellerId == ownerUid
+                            )
+                        }
+                    }
+                }
+            }
+        }
         item {
             Text("${listings.size} ka listing", style = MaterialTheme.typography.labelMedium)
         }
