@@ -1,7 +1,7 @@
 name: Firestore rules
 
-# Mo-validate sa rules sa matag kausaban, ug i-deploy kini sa Firebase
-# kon na-set ang FIREBASE_SERVICE_ACCOUNT (girekomendar) o FIREBASE_TOKEN.
+# Validate the rules on every change, and deploy them to Firebase
+# when FIREBASE_SERVICE_ACCOUNT (recommended) or FIREBASE_TOKEN is set.
 on:
   push:
     branches: [main]
@@ -42,9 +42,9 @@ jobs:
       - name: Install firebase-tools
         run: npm install -g firebase-tools
 
-      # Kon sayop ang syntax, mo-fail ang pag-start sa emulator ug mapalong ang job.
-      # Sulod sa emulator, gi-run ang behavioral test (anon / tag-iya / laing user).
-      - name: Test ang firestore.rules sa emulator
+      # A syntax error makes the emulator fail to start and kills the job.
+      # Inside the emulator the behavioral tests run (anon / owner / other user).
+      - name: Test firestore.rules in the emulator
         env:
           FIREBASE_PROJECT: demo-camiguin
         run: >-
@@ -96,8 +96,8 @@ jobs:
         if: steps.creds.outputs.method != 'none'
         run: npm install -g firebase-tools
 
-      # Ang key adto ra sa runner temp; wala gayud kini i-print o i-commit.
-      - name: Isulat ang service account key
+      # The key only goes to the runner temp; it is never printed or committed.
+      - name: Write the service account key
         if: steps.creds.outputs.method == 'service_account'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -105,7 +105,7 @@ jobs:
           key="$RUNNER_TEMP/firebase-service-account.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$key"
           chmod 600 "$key"
-          # I-check nga tinuod nga service account key (walay value nga i-print).
+          # Check that this is a real service account key (no values printed).
           python3 - "$key" <<'PY'
           import json, sys
 
@@ -113,7 +113,7 @@ jobs:
           try:
               data = json.load(open(path))
           except json.JSONDecodeError:
-              print("::error::Dili balido nga JSON ang FIREBASE_SERVICE_ACCOUNT.")
+              print("::error::FIREBASE_SERVICE_ACCOUNT is not valid JSON.")
               sys.exit(1)
 
           required = ("project_id", "private_key", "client_email", "token_uri")
@@ -122,10 +122,10 @@ jobs:
               missing.append("type=service_account")
 
           if missing:
-              print("::error::Sayop ang sulod sa FIREBASE_SERVICE_ACCOUNT — kulang: " + ", ".join(missing))
-              print("Kini nga secret kinahanglan ang PRIVATE KEY JSON (dunay private_key, client_email,"
-                    " project_id) gikan sa Firebase Console → Project settings → Service accounts →"
-                    " Generate new private key. Dili kini ang google-services.json.")
+              print("::error::FIREBASE_SERVICE_ACCOUNT is wrong — missing: " + ", ".join(missing))
+              print("This secret must be the PRIVATE KEY JSON (with private_key, client_email,"
+                    " project_id) from Firebase Console → Project settings → Service accounts →"
+                    " Generate new private key. It is not google-services.json.")
               sys.exit(1)
 
           print(f"Service account: {data['client_email']} | project: {data['project_id']}")

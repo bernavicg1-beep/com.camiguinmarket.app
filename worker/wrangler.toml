@@ -2,16 +2,16 @@ name = "camiguin-market-images"
 main = "index.js"
 compatibility_date = "2026-11-01"
 
-# Ang R2 bucket nga gitipigan sa mga litrato sa listing.
-# Buhaton: wrangler r2 bucket create camiguinmarket-images
+# The R2 bucket that stores listing photos.
+# Create it: wrangler r2 bucket create camiguinmarket-images
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "camiguinmarket-images"
 
 [vars]
-# Ang Firebase Web API key (public kini — naa na sa google-services.json).
-# Ibutang isip secret: wrangler secret put FIREBASE_WEB_API_KEY
+# The Firebase Web API key (public — it is already in google-services.json).
+# Set it as a secret: wrangler secret put FIREBASE_WEB_API_KEY
 #
-# Opsyonal: ibutang kon gusto nimo og custom domain isip base sa mga link.
-# Kon wala, ang URL sa Worker ang gamiton.
+# Optional: set it when you want a custom domain as the base of the links.
+# Without it, the Worker URL is used.
 # PUBLIC_BASE_URL = "https://images.camiguinmarket.example"
