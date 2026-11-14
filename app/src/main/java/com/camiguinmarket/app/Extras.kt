@@ -785,6 +785,10 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     var text by remember { mutableStateOf("") }
     // Kataposang oras nga giablihan/nabasahan sa pikas ang thread.
     var otherRead by remember { mutableStateOf(0L) }
+    // Typing indicator: kanus-a katapusan nagsulat ang pikas, ug lokal nga ticker.
+    var otherTypingAt by remember { mutableStateOf(0L) }
+    var lastTypingWrite by remember { mutableStateOf(0L) }
+    var tick by remember { mutableStateOf(0L) }
     val chatId = remember(otherUid) { chatIdFor(uid, otherUid) }
 
     LaunchedEffect(chatId) {
@@ -806,8 +810,27 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             .addSnapshotListener { snap, _ ->
                 otherRead = ((snap?.get("lastRead") as? Map<*, *>)?.get(otherUid) as? Number)
                     ?.toLong() ?: 0L
+                otherTypingAt = ((snap?.get("typing") as? Map<*, *>)?.get(otherUid) as? Number)
+                    ?.toLong() ?: 0L
             }
         onDispose { reg.remove() }
+    }
+
+    // Ticker aron ma-expire ang "nagsulat…" human sa pipila ka segundo.
+    LaunchedEffect(Unit) {
+        while (true) {
+            tick = System.currentTimeMillis()
+            kotlinx.coroutines.delay(2000)
+        }
+    }
+
+    // Ipadala ang typing signal, labing daghan kada 2.5s aron dili maghuot ang writes.
+    LaunchedEffect(text) {
+        val now = System.currentTimeMillis()
+        if (text.isNotBlank() && now - lastTypingWrite > 2500) {
+            lastTypingWrite = now
+            db.collection("chats").document(chatId).update("typing.$uid", now)
+        }
     }
 
     DisposableEffect(chatId) {
@@ -829,6 +852,14 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         }
         if (listingTitle.isNotBlank()) {
             Text("Mahitungod sa: $listingTitle", style = MaterialTheme.typography.labelSmall)
+        }
+        if (otherTypingAt > 0 && tick - otherTypingAt < 7000) {
+            Text(
+                "nagsulat…",
+                style = MaterialTheme.typography.labelSmall,
+                color = BrandBlue,
+                fontWeight = FontWeight.Bold
+            )
         }
         Spacer(Modifier.height(8.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -881,6 +912,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                 onClick = {
                     sendChatMessage(db, uid, otherUid, otherName, text, listingTitle)
                     text = ""
+                    db.collection("chats").document(chatId).update("typing.$uid", 0L)
                 },
                 shape = RoundedCornerShape(20.dp)
             ) { Icon(Icons.Filled.Send, contentDescription = "Send") }

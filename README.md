@@ -61,6 +61,11 @@ Ang mga icon Material icons na (`material-icons-extended`), dili na emoji.
   `chats/{chatId}.unread.{uid}` — modaghan kon dunay mosulat ug mobalik sa 0 kon
   ablihan ang thread.
 - Kon ang seller mo-kumpirma o mo-tapos, **makadawat og notification ang buyer**.
+- **Cancel:** ang buyer makakanselar samtang `pending` pa, ang seller bisan kanus-a nga
+  wala pa `done`; dunay `cancelled` nga status ug pahibalo sa pikas.
+- Ang **Baligya** nga summary dunay filter: **Karon** / **Kini nga bulan** / **Tanan**.
+- Ang chat dunay **typing indicator** ("nagsulat…", mawala human og 7s) ug ang
+  typing signal gina-throttle sa 2.5s aron dili maghuot ang writes.
 - Ang Profile dunay **Baligya** nga summary sa seller: kita (mga order nga `done`),
   bag-o, gikumpirma, ug tapos.
 - Ang mga mensahe dunay oras (`7:42 PM`) ug **read receipt**: `✓` kon na-send pa lang,
@@ -163,7 +168,7 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
 - **notifications** — ang tag-iya ra ang makabasa; ang bisan kinsang naka-log in
   makahimo og notification para sa uban, apan `fromUid` kinahanglan siya gayud.
 - **orders** — ang buyer makahimo; ang buyer ug seller ra ang makabasa; ang seller
-  ra ang maka-update sa status.
+  maka-update sa status; ang buyer makakanselar (`pending` → `cancelled`) ra.
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
 - **default deny** — wala nay laing collection nga gibuksan.

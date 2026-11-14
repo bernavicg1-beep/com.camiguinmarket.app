@@ -190,13 +190,20 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit) {
                             }
                             StatusChip(order.status)
                         }
-                        if (!asBuyer && order.status != "done") {
+                        val active = order.status != "done" && order.status != "cancelled"
+                        if (!asBuyer && active) {
                             SellerActions(
                                 status = order.status,
                                 modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
                                 onConfirm = { updateOrderStatus(db, order, "confirmed") },
-                                onDone = { updateOrderStatus(db, order, "done") }
+                                onDone = { updateOrderStatus(db, order, "done") },
+                                onCancel = { cancelOrder(db, order, uid) }
                             )
+                        } else if (asBuyer && order.status == "pending") {
+                            TextButton(
+                                onClick = { cancelOrder(db, order, uid) },
+                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                            ) { Text("I-cancel ang order", color = Color(0xFFE53935)) }
                         }
                       }
                     }
@@ -213,6 +220,7 @@ fun StatusChip(status: String) {
         "pending" -> BrandGold
         "confirmed" -> BrandBlue
         "done" -> BrandGreen
+        "cancelled" -> Color(0xFFE53935)
         else -> Color.Gray
     }
     Surface(color = color, shape = RoundedCornerShape(10.dp)) {
@@ -259,8 +267,28 @@ fun SellerStats(uid: String) {
         onDispose { reg.remove() }
     }
 
-    val done = orders.filter { it.status == "done" }
+    var range by remember { mutableStateOf("month") }
+    val startDay = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val startMonth = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.DAY_OF_MONTH, 1)
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val visible = when (range) {
+        "today" -> orders.filter { it.createdAt >= startDay }
+        "month" -> orders.filter { it.createdAt >= startMonth }
+        else -> orders
+    }
+    val done = visible.filter { it.status == "done" }
     val income = done.sumOf { it.total }
+
     Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -268,15 +296,37 @@ fun SellerStats(uid: String) {
                 Spacer(Modifier.width(6.dp))
                 Text("Baligya", fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(
+                    selected = range == "today",
+                    onClick = { range = "today" },
+                    label = { Text("Karon", style = MaterialTheme.typography.labelSmall) }
+                )
+                FilterChip(
+                    selected = range == "month",
+                    onClick = { range = "month" },
+                    label = { Text("Kini nga bulan", style = MaterialTheme.typography.labelSmall) }
+                )
+                FilterChip(
+                    selected = range == "all",
+                    onClick = { range = "all" },
+                    label = { Text("Tanan", style = MaterialTheme.typography.labelSmall) }
+                )
+            }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatCard("₱%.0f".format(income), "Kita (tapos)", Modifier.weight(1f))
-                StatCard("${orders.count { it.status == "pending" }}", "Bag-o", Modifier.weight(1f))
+                StatCard(
+                    "${visible.count { it.status == "pending" }}",
+                    "Bag-o",
+                    Modifier.weight(1f)
+                )
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatCard(
-                    "${orders.count { it.status == "confirmed" }}",
+                    "${visible.count { it.status == "confirmed" }}",
                     "Gikumpirma",
                     Modifier.weight(1f)
                 )
@@ -291,7 +341,8 @@ fun SellerActions(
     status: String,
     modifier: Modifier = Modifier,
     onConfirm: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onCancel: () -> Unit
 ) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (status == "pending") {
@@ -304,7 +355,27 @@ fun SellerActions(
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
         ) { Text("Tapos na") }
+        OutlinedButton(
+            onClick = onCancel,
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
+        ) { Text("I-cancel") }
     }
+}
+
+/** Ang buyer makakanselar sa `pending`; ang seller bisan kanus-a nga wala pa `done`. */
+fun cancelOrder(db: FirebaseFirestore, order: Order, byUid: String) {
+    db.collection("orders").document(order.id).update("status", "cancelled")
+    val byBuyer = byUid == order.buyerId
+    val toUid = if (byBuyer) order.sellerId else order.buyerId
+    val fromName = if (byBuyer) order.buyerName else order.sellerName
+    notifyUser(
+        db = db,
+        toUid = toUid,
+        fromUid = byUid,
+        fromName = fromName,
+        message = "$fromName gi-cancel ang order: ${order.listingTitle}".take(190)
+    )
 }
 
 @Composable
@@ -364,15 +435,29 @@ fun OrderDetailScreen(order: Order, uid: String, onChat: (String, String) -> Uni
                 OrderStep("Na-order", "pending", order.status)
                 OrderStep("Gikumpirma sa seller", "confirmed", order.status)
                 OrderStep("Tapos na", "done", order.status)
+                if (order.status == "cancelled") {
+                    Text(
+                        "Gi-cancel ang order",
+                        color = Color(0xFFE53935),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
-        if (isSeller && order.status != "done") {
-            SellerActions(
+        when {
+            isSeller && order.status != "done" && order.status != "cancelled" -> SellerActions(
                 status = order.status,
                 onConfirm = { updateOrderStatus(db, order, "confirmed") },
-                onDone = { updateOrderStatus(db, order, "done") }
+                onDone = { updateOrderStatus(db, order, "done") },
+                onCancel = { cancelOrder(db, order, uid) }
             )
+
+            !isSeller && order.status == "pending" -> OutlinedButton(
+                onClick = { cancelOrder(db, order, uid) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
+            ) { Text("I-cancel ang order") }
         }
 
         OutlinedButton(

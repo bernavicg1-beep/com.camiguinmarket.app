@@ -91,10 +91,19 @@ service cloud.firestore {
         && request.resource.data.quantity > 0
         && request.resource.data.status == "pending";
 
+      // Ang seller maka-usab sa status bisan kanus-a; ang buyer makakanselar
+      // sa `pending` ra, ug dili makailis sa mga partido sa order.
       allow update: if request.auth != null
-        && resource.data.sellerId == request.auth.uid
-        && request.resource.data.sellerId == request.auth.uid
-        && request.resource.data.buyerId == resource.data.buyerId;
+        && request.resource.data.sellerId == resource.data.sellerId
+        && request.resource.data.buyerId == resource.data.buyerId
+        && (
+          resource.data.sellerId == request.auth.uid
+          || (
+            resource.data.buyerId == request.auth.uid
+            && resource.data.status == "pending"
+            && request.resource.data.status == "cancelled"
+          )
+        );
 
       allow delete: if false;
     }

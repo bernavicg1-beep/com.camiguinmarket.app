@@ -255,6 +255,18 @@ check("order: seller maka-update sa status", "PATCH", "/orders/o1", 200,
 check("order: buyer dili maka-update", "PATCH", "/orders/o1", 403,
       uid="u1", body=order_doc("u1", "u2", status="done"))
 
+# o3: pending, para makita ang cancel sa buyer.
+check("order: ikaduha nga order", "POST", "/orders", 200,
+      uid="u1", body=order_doc("u1", "u2"), doc_id="o3")
+check("order: buyer makakanselar sa pending", "PATCH", "/orders/o3", 200,
+      uid="u1", body=order_doc("u1", "u2", status="cancelled"))
+check("order: buyer dili makakanselar og confirmed", "PATCH", "/orders/o1", 403,
+      uid="u1", body=order_doc("u1", "u2", status="cancelled"))
+check("order: seller makakanselar", "PATCH", "/orders/o1", 200,
+      uid="u2", body=order_doc("u1", "u2", status="cancelled"))
+check("order: taga-gawas dili maka-cancel", "PATCH", "/orders/o3", 403,
+      uid="u3", body=order_doc("u1", "u2", status="cancelled"))
+
 
 def main():
     failures = 0
