@@ -88,6 +88,16 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // User profile document (phone number and its SMS verification flag).
+    // Only the owner can read or write it, and only these fields.
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['phone', 'phoneVerified'])
+        && (!('phone' in request.resource.data) || request.resource.data.phone is string)
+        && (!('phoneVerified' in request.resource.data) || request.resource.data.phoneVerified is bool);
+    }
+
     // FCM tokens: only the owner can read/write.
     match /users/{userId}/tokens/{tokenId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

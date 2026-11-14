@@ -91,7 +91,7 @@ def app_listing(seller, pickup=False):
         fields["latitude"] = {"doubleValue": 9.25}
         fields["longitude"] = {"doubleValue": 124.7}
     else:
-        # Ang app nagabutang og null kon wala pa makapili og pickup point.
+        # The app writes null while no pickup point is chosen.
         fields["latitude"] = {"nullValue": None}
         fields["longitude"] = {"nullValue": None}
     return {"fields": fields}
@@ -114,6 +114,18 @@ CHECKS = []
 def check(name, method, path, expected, **kwargs):
     CHECKS.append((name, method, path, expected, kwargs))
 
+
+# --- phone number on the user profile ---------------------------------------
+check("owner: save a verified phone number", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"phone": {"stringValue": "+639171234567"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: read their own profile document", "GET", "/users/u1", 200, uid="u1")
+check("other: write someone else's phone number", "PATCH", "/users/u1", 403, uid="u2",
+      body={"fields": {"phone": {"stringValue": "+639000000000"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: store a field the rules do not allow", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"phone": {"stringValue": "+639171234567"},
+                       "isAdmin": {"booleanValue": True}}})
 
 # --- anonymous ---------------------------------------------------------------
 check("anon: read the listing list", "GET", "/listings", 403)
@@ -142,28 +154,28 @@ check("owner: transfer the listing to another seller", "PATCH", "/listings/doc1"
 check("other: delete another seller's listing", "DELETE", "/listings/doc1", 403, uid="u2")
 check("owner: delete their own listing", "DELETE", "/listings/doc1", 200, uid="u1")
 
-# --- eksaktong data sa app (regression guard) --------------------------------
-# Ang app: db.collection("listings").add(Listing(...)) nga walay pickup pin.
+# --- exact documents the app writes (regression guard) -----------------------
+# The app: db.collection("listings").add(Listing(...)) without a pickup pin.
 check("app: post a listing (latitude/longitude = null)", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="appdoc1")
-# Ang app: pareho, apan dunay napiling pickup point sa mapa.
+# The app: the same, but with a pickup point chosen on the map.
 check("app: post a listing with a pickup pin", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1", pickup=True), doc_id="appdoc2")
-# Ang app: market list -> orderBy("createdAt", DESCENDING).
+# The app: market list -> orderBy("createdAt", DESCENDING).
 check("app: market list (orderBy createdAt desc)", "GET", "/listings", 200,
       uid="u1", order_by="createdAt desc")
-# Ang app: open a listing.
+# The app: open a listing.
 check("app: open a listing", "GET", "/listings/appdoc2", 200, uid="u2")
-# Ang app: laing account makakita sa listing sa uban.
+# The app: another account can see other people's listings.
 check("app: another user can read", "GET", "/listings/appdoc1", 200, uid="u2")
-# Ang app: laing account dili makapapas.
+# The app: another account cannot delete it.
 check("app: another user cannot delete", "DELETE", "/listings/appdoc2", 403, uid="u2")
-# Ang app: laing account dili makahimo og listing sa ngalan sa tag-iya.
+# The app: another account cannot post a listing in the owner's name.
 check("app: another user cannot create in someone else's name", "POST", "/listings", 403,
       uid="u2", body=app_listing("u1"), doc_id="appdoc3")
-# Ang app (account deletion): whereEqualTo("sellerId", uid).get().
+# The app (account deletion): whereEqualTo("sellerId", uid).get().
 check("app: account deletion query", "GET", "/listings", 200, uid="u1")
-# Ang app: document(id).delete() sa tag-iya.
+# The app: document(id).delete() by the owner.
 check("app: owner can delete the listing", "DELETE", "/listings/appdoc1", 200, uid="u1")
 
 
@@ -273,7 +285,7 @@ check("order: outsider cannot cancel", "PATCH", "/orders/o3", 403,
 
 # --- moderation --------------------------------------------------------------
 def seed(path, doc_id, body):
-    """Pagsulat pinaagi sa emulator owner bypass (dili maagi sa rules)."""
+    """Write through the emulator owner bypass (skips the rules)."""
     url = BASE + path + "?documentId=" + doc_id
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST")
     req.add_header("Content-Type", "application/json")
@@ -370,7 +382,7 @@ check("rating: readable by signed-in users", "GET", "/ratings/o4", 200, uid="u3"
 
 # --- cartAdds ----------------------------------------------------------------
 def listing_cart_patch(base, cart_adds, views=1):
-    # PATCH dinhi nag-replace sa tibuok doc, busa tipigan ang kasamtangang views.
+    # PATCH replaces the whole document here, so keep the current views.
     doc = json.loads(json.dumps(base))
     doc["fields"]["views"] = {"integerValue": str(views)}
     doc["fields"]["cartAdds"] = {"integerValue": str(cart_adds)}
@@ -436,7 +448,7 @@ def listing_with_views(base, views):
     return doc
 
 
-# appdoc1 gibuhat sa miaging mga test; kuhaa ang kasamtangan nga views.
+# appdoc1 was created by the earlier tests; read its current views.
 import urllib.request as _req
 
 

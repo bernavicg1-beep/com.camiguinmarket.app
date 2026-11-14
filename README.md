@@ -138,34 +138,33 @@ and any signed-in user can read it.
 - **Manage saved searches:** Profile → **Saved searches** — tap to apply the
   filter, rename (✏️), or remove (🗑️).
 
-### Global search, email verification, and listing views
+### Global search, phone verification, and listing views
 
 - **Search icon in the header** → global search screen: query, category, town,
   price, sort, and history — all in one place.
-- **Email verification:** after registering, a verification email is sent
-  immediately; until it is verified a banner appears at the top with *Resend* and
-  *Already verified?*. Login also has **Forgot password?**
-  (`sendPasswordResetEmail`).
+- **Phone number (SMS verification):** Profile → **Phone number**. Enter a
+  number, tap **Send code**, then type the 6-digit code that arrives by text.
+  The number is saved as `phone` + `phoneVerified` on `users/{uid}` **only after**
+  Firebase confirms the code, and the rules let only the owner read or write
+  those two fields. Signing up still sends the verification email, but nothing in
+  the app is blocked on it.
+- Login has **Forgot password?** (`sendPasswordResetEmail`).
 - **Listing views:** every time a detail is opened (not by the owner, once per
   session) the listing's `views` is incremented; it is shown as `👁 12 views`.
   The rules allow **exactly +1**, and only on that field.
 
-### Seller views, verified-only posting, and trending
+### Seller views and trending
 
 - The **owner** sees `👁 N views` on their own listing cards, and Profile → Sales
   has a **Views on my listings** stat.
-- An email that is **not verified** cannot **post** or **check out** — a toast
-  points to the verification link.
 - New sort option: **Trending** (based on views), plus a **🔥 Trending now**
   horizontal list on Home (top 5, views > 0).
 
-### Per-listing stats, verification cooldown, and trending in Categories
+### Per-listing stats and trending in Categories
 
 - **Profile → Listing stats**: each listing shows **views**, **cart adds**
   (`cartAdds` field, incremented in the `addToCart` transaction), and the **order
   count**. One `orders` query (`sellerId`), grouped in the app — no index.
-- Verification **Resend** has a **60s cooldown** (`ui_prefs`) and shows a countdown
-  so it can't be spammed.
 - **🔥 Trending now** also appears in the **Categories** tab.
 
 ### Views chart, CSV export, and push notifications
@@ -346,7 +345,7 @@ if true`), otherwise anyone can read and write `listings`.
 `.github/workflows/firestore-rules.yml` has two jobs:
 
 1. **Validate** — compiles `firestore.rules` in the Firestore emulator, then runs
-   `scripts/test-firestore-rules.py` (86 behavioral checks: anonymous denied,
+   `scripts/test-firestore-rules.py` (90 behavioral checks: anonymous denied,
    owner allowed, another user denied, listing not transferable, wrong type for
    `price` denied, **and the exact documents the app writes** — `id = ""`, `price`
    as double, `createdAt` as long, `latitude`/`longitude` as `null` when there is no
@@ -422,6 +421,8 @@ builds the release variant and uploads it as `CamiguinMarket-release-apk` (APK) 
 
 There is no device/emulator in the development environment, so **runtime behaviour
 is unverified**: GPS location, tapping the map, the WebView bridge (`onRoute`),
-photo upload to R2, and the real Google/Mapbox API responses. What is confirmed:
+photo upload to R2, SMS phone verification (needs Firebase **Phone** sign-in
+enabled plus the app's SHA-1 fingerprint registered), and the real
+Google/Mapbox API responses. What is confirmed:
 `gradle assembleDebug` and `gradle assembleRelease` compile, and the JavaScript in
 the HTML page is correct.

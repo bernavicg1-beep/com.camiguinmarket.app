@@ -50,17 +50,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import com.google.firebase.FirebaseException
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.concurrent.TimeUnit
 import java.util.Date
 import java.util.Locale
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
 // ---------------------------------------------------------------------------
@@ -1213,13 +1222,15 @@ fun ProfileScreen(
         Spacer(Modifier.height(8.dp))
         Text(displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(email, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(12.dp))
+        PhoneVerifySection(uid)
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatCard("${myListings.size}", "Akong listing", Modifier.weight(1f))
+            StatCard("${myListings.size}", "My listings", Modifier.weight(1f))
             StatCard(
                 "₱%.0f".format(myListings.sumOf { it.price }),
-                "Total bili",
+                "Total value",
                 Modifier.weight(1f)
             )
         }
@@ -1233,7 +1244,7 @@ fun ProfileScreen(
             OutlinedButton(onClick = onFavorites, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Filled.Favorite, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Paborito", maxLines = 1)
+                Text("Favorites", maxLines = 1)
             }
             OutlinedButton(onClick = onOrders, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1245,7 +1256,7 @@ fun ProfileScreen(
         OutlinedButton(onClick = onInbox, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Mga Chat")
+            Text("Chats")
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = onSavedSearches, modifier = Modifier.fillMaxWidth()) {
@@ -1294,6 +1305,210 @@ fun ProfileScreen(
             style = MaterialTheme.typography.labelSmall
         )
     }
+}
+
+/**
+ * Phone number with SMS verification. The number is stored on the user
+ * document only after Firebase confirms the 6-digit code sent by text.
+ */
+@Composable
+fun PhoneVerifySection(uid: String) {
+    val context = LocalContext.current
+    val auth = FirebaseAuth.getInstance()
+    val db = remember { FirebaseFirestore.getInstance() }
+    var savedPhone by remember { mutableStateOf<String?>(null) }
+    var verified by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var phone by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    var verificationId by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf<String?>(null) }
+
+    fun saveVerified(number: String) {
+        db.collection("users").document(uid)
+            .set(mapOf("phone" to number, "phoneVerified" to true), SetOptions.merge())
+        savedPhone = number
+        verified = true
+        editing = false
+        verificationId = null
+        code = ""
+        busy = false
+    }
+
+    fun linkWith(credential: PhoneAuthCredential) {
+        val user = auth.currentUser
+        if (user == null) {
+            busy = false
+            info = "You are not signed in."
+            return
+        }
+        busy = true
+        user.linkWithCredential(credential).addOnCompleteListener { t ->
+            if (t.isSuccessful) {
+                saveVerified(user.phoneNumber ?: normalizePhone(phone))
+                info = "Phone number verified ✅"
+            } else {
+                busy = false
+                info = t.exception?.localizedMessage ?: "Could not verify this number."
+            }
+        }
+    }
+
+    fun sendCode() {
+        val activity = context.findActivity()
+        if (activity == null) {
+            info = "SMS verification is not available here."
+            return
+        }
+        val number = normalizePhone(phone)
+        busy = true
+        info = null
+        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                linkWith(credential)
+            }
+
+            override fun onVerificationFailed(e: FirebaseException) {
+                busy = false
+                info = e.localizedMessage ?: "Verification failed."
+            }
+
+            override fun onCodeSent(id: String, token: PhoneAuthProvider.ForceResendingToken) {
+                busy = false
+                verificationId = id
+                info = "Code sent to $number"
+            }
+        }
+        PhoneAuthProvider.verifyPhoneNumber(
+            PhoneAuthOptions.newBuilder(auth)
+                .setPhoneNumber(number)
+                .setTimeout(60L, TimeUnit.SECONDS)
+                .setActivity(activity)
+                .setCallbacks(callbacks)
+                .build()
+        )
+    }
+
+    LaunchedEffect(uid) {
+        db.collection("users").document(uid).get().addOnSuccessListener { d ->
+            savedPhone = d.getString("phone")
+            verified = d.getBoolean("phoneVerified") ?: false
+            if (!verified) editing = true
+        }
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Phone number",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.weight(1f))
+                if (verified) Text("Verified ✅", style = MaterialTheme.typography.labelSmall)
+            }
+            Spacer(Modifier.height(6.dp))
+
+            if (verified && !editing) {
+                Text(savedPhone ?: "", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = {
+                    phone = savedPhone ?: ""
+                    editing = true
+                    info = null
+                    verificationId = null
+                }) { Text("Change number") }
+            } else {
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone number") },
+                    placeholder = { Text("09XX XXX XXXX") },
+                    singleLine = true,
+                    enabled = !busy,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Done
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !busy && phone.count { it.isDigit() } >= 10,
+                        onClick = { sendCode() }
+                    ) {
+                        Text(if (verificationId == null) "Send code" else "Resend code")
+                    }
+                    if (verified) {
+                        TextButton(onClick = { editing = false; info = null }) { Text("Cancel") }
+                    }
+                }
+                if (verificationId != null) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { input -> code = input.filter { it.isDigit() }.take(6) },
+                        label = { Text("6-digit code") },
+                        singleLine = true,
+                        enabled = !busy,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.NumberPassword,
+                            imeAction = ImeAction.Done
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        enabled = !busy && code.length == 6,
+                        onClick = {
+                            val id = verificationId
+                            if (id == null) {
+                                info = "Tap \"Send code\" first."
+                            } else {
+                                linkWith(PhoneAuthProvider.getCredential(id, code))
+                            }
+                        }
+                    ) { Text(if (busy) "Verifying…" else "Verify code") }
+                }
+            }
+
+            info?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+/** Converts 09XXXXXXXXX / 9XXXXXXXXX into +63 E.164 form. */
+fun normalizePhone(raw: String): String {
+    val trimmed = raw.trim()
+    val digits = trimmed.filter { it.isDigit() }
+    return when {
+        trimmed.startsWith("+") -> "+$digits"
+        digits.length == 11 && digits.startsWith("09") -> "+63" + digits.drop(1)
+        digits.length == 10 && digits.startsWith("9") -> "+63$digits"
+        digits.length == 12 && digits.startsWith("63") -> "+$digits"
+        else -> "+$digits"
+    }
+}
+
+/** The hosting Activity for the Firebase phone verification callbacks. */
+fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }
 
 @Composable
@@ -1369,7 +1584,7 @@ fun HomeTab(
                 when {
                     query.isBlank() && recent.isNotEmpty() -> Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Bag-ong gipangita", style = MaterialTheme.typography.labelSmall)
+                            Text("Recent searches", style = MaterialTheme.typography.labelSmall)
                             TextButton(onClick = {
                                 clearRecentSearches(ctx)
                                 recent = emptyList()
