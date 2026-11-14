@@ -13,7 +13,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CamiguinMarket">
 
-        <!-- Google Maps SDK key, gikan sa local.properties (MAPS_API_KEY). -->
+        <!-- Google Maps SDK key, from local.properties (MAPS_API_KEY). -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
