@@ -1,5 +1,6 @@
 package com.camiguinmarket.app
 
+import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -24,6 +25,9 @@ import org.json.JSONObject
  * dili ibutang sa HTML aron dili ma-commit sa public repo.
  */
 @OptIn(ExperimentalMaterial3Api::class)
+// False positive sa lint: tanan nga method sa MapboxBridge may @JavascriptInterface
+// (gipamatud-an sa bytecode), ug lokal nga asset ra ang gi-load sa WebView.
+@SuppressLint("JavascriptInterface", "SetJavaScriptEnabled")
 @Composable
 fun MapboxMapScreen(
     latitude: Double,
@@ -168,15 +172,17 @@ fun MapboxMapScreen(
  * Lean nga Mapbox view (walay top bar) alang sa compare screen:
  * nagpakita sa ruta A→B ug nagbalik sa distance/duration ngadto sa Android.
  */
+// Pareho nga rason sa MapboxMapScreen: annotated ang bridge, lokal nga asset.
+@SuppressLint("JavascriptInterface", "SetJavaScriptEnabled")
 @Composable
 fun MapboxRouteView(
     latitude: Double,
     longitude: Double,
     routeA: LatLng?,
     routeB: LatLng?,
+    modifier: Modifier = Modifier,
     sellers: List<Listing> = emptyList(),
     nonce: Int = 0,
-    modifier: Modifier = Modifier,
     onRouteResult: ((Double, Double) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -270,18 +276,25 @@ class MapboxBridge(
     private val routeHandler: (Double, Double) -> Unit
 ) {
     @JavascriptInterface
-    fun onReady() = readyHandler()
+    fun onReady() {
+        readyHandler()
+    }
 
     @JavascriptInterface
-    fun onPick(lat: Double, lng: Double) = pickHandler(lat, lng)
+    fun onPick(lat: Double, lng: Double) {
+        pickHandler(lat, lng)
+    }
 
     @JavascriptInterface
-    fun onDirections(lat: Double, lng: Double) = directionsHandler(lat, lng)
+    fun onDirections(lat: Double, lng: Double) {
+        directionsHandler(lat, lng)
+    }
 
     /** Gisugo niini ang JavaScript: onRoute(distanceMeters, durationSeconds). */
     @JavascriptInterface
-    fun onRoute(distanceMeters: Double, durationSeconds: Double) =
+    fun onRoute(distanceMeters: Double, durationSeconds: Double) {
         routeHandler(distanceMeters, durationSeconds)
+    }
 }
 
 @Composable

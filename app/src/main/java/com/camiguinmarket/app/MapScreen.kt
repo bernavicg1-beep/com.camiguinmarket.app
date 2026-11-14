@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -265,7 +266,7 @@ fun openDirections(context: Context, point: LatLng, label: String? = null) {
     }
     openUri(
         context,
-        Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$destination&travelmode=driving"),
+        "https://www.google.com/maps/dir/?api=1&destination=$destination&travelmode=driving".toUri(),
         "Walay app nga makaabli sa Google Maps."
     )
 }
@@ -274,7 +275,7 @@ fun openMapPreview(context: Context, point: LatLng, label: String?) {
     val name = Uri.encode(label ?: "Pickup location")
     openUri(
         context,
-        Uri.parse("geo:${point.latitude},${point.longitude}?q=${point.latitude},${point.longitude}($name)"),
+        "geo:${point.latitude},${point.longitude}?q=${point.latitude},${point.longitude}($name)".toUri(),
         "Walay app nga makaabli sa mapa."
     )
 }
@@ -305,6 +306,7 @@ fun hasLocationPermission(context: Context): Boolean =
 @Composable
 fun CamiguinMarketMapScreen(
     sellerLocation: LatLng,
+    modifier: Modifier = Modifier,
     sellerLabel: String = "Seller Pickup Location",
     sellerSnippet: String = "Camiguin Market seller",
     initialCustomerLocation: LatLng? = null,
@@ -315,7 +317,6 @@ fun CamiguinMarketMapScreen(
     initialRouteB: LatLng? = null,
     sellers: List<Listing> = emptyList(),
     apiKey: String = mapsApiKey,
-    modifier: Modifier = Modifier,
     onPickLocation: ((LatLng) -> Unit)? = null,
     onSellerClick: ((Listing) -> Unit)? = null,
     onBack: (() -> Unit)? = null

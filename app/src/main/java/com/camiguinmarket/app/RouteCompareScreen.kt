@@ -27,10 +27,10 @@ private enum class CompareTap { NONE, A, B }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RouteCompareScreen(
+    modifier: Modifier = Modifier,
     initialA: LatLng? = null,
     initialB: LatLng? = null,
     apiKey: String = mapsApiKey,
-    modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
@@ -46,7 +46,7 @@ fun RouteCompareScreen(
     var googleError by remember { mutableStateOf<String?>(null) }
     var googleLoading by remember { mutableStateOf(false) }
     var mapboxStats by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    var mapboxNonce by remember { mutableStateOf(0) }
+    var mapboxNonce by remember { mutableIntStateOf(0) }
 
     fun itandi() {
         val a = pointA
