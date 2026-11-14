@@ -76,11 +76,11 @@ def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=
 def app_listing(seller, pickup=False):
     """Exact fields written by the app's `Listing` data class."""
     fields = {
-        "id": {"stringValue": ""},  # ang doc id gikan sa Firestore, walay sulod dinhi
-        "title": {"stringValue": "Saging nga hinog"},
-        "description": {"stringValue": "Presko gikan sa Mambajao"},
+        "id": {"stringValue": ""},  # the doc id comes from Firestore, empty here
+        "title": {"stringValue": "Ripe bananas"},
+        "description": {"stringValue": "Fresh from Mambajao"},
         "price": {"doubleValue": 25.5},
-        "category": {"stringValue": "Pagkaon ug Seafood"},
+        "category": {"stringValue": "Food & Seafood"},
         "town": {"stringValue": "Mambajao"},
         "sellerId": {"stringValue": seller},
         "sellerName": {"stringValue": "Nena"},
@@ -134,7 +134,7 @@ check("user: wrong type for price", "POST", "/listings", 403, uid="u1",
 
 # --- update ------------------------------------------------------------------
 check("user: update their own listing", "PATCH", "/listings/doc1", 200,
-      uid="u1", body=listing("u1", title="Saging nga hinog"))
+      uid="u1", body=listing("u1", title="Ripe bananas"))
 check("owner: transfer the listing to another seller", "PATCH", "/listings/doc1", 403,
       uid="u1", body=listing("u2"))
 
