@@ -94,6 +94,46 @@ enum class MarketTab(val label: String, val icon: ImageVector) {
 }
 
 /** Ang mga kategorya sa grid (emoji ang icon, walay dugang nga library). */
+val priceFilters = listOf("Tanan", "Ubos sa ₱50", "₱50–₱200", "₱200–₱500", "Sobras ₱500")
+val sortOptions = listOf("Bag-o", "Presyo ↑", "Presyo ↓")
+
+fun matchesPrice(price: Double, filter: String): Boolean = when (filter) {
+    "Ubos sa ₱50" -> price < 50
+    "₱50–₱200" -> price in 50.0..200.0
+    "₱200–₱500" -> price in 200.0..500.0
+    "Sobras ₱500" -> price > 500
+    else -> true
+}
+
+@Composable
+fun FilterBar(
+    priceFilter: String,
+    onPriceFilter: (String) -> Unit,
+    sort: String,
+    onSort: (String) -> Unit
+) {
+    Column {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(priceFilters) { f ->
+                FilterChip(
+                    selected = f == priceFilter,
+                    onClick = { onPriceFilter(f) },
+                    label = { Text(f, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(sortOptions) { s ->
+                FilterChip(
+                    selected = s == sort,
+                    onClick = { onSort(s) },
+                    label = { Text(s, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+    }
+}
+
 val categoryIcons: Map<String, ImageVector> = linkedMapOf(
     "Tanan" to Icons.Filled.Apps,
     "Pagkaon ug Seafood" to Icons.Filled.Restaurant,
@@ -1138,6 +1178,10 @@ fun HomeTab(
     onQuery: (String) -> Unit,
     category: String,
     onCategory: (String) -> Unit,
+    priceFilter: String,
+    onPriceFilter: (String) -> Unit,
+    sort: String,
+    onSort: (String) -> Unit,
     listings: List<Listing>,
     favorites: Set<String>,
     onOpen: (Listing) -> Unit,
@@ -1207,6 +1251,7 @@ fun HomeTab(
                 }
             }
         }
+        item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
         item { HeroBanner() }
         item {
             SectionTitle("Shop by Category") {
@@ -1252,6 +1297,10 @@ fun HomeTab(
 fun CategoriesTab(
     category: String,
     onCategory: (String) -> Unit,
+    priceFilter: String,
+    onPriceFilter: (String) -> Unit,
+    sort: String,
+    onSort: (String) -> Unit,
     town: String,
     onTown: (String) -> Unit,
     listings: List<Listing>,
@@ -1279,6 +1328,7 @@ fun CategoriesTab(
                 TownChips(town, onTown)
             }
         }
+        item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
         item {
             Text("${listings.size} ka listing", style = MaterialTheme.typography.labelMedium)
         }

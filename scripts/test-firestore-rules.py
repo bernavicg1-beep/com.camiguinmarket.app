@@ -337,6 +337,34 @@ check("report: admin maka-resolve", "PATCH", "/reports/rep1", 200,
       uid="admin1", body=_resolved(report_doc("appdoc1", "u1")))
 
 
+# --- ratings -----------------------------------------------------------------
+def rating_doc(order_id, buyer, seller, stars=5):
+    return {"fields": {
+        "orderId": {"stringValue": order_id},
+        "sellerId": {"stringValue": seller},
+        "buyerId": {"stringValue": buyer},
+        "buyerName": {"stringValue": "Nena"},
+        "rating": {"integerValue": str(stars)},
+        "comment": {"stringValue": "Maayo ang seller"},
+        "createdAt": {"integerValue": "1"},
+    }}
+
+
+check("rating: order alang sa rating", "POST", "/orders", 200,
+      uid="u1", body=order_doc("u1", "u2"), doc_id="o4")
+check("rating: dili pa done, dili makahatag", "POST", "/ratings", 403,
+      uid="u1", body=rating_doc("o4", "u1", "u2"), doc_id="o4")
+check("rating: seller mag-mark done", "PATCH", "/orders/o4", 200,
+      uid="u2", body=order_doc("u1", "u2", status="done"))
+check("rating: buyer makahatag human sa done", "POST", "/ratings", 200,
+      uid="u1", body=rating_doc("o4", "u1", "u2"), doc_id="o4")
+check("rating: dili ma-usab", "PATCH", "/ratings/o4", 403,
+      uid="u1", body=rating_doc("o4", "u1", "u2", stars=1))
+check("rating: laing user dili makahatag", "POST", "/ratings", 403,
+      uid="u3", body=rating_doc("o4", "u3", "u2"), doc_id="o5")
+check("rating: mabasa sa naka-log in", "GET", "/ratings/o4", 200, uid="u3")
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -188,6 +189,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var chatWith by remember { mutableStateOf<Pair<String, String>?>(null) }
     var chatListing by remember { mutableStateOf<Listing?>(null) }
     var reportListing by remember { mutableStateOf<Listing?>(null) }
+    var ratingOrder by remember { mutableStateOf<Order?>(null) }
+    var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
+    var priceFilter by remember { mutableStateOf("Tanan") }
+    var sort by remember { mutableStateOf("Bag-o") }
     var chatUnread by remember { mutableStateOf(0) }
     var orderDetail by remember { mutableStateOf<Order?>(null) }
     var isAdmin by remember { mutableStateOf(false) }
@@ -249,7 +254,14 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     val filtered = listings.filter {
         (category == "Tanan" || it.category == category) &&
             (town == "Tanan" || it.town == town) &&
+            matchesPrice(it.price, priceFilter) &&
             (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true))
+    }.let { list ->
+        when (sort) {
+            "Presyo ↑" -> list.sortedBy { it.price }
+            "Presyo ↓" -> list.sortedByDescending { it.price }
+            else -> list
+        }
     }
 
     Scaffold(
@@ -313,10 +325,14 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
 
                 "notifications" -> NotificationsScreen(uid)
 
-                "orders" -> OrdersScreen(uid) { order ->
-                    orderDetail = order
-                    overlay = "order"
-                }
+                "orders" -> OrdersScreen(
+                    uid = uid,
+                    onOpen = { order ->
+                        orderDetail = order
+                        overlay = "order"
+                    },
+                    onRate = { ratingOrder = it }
+                )
 
                 "moderation" -> ModerationScreen(uid, isAdmin)
 
@@ -328,7 +344,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                             chatListing = null
                             chatWith = otherId to otherName
                             overlay = "chat"
-                        }
+                        },
+                        onRate = { ratingOrder = it }
                     )
                 }
 
@@ -348,6 +365,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         onQuery = { query = it },
                         category = category,
                         onCategory = { category = it },
+                        priceFilter = priceFilter,
+                        onPriceFilter = { priceFilter = it },
+                        sort = sort,
+                        onSort = { sort = it },
                         listings = filtered,
                         favorites = favorites,
                         onOpen = { selected = it },
@@ -368,6 +389,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                     MarketTab.Categories -> CategoriesTab(
                         category = category,
                         onCategory = { category = it },
+                        priceFilter = priceFilter,
+                        onPriceFilter = { priceFilter = it },
+                        sort = sort,
+                        onSort = { sort = it },
                         town = town,
                         onTown = { town = it },
                         listings = filtered,
@@ -416,6 +441,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         onQuery = { query = it },
                         category = category,
                         onCategory = { category = it },
+                        priceFilter = priceFilter,
+                        onPriceFilter = { priceFilter = it },
+                        sort = sort,
+                        onSort = { sort = it },
                         listings = filtered,
                         favorites = favorites,
                         onOpen = { selected = it },
@@ -435,6 +464,14 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 }
             }
         }
+    }
+
+    photoViewer?.let { (urls, index) ->
+        PhotoViewer(urls, index) { photoViewer = null }
+    }
+
+    ratingOrder?.let { order ->
+        RatingDialog(order) { ratingOrder = null }
     }
 
     reportListing?.let { l ->
@@ -490,13 +527,14 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            photos.forEach { url ->
+                            photos.forEachIndexed { idx, url ->
                                 RemoteImage(
                                     url = url,
                                     modifier = Modifier
                                         .width(if (photos.size == 1) 300.dp else 150.dp)
                                         .height(180.dp)
                                         .clip(RoundedCornerShape(8.dp))
+                                        .clickable { photoViewer = photos to idx }
                                 )
                             }
                         }

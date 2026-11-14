@@ -97,7 +97,7 @@ fun checkoutCart(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrdersScreen(uid: String, onOpen: (Order) -> Unit) {
+fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     var asBuyer by remember { mutableStateOf(true) }
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
@@ -204,6 +204,11 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit) {
                                 onClick = { cancelOrder(db, order, uid) },
                                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                             ) { Text("I-cancel ang order", color = Color(0xFFE53935)) }
+                        } else if (asBuyer && order.status == "done") {
+                            TextButton(
+                                onClick = { onRate(order) },
+                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                            ) { Text("I-rate ang seller") }
                         }
                       }
                     }
@@ -296,6 +301,7 @@ fun SellerStats(uid: String) {
                 Spacer(Modifier.width(6.dp))
                 Text("Baligya", fontWeight = FontWeight.Bold)
             }
+            SellerRatingSummary(uid)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(
@@ -379,7 +385,12 @@ fun cancelOrder(db: FirebaseFirestore, order: Order, byUid: String) {
 }
 
 @Composable
-fun OrderDetailScreen(order: Order, uid: String, onChat: (String, String) -> Unit) {
+fun OrderDetailScreen(
+    order: Order,
+    uid: String,
+    onChat: (String, String) -> Unit,
+    onRate: (Order) -> Unit
+) {
     val db = remember { FirebaseFirestore.getInstance() }
     val isSeller = order.sellerId == uid
     val otherId = if (isSeller) order.buyerId else order.sellerId
@@ -458,6 +469,14 @@ fun OrderDetailScreen(order: Order, uid: String, onChat: (String, String) -> Uni
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
             ) { Text("I-cancel ang order") }
+        }
+
+        if (!isSeller && order.status == "done") {
+            Button(
+                onClick = { onRate(order) },
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("I-rate ang seller") }
         }
 
         OutlinedButton(

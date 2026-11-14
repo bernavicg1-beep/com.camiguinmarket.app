@@ -104,6 +104,23 @@ o kaha **Dismiss**. Ang reporter ra ug ang admin ang makabasa sa report.
   upload sunod-sunod ug ang `imageUrl` mao gihapon ang unang litrato alang sa mga
   card. Ang detalye dunay horizontal scroll sa mga litrato.
 
+### Photo viewer ug filters
+
+- Pindot sa litrato sa detalye → **fullscreen viewer**: swipe pakanan/pakawala,
+  counter (`2 / 5`), ug ✕ aron pagsira.
+- Ang Home ug Categories dunay **filter sa presyo** (Tanan, Ubos sa ₱50,
+  ₱50–₱200, ₱200–₱500, Sobras ₱500) ug **sort** (Bag-o, Presyo ↑, Presyo ↓).
+
+### Rating sa seller
+
+Human sa `done` nga order, makahatag ang buyer og **1–5 ka bituon + komentaryo**
+(sa Orders list o sa detalye). Ang doc id = order id, busa **usa ra ka rating kada
+order** (dili ma-edit, `allow update: if false`). Ang average makita sa seller
+isip `⭐ 4.6 (12)` sa Profile → Baligya.
+
+**Rules:** ang buyer ra sa `done` nga order ang makahimo (`get()` sa order),
+ug mabasa kini sa bisan kinsang naka-log in.
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
@@ -207,6 +224,8 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
   maka-update sa status; ang buyer makakanselar (`pending` → `cancelled`) ra.
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
+- **ratings** — create ra sa buyer sa `done` nga order (doc id = order id);
+  mabasa sa naka-log in; dili ma-edit o mapapas.
 - **reports** — makahimo ang bisan kinsang naka-log in sa iyang kaugalingong
   report; ang reporter ug ang admin ra ang makabasa; admin ra ang maka-update.
 - **admins** — mabasa sa naka-log in (aron ma-check sa app) apan `write: if false`,
