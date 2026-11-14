@@ -31,6 +31,16 @@ Ang file sa HTML nga gigamit sa Mapbox: `app/src/main/assets/mapbox_map.html`.
   duha ka mapa; ipakita ang gilay-on/oras sa matag usa ug ang ilang kalainan
   (`✅ Duol ra kaayo` kon ≤ 0.5 km). Maayo kini alang sa pagsulay ug pagpares.
 
+## Pag-post, pag-edit, ug pagpapas sa listing
+
+- **`+ Baligya`** — mag-post og listing (ngalan, presyo, contact, kategorya, lungsod,
+  ug opsyonal nga pickup pin sa mapa).
+- **`✏️ Edit`** — makita sa tag-iya ra, sulod sa detalye sa listing. Ma-prefill ang
+  tanan nga field (apil ang pickup pin). Ang `sellerId`, `sellerName`, ug `createdAt`
+  sa orihinal wala mausab — mao kini ang gikinahanglan sa `firestore.rules` aron
+  tugotan ang update.
+- **`Papas`** — tag-iya ra usab.
+
 ## Gikinahanglan nga API keys (ayaw i-commit!)
 
 1. **Google Maps API key** — sa Google Cloud Console i-enable ang:

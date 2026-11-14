@@ -146,6 +146,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var town by remember { mutableStateOf("Tanan") }
     var query by remember { mutableStateOf("") }
     var showPost by remember { mutableStateOf(false) }
+    // Ang listing nga gi-edit sa tag-iya (null = wala).
+    var editListing by remember { mutableStateOf<Listing?>(null) }
     var selected by remember { mutableStateOf<Listing?>(null) }
     var mapListing by remember { mutableStateOf<Listing?>(null) }
     var mapboxListing by remember { mutableStateOf<Listing?>(null) }
@@ -216,6 +218,9 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     }
 
     if (showPost) PostDialog(uid, displayName, db) { showPost = false }
+    editListing?.let { l ->
+        PostDialog(uid, displayName, db, existing = l) { editListing = null }
+    }
     selected?.let { l ->
         val sellerLat = l.latitude
         val sellerLng = l.longitude
@@ -224,7 +229,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             confirmButton = { TextButton(onClick = { selected = null }) { Text("Sira") } },
             dismissButton = {
                 if (l.sellerId == uid) {
-                    TextButton(onClick = { db.collection("listings").document(l.id).delete(); selected = null }) { Text("Papas") }
+                    Row {
+                        TextButton(onClick = { selected = null; editListing = l }) { Text("✏️ Edit") }
+                        TextButton(onClick = { db.collection("listings").document(l.id).delete(); selected = null }) { Text("Papas") }
+                    }
                 }
             },
             title = { Text(l.title) },
@@ -335,20 +343,44 @@ fun ChipRow(options: List<String>, selected: String, onSelect: (String) -> Unit)
     }
 }
 
+/**
+ * Pag-post og bag-ong listing, o pag-edit sa existing nga listing sa tag-iya.
+ *
+ * Kon `existing` ang gihatag, ma-prefill ang mga field ug i-update ang maong
+ * document imbes nga maghimo og bag-o. Ang `sellerId`, `sellerName`, ug
+ * `createdAt` sa orihinal wala gayud mausab — busa tugotan kini sa rules.
+ */
 @Composable
-fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: () -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var desc by remember { mutableStateOf("") }
-    var price by remember { mutableStateOf("") }
-    var contact by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(categories[1]) }
-    var town by remember { mutableStateOf(towns[0]) }
-    var pickup by remember { mutableStateOf<LatLng?>(null) }
+fun PostDialog(
+    uid: String,
+    sellerName: String,
+    db: FirebaseFirestore,
+    existing: Listing? = null,
+    onClose: () -> Unit
+) {
+    fun priceText(value: Double): String =
+        if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
+
+    var title by remember { mutableStateOf(existing?.title ?: "") }
+    var desc by remember { mutableStateOf(existing?.description ?: "") }
+    var price by remember { mutableStateOf(existing?.let { priceText(it.price) } ?: "") }
+    var contact by remember { mutableStateOf(existing?.contact ?: "") }
+    var category by remember { mutableStateOf(existing?.category ?: categories[1]) }
+    var town by remember { mutableStateOf(existing?.town ?: towns[0]) }
+    var pickup by remember {
+        mutableStateOf(
+            existing?.let { l ->
+                val lat = l.latitude
+                val lng = l.longitude
+                if (lat != null && lng != null) LatLng(lat, lng) else null
+            }
+        )
+    }
     var showPicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Bag-ong baligya") },
+        title = { Text(if (existing == null) "Bag-ong baligya" else "I-edit ang listing") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(title, { title = it }, label = { Text("Ngalan sa produkto") })
@@ -382,18 +414,27 @@ fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: 
             TextButton(
                 enabled = title.isNotBlank() && price.toDoubleOrNull() != null && contact.isNotBlank(),
                 onClick = {
-                    db.collection("listings").add(
+                    val ref = if (existing == null) {
+                        db.collection("listings").document()
+                    } else {
+                        db.collection("listings").document(existing.id)
+                    }
+                    ref.set(
                         Listing(
                             title = title.trim(), description = desc.trim(),
                             price = price.toDouble(), category = category, town = town,
-                            sellerId = uid, sellerName = sellerName, contact = contact.trim(),
-                            createdAt = System.currentTimeMillis(),
+                            // Sa edit, dili mausab ang tag-iya niini nga listing.
+                            sellerId = existing?.sellerId ?: uid,
+                            sellerName = existing?.sellerName ?: sellerName,
+                            contact = contact.trim(),
+                            createdAt = existing?.createdAt?.takeIf { it > 0 }
+                                ?: System.currentTimeMillis(),
                             latitude = pickup?.latitude, longitude = pickup?.longitude
                         )
                     )
                     onClose()
                 }
-            ) { Text("I-post") }
+            ) { Text(if (existing == null) "I-post" else "I-save") }
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Kanselar") } }
     )
