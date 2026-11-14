@@ -191,6 +191,19 @@ ug mabasa kini sa bisan kinsang naka-log in.
 - **Push → screen:** ang tap sa notification moabli sa app ug modiretso sa
   **order detail** o sa **chat** (`type=order|chat` + `orderId`/`chatId` extras;
   `singleTop` + `onNewIntent`).
+- **Chat unread badge:** ang badge sa header gina-sum gikan sa `unread.<uid>` sa
+  matag chat, ug ang Inbox dunay **badge kada thread** (bold ang bag-ong mensahe).
+  Ang pag-abli sa thread nag-reset sa `unread.<uid>` ngadto sa 0.
+- **Debug sa deep link:** sa debug build, ang `readPushTarget` ug ang pag-abli sa
+  order/chat nag-log sa tag nga `CamiguinPush`. Testing nga walay push:
+  ```bash
+  adb shell am start -n com.camiguinmarket.app/.MainActivity \
+    --es type order --es orderId <ORDER_ID>
+  adb logcat -s CamiguinPush
+  ```
+  (singleTop + `onNewIntent`, busa magamit bisan bukas na ang app.)
+- **Sales CSV:** ang sales dashboard dunay `CSV` button nga mag-export sa
+  **kita kada adlaw** (`date,orders,revenue` + TOTAL row) sa nasulod nga range.
 - **Push sa app:** ang `sendPush(kind, orderId/chatId)` (sa `Push.kt`) nag-POST
   ngadto sa `${R2_UPLOAD_URL}/push` human sa order, status update, ug bag-ong
   chat message — best-effort lang, dili makapugong sa order/chat.

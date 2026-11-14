@@ -85,11 +85,19 @@ class MainActivity : ComponentActivity() {
     /** Basahon ang extras sa notification intent. */
     private fun readPushTarget(intent: Intent?): String? {
         val type = intent?.getStringExtra("type") ?: return null
-        return when (type) {
+        val target = when (type) {
             "order" -> intent.getStringExtra("orderId")?.let { "order:$it" }
             "chat" -> intent.getStringExtra("chatId")?.let { "chat:$it" }
             else -> null
         }
+        if (BuildConfig.DEBUG) {
+            android.util.Log.d(
+                "CamiguinPush",
+                "intent type=$type orderId=${intent.getStringExtra("orderId")} " +
+                    "chatId=${intent.getStringExtra("chatId")} => $target"
+            )
+        }
+        return target
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -398,12 +406,16 @@ fun MarketScreen(
         val target = pushTarget ?: return@LaunchedEffect
         val parts = target.split(":", limit = 2)
         val id = parts.getOrNull(1) ?: return@LaunchedEffect
+        if (BuildConfig.DEBUG) android.util.Log.d("CamiguinPush", "ablihan ang $parts[0] id=$id")
         when (parts[0]) {
             "order" -> db.collection("orders").document(id).get()
                 .addOnSuccessListener { d ->
                     d.toObject(Order::class.java)?.copy(id = d.id)?.let { order ->
                         orderDetail = order
                         overlay = "order"
+                        if (BuildConfig.DEBUG) {
+                            android.util.Log.d("CamiguinPush", "order detail giablihan: $id")
+                        }
                     }
                 }
 
@@ -417,6 +429,9 @@ fun MarketScreen(
                         chatListing = null
                         chatWith = other to (names?.get(other) as? String ?: "User")
                         overlay = "chat"
+                        if (BuildConfig.DEBUG) {
+                            android.util.Log.d("CamiguinPush", "chat giablihan: $id (uban ni $other)")
+                        }
                     }
                 }
         }

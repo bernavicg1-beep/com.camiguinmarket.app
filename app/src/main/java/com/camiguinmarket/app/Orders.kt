@@ -306,6 +306,37 @@ fun shareOrdersCsv(context: Context, orders: List<Order>) {
     context.startActivity(Intent.createChooser(intent, "I-export ang orders"))
 }
 
+/** I-export ang kita kada adlaw sa CSV (gitipigan sa cache, gi-share). */
+fun shareSalesCsv(context: Context, orders: List<Order>) {
+    val paid = orders.filter { it.status != "cancelled" }
+    if (paid.isEmpty()) return
+
+    val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    val byDay = paid.groupBy { fmt.format(Date(it.createdAt)) }.toSortedMap()
+
+    fun esc(v: String): String = "\"" + v.replace("\"", "\"\"") + "\""
+    val rows = byDay.entries.map { (day, list) ->
+        listOf(day, list.size.toString(), "%.2f".format(list.sumOf { it.total }))
+            .joinToString(",") { esc(it) }
+    }
+    val total = paid.sumOf { it.total }
+    val lines = buildList {
+        add("date,orders,revenue")
+        addAll(rows)
+        add(listOf("TOTAL", paid.size.toString(), "%.2f".format(total)).joinToString(",") { esc(it) })
+    }
+
+    val file = File(context.cacheDir, "sales.csv")
+    file.writeText(lines.joinToString("\n"))
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/csv"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "I-export ang sales"))
+}
+
 @Composable
 fun StatusChip(status: String) {
     val color = when (status) {
@@ -388,6 +419,14 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
                 Icon(Icons.Filled.Storefront, contentDescription = null, tint = BrandBlue)
                 Spacer(Modifier.width(6.dp))
                 Text("Baligya", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                TextButton(
+                    onClick = { shareSalesCsv(ctx, visible) },
+                    enabled = visible.any { it.status != "cancelled" }
+                ) {
+                    Text("CSV", style = MaterialTheme.typography.labelMedium)
+                }
             }
             SellerRatingSummary(uid)
             Spacer(Modifier.height(6.dp))
@@ -616,7 +655,9 @@ data class ChatThread(
     val otherName: String = "",
     val listingTitle: String = "",
     val lastMessage: String = "",
-    val updatedAt: Long = 0L
+    val updatedAt: Long = 0L,
+    // Akong unread niini nga thread (gikan sa `unread.<uid>` map).
+    val unread: Int = 0
 )
 
 @Composable
@@ -638,7 +679,9 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
                         otherName = names?.get(other) as? String ?: "User",
                         listingTitle = d.getString("listingTitle") ?: "",
                         lastMessage = d.getString("lastMessage") ?: "",
-                        updatedAt = d.getLong("updatedAt") ?: 0L
+                        updatedAt = d.getLong("updatedAt") ?: 0L,
+                        unread = ((d.get("unread") as? Map<*, *>)?.get(uid) as? Number)
+                            ?.toInt() ?: 0
                     )
                 }.sortedByDescending { it.updatedAt }
             }
@@ -679,9 +722,18 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
                                 Text(
                                     thread.lastMessage.ifBlank { thread.listingTitle },
                                     style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (thread.unread > 0) FontWeight.Bold
+                                    else FontWeight.Normal,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                            }
+                            // Badge sa wala pa mabasa nga mensahe niining thread.
+                            if (thread.unread > 0) {
+                                Spacer(Modifier.width(8.dp))
+                                Badge(containerColor = BrandBlue) {
+                                    Text("${thread.unread}")
+                                }
                             }
                         }
                     }
