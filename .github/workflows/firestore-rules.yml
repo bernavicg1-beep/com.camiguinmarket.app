@@ -9,12 +9,14 @@ on:
       - firestore.rules
       - firebase.json
       - .firebaserc
+      - scripts/test-firestore-rules.py
       - .github/workflows/firestore-rules.yml
   pull_request:
     paths:
       - firestore.rules
       - firebase.json
       - .firebaserc
+      - scripts/test-firestore-rules.py
   workflow_dispatch:
 
 permissions:
@@ -41,10 +43,13 @@ jobs:
         run: npm install -g firebase-tools
 
       # Kon sayop ang syntax, mo-fail ang pag-start sa emulator ug mapalong ang job.
-      - name: Compile ang firestore.rules
+      # Sulod sa emulator, gi-run ang behavioral test (anon / tag-iya / laing user).
+      - name: Test ang firestore.rules sa emulator
+        env:
+          FIREBASE_PROJECT: demo-camiguin
         run: >-
           firebase emulators:exec --only firestore --project demo-camiguin
-          "echo RULES_OK"
+          "python3 scripts/test-firestore-rules.py"
 
   deploy:
     name: Deploy rules

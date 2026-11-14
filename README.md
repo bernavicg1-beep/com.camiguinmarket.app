@@ -105,9 +105,19 @@ if true`) kay bisan kinsa makabasa ug makasulat sa `listings`.
 
 Ang `.github/workflows/firestore-rules.yml` dunay duha ka job:
 
-1. **Validate** — i-compile ang `firestore.rules` sa Firestore emulator. Modagan sa
-   matag push sa `main` *ug* sa matag pull request nga nag-usab sa rules. Kon sayop
-   ang syntax, mo-fail ang job — dili ka makadeploy og guba nga rules.
+1. **Validate** — i-compile ang `firestore.rules` sa Firestore emulator, dayon i-run
+   ang `scripts/test-firestore-rules.py` (10 ka behavioral check: anonymous denied,
+   tag-iya allowed, laing user denied, dili ma-transfer ang listing, sayop nga tipo
+   sa `price` denied). Modagan sa matag push sa `main` *ug* sa matag pull request nga
+   nag-usab sa rules. Kon sayop ang syntax o may ni-fail nga check, mo-fail ang job —
+   dili ka makadeploy og guba nga rules.
+
+   I-run kini sa lokal (nanginahanglan og JDK 21+ alang sa emulator):
+
+   ```bash
+   firebase emulators:exec --only firestore --project demo-camiguin \
+     "python3 scripts/test-firestore-rules.py"
+   ```
 2. **Deploy** — `firebase deploy --only firestore:rules`. Modagan lamang kon na-set
    ang `FIREBASE_TOKEN` secret; kon wala, **gilaktawan** kini (dili mo-fail) ug
    ibutang ang pahinumdom sa run summary.
