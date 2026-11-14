@@ -119,29 +119,28 @@ Ang `.github/workflows/firestore-rules.yml` dunay duha ka job:
      "python3 scripts/test-firestore-rules.py"
    ```
 2. **Deploy** — `firebase deploy --only firestore:rules`. Modagan lamang kon na-set
-   ang `FIREBASE_TOKEN` secret; kon wala, **gilaktawan** kini (dili mo-fail) ug
-   ibutang ang pahinumdom sa run summary.
+   ang credential secret; kon wala, **gilaktawan** kini (dili mo-fail) ug ibutang
+   ang pahinumdom sa run summary.
 
-Alang sa awtomatikong deploy, i-generate ang token sa imong machine:
+Pag-set sa credential — **Settings → Secrets and variables → Actions →
+New repository secret**. Mas girekomendar ang service account:
 
-```bash
-firebase login:ci
-```
+| Secret | Unsa kini | Status |
+|---|---|---|
+| `FIREBASE_SERVICE_ACCOUNT` | Ang **tibuok sulod** sa JSON key gikan sa Firebase Console → ⚙️ Project settings → **Service accounts → Generate new private key** | ✅ girekomendar |
+| `FIREBASE_TOKEN` | Token gikan sa `firebase login:ci` | ⚠️ legasiya (deprecated sa Google) |
 
-Dayon **Settings → Secrets and variables → Actions → New repository secret**:
-
-| Secret | Unsa kini |
-|---|---|
-| `FIREBASE_TOKEN` | Ang token gikan sa `firebase login:ci` |
+Kon naa ang duha, `FIREBASE_SERVICE_ACCOUNT` ang gamiton. Ang service account
+nga gi-generate sa Firebase Console duna nay saktong role, busa walay laing
+i-set nga permission.
 
 Ang default nga project naa sa `.firebaserc` (`camiguinmarket`), busa dili na
-kinahanglan ang `--project` matag higayon. Importante: ang token makabag-o sa
-Firebase project, busa i-treat kini isip password ug ayaw kini ibutang sa code.
+kinahanglan ang `--project` matag higayon.
 
-**Alternatibo (mas girekomendar sa Google):** service account key. I-download ang
-JSON key gikan sa **Project settings → Service accounts**, i-save isip
-`GOOGLE_APPLICATION_CREDENTIALS` nga file sa CI, ug ang `firebase deploy` mo-ila
-dayon niini. Ang `FIREBASE_TOKEN` gina-supportahan pa apan legasiya na kini.
+**Importante:** kining duha ka secret naghatag og bug-os nga acesso sa Firebase
+project — i-treat kini isip password. Wala kini i-print sa CI, wala usab kini
+i-commit; ang service account key isulat sa `$RUNNER_TEMP` ra ug papason sa
+runner human sa job.
 
 ## Pagpapas sa account (requirement sa Play Store)
 
