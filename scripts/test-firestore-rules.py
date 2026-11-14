@@ -164,6 +164,70 @@ check("app: query sa account deletion", "GET", "/listings", 200, uid="u1")
 check("app: tag-iya makapapas sa listing", "DELETE", "/listings/appdoc1", 200, uid="u1")
 
 
+# --- cart --------------------------------------------------------------------
+cart_doc = {"fields": {
+    "listingId": {"stringValue": "appdoc1"},
+    "title": {"stringValue": "Saging"},
+    "price": {"doubleValue": 25.5},
+    "sellerId": {"stringValue": "u2"},
+    "quantity": {"integerValue": "1"},
+}}
+check("cart: tag-iya makasulat", "POST", "/carts/u1/items", 200,
+      uid="u1", body=cart_doc, doc_id="appdoc1")
+check("cart: tag-iya makabasa", "GET", "/carts/u1/items", 200, uid="u1")
+check("cart: uban dili makabasa", "GET", "/carts/u1/items", 403, uid="u2")
+check("cart: uban dili makasulat", "POST", "/carts/u1/items", 403,
+      uid="u2", body=cart_doc, doc_id="x")
+
+# --- paborito ----------------------------------------------------------------
+fav_doc = {"fields": {
+    "listingId": {"stringValue": "appdoc1"},
+    "title": {"stringValue": "Saging"},
+    "price": {"doubleValue": 25.5},
+    "createdAt": {"integerValue": "1"},
+}}
+check("paborito: tag-iya makasulat", "POST", "/favorites/u1/items", 200,
+      uid="u1", body=fav_doc, doc_id="appdoc1")
+check("paborito: uban dili makabasa", "GET", "/favorites/u1/items", 403, uid="u2")
+
+# --- notifications -----------------------------------------------------------
+notif_doc = lambda sender: {"fields": {
+    "fromUid": {"stringValue": sender},
+    "fromName": {"stringValue": "Nena"},
+    "message": {"stringValue": "Nena nagdugang sa cart: Saging"},
+    "createdAt": {"integerValue": "1"},
+    "read": {"booleanValue": False},
+}}
+check("notif: makahimo para sa uban", "POST", "/notifications/u2/items", 200,
+      uid="u1", body=notif_doc("u1"), doc_id="n1")
+check("notif: dili makahimo sa ngalan sa uban", "POST", "/notifications/u2/items", 403,
+      uid="u1", body=notif_doc("u9"), doc_id="n2")
+check("notif: tag-iya makabasa", "GET", "/notifications/u2/items", 200, uid="u2")
+check("notif: uban dili makabasa", "GET", "/notifications/u2/items", 403, uid="u1")
+
+# --- chat --------------------------------------------------------------------
+chat_doc = {"fields": {
+    "participants": {"arrayValue": {"values": [
+        {"stringValue": "u1"}, {"stringValue": "u2"}
+    ]}},
+    "updatedAt": {"integerValue": "1"},
+}}
+msg_doc = lambda sender: {"fields": {
+    "from": {"stringValue": sender},
+    "text": {"stringValue": "Pila ang saging?"},
+    "createdAt": {"integerValue": "1"},
+}}
+check("chat: makahimo sa kaugalingong thread", "POST", "/chats", 200,
+      uid="u1", body=chat_doc, doc_id="u1_u2")
+check("chat: participant makabasa", "GET", "/chats/u1_u2", 200, uid="u2")
+check("chat: taga-gawas dili makabasa", "GET", "/chats/u1_u2", 403, uid="u3")
+check("chat: participant makasulat og mensahe", "POST", "/chats/u1_u2/messages", 200,
+      uid="u2", body=msg_doc("u2"), doc_id="m1")
+check("chat: taga-gawas dili makasulat og mensahe", "POST", "/chats/u1_u2/messages", 403,
+      uid="u3", body=msg_doc("u3"), doc_id="m2")
+check("chat: makabasa sa mga mensahe", "GET", "/chats/u1_u2/messages", 200, uid="u1")
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

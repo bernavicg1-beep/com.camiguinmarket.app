@@ -31,6 +31,23 @@ Ang file sa HTML nga gigamit sa Mapbox: `app/src/main/assets/mapbox_map.html`.
   duha ka mapa; ipakita ang gilay-on/oras sa matag usa ug ang ilang kalainan
   (`✅ Duol ra kaayo` kon ≤ 0.5 km). Maayo kini alang sa pagsulay ug pagpares.
 
+## Bag-ong design (mockup)
+
+Asul nga tema, logo header, ug bottom navigation:
+
+| Tab | Unsa ang sulod |
+|---|---|
+| **Home** | Search bar, hero banner, **Shop by Category** grid nga dunay icons, ug **Featured Products** (thumbnail, presyo, lungsod, ♡, `Add to Cart`) |
+| **Categories** | Category grid + filter sa lungsod + list sa mga listing |
+| **Sell** | Moabli sa dialog sa pag-post |
+| **Cart** | Ang mga nadugang sa cart, `+`/`−` sa quantity, total, ug contact sa seller |
+| **Profile** | Ngalan, email, ihap sa imong listing, ❤️ Paborito, Log out, ug 🗑️ Papas sa account |
+
+Dugang pa: **🔔 Notifications** (kon dunay magdugang sa imong listing sa cart o mag-chat) ug
+**💬 Chat sa seller** (thread kada pares sa user). Kini nga mga feature dunay kaugalingong
+Firestore collections: `carts/{uid}/items`, `favorites/{uid}/items`,
+`notifications/{uid}/items`, ug `chats/{chatId}/messages`.
+
 ## Pag-post, pag-edit, ug pagpapas sa listing
 
 - **`+ Baligya`** — mag-post og listing (ngalan, presyo, contact, kategorya, lungsod,
@@ -119,6 +136,11 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
 - **read** — kinahanglan naka-log in (`request.auth != null`).
 - **create / update / delete** — ang tag-iya ra (`sellerId == request.auth.uid`),
   ug dili ma-transfer ang listing ngadto sa laing seller.
+- **carts / favorites** — ang user ra ang makabasa ug makasulat sa kaugalingon.
+- **notifications** — ang tag-iya ra ang makabasa; ang bisan kinsang naka-log in
+  makahimo og notification para sa uban, apan `fromUid` kinahanglan siya gayud.
+- **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
+  nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
 - **default deny** — wala nay laing collection nga gibuksan.
 
 I-deploy ang rules (usa ra ka beses, o kon may kausaban):

@@ -2,6 +2,7 @@ package com.camiguinmarket.app
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.widget.Toast
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,9 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -69,12 +73,7 @@ class MainActivity : ComponentActivity() {
         // ang window aron dili ma-tabunan sa system bars ang sulod.
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = androidx.compose.ui.graphics.Color(0xFF1B7F5C),
-                    secondary = androidx.compose.ui.graphics.Color(0xFFF2A900)
-                )
-            ) {
+            MaterialTheme(colorScheme = marketColorScheme) {
                 Surface(Modifier.fillMaxSize()) { AppRoot() }
             }
         }
@@ -176,6 +175,39 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
 
+    // Navigation ug mga bag-ong feature (mockup): tabs, cart, paborito, notifications, chat.
+    var tab by remember { mutableStateOf(MarketTab.Home) }
+    var overlay by remember { mutableStateOf<String?>(null) }
+    var cartCount by remember { mutableStateOf(0) }
+    var unread by remember { mutableStateOf(0) }
+    var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var chatWith by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var chatListing by remember { mutableStateOf<Listing?>(null) }
+
+    DisposableEffect(Unit) {
+        val reg = db.collection("carts").document(uid).collection("items")
+            .addSnapshotListener { snap, _ ->
+                cartCount = snap?.documents?.sumOf { it.getLong("quantity") ?: 1L }?.toInt() ?: 0
+            }
+        onDispose { reg.remove() }
+    }
+
+    DisposableEffect(Unit) {
+        val reg = db.collection("notifications").document(uid).collection("items")
+            .whereEqualTo("read", false)
+            .addSnapshotListener { snap, _ -> unread = snap?.size() ?: 0 }
+        onDispose { reg.remove() }
+    }
+
+    DisposableEffect(Unit) {
+        val reg = db.collection("favorites").document(uid).collection("items")
+            .addSnapshotListener { snap, _ ->
+                favorites = snap?.documents?.mapNotNull { it.getString("listingId") }?.toSet()
+                    ?: emptySet()
+            }
+        onDispose { reg.remove() }
+    }
+
     DisposableEffect(Unit) {
         val reg = db.collection("listings")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -195,56 +227,137 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Camiguin Market") },
-                actions = {
-                    TextButton(onClick = { showAllMap = true }) { Text("🗺️ Mapa") }
-                    TextButton(onClick = { showCompare = true }) { Text("⚖️ Itandi") }
-                    TextButton(onClick = { showDeleteAccount = true }) { Text("🗑️") }
-                    TextButton(onClick = onLogout) { Text("Log out") }
+            if (overlay == null) {
+                BrandHeader(
+                    cartCount = cartCount,
+                    unreadCount = unread,
+                    onCart = { tab = MarketTab.Cart },
+                    onNotifications = { overlay = "notifications" }
+                )
+            } else {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { overlay = null }) {
+                        Text("←", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Text(
+                        when (overlay) {
+                            "favorites" -> "Paborito"
+                            "notifications" -> "Notifications"
+                            else -> "Chat"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-            )
+            }
+        },
+        bottomBar = {
+            if (overlay == null) {
+                BottomNavBar(tab, cartCount) { picked ->
+                    if (picked == MarketTab.Sell) showPost = true else tab = picked
+                }
+            }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Baligya") }
+            if (overlay == null && tab == MarketTab.Home) {
+                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Baligya") }
+            }
         }
     ) { pad ->
-        Column(Modifier.padding(pad).padding(horizontal = 12.dp).navigationBarsPadding()) {
-            OutlinedTextField(
-                query, { query = it }, label = { Text("Pangita…") },
-                singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
-            ChipRow(categories, category) { category = it }
-            ChipRow(listOf("Tanan") + towns, town) { town = it }
-            if (filtered.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Wala pay listing. Pindota ang + Baligya!")
+        Box(Modifier.padding(pad)) {
+            when (overlay) {
+                "favorites" -> FavoritesScreen(uid) { id ->
+                    overlay = null
+                    listings.firstOrNull { it.id == id }?.let { selected = it }
                 }
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(filtered, key = { it.id }) { l ->
-                        Card(onClick = { selected = l }, modifier = Modifier.fillMaxWidth()) {
-                            Row(
-                                Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (l.imageUrl.isNotBlank()) {
-                                    RemoteImage(
-                                        url = l.imageUrl,
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                }
-                                Column {
-                                    Text(l.title, style = MaterialTheme.typography.titleMedium)
-                                    Text("₱%.2f".format(l.price), color = MaterialTheme.colorScheme.primary)
-                                    Text("${l.category} • ${l.town}", style = MaterialTheme.typography.bodySmall)
-                                }
+
+                "notifications" -> NotificationsScreen(uid)
+
+                "chat" -> chatWith?.let { (otherId, otherName) ->
+                    ChatScreen(uid, otherId, otherName, chatListing?.title ?: "")
+                }
+
+                else -> when (tab) {
+                    MarketTab.Home -> HomeTab(
+                        query = query,
+                        onQuery = { query = it },
+                        category = category,
+                        onCategory = { category = it },
+                        listings = filtered,
+                        favorites = favorites,
+                        onOpen = { selected = it },
+                        onFavorite = { l -> toggleFavorite(db, uid, l) { } },
+                        onAddToCart = { l ->
+                            addToCart(db, uid, l, displayName) { err ->
+                                Toast.makeText(
+                                    context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onAllCategories = { tab = MarketTab.Categories },
+                        onMap = { showAllMap = true },
+                        onCompare = { showCompare = true },
+                        onSell = { showPost = true }
+                    )
+
+                    MarketTab.Categories -> CategoriesTab(
+                        category = category,
+                        onCategory = { category = it },
+                        town = town,
+                        onTown = { town = it },
+                        listings = filtered,
+                        favorites = favorites,
+                        onOpen = { selected = it },
+                        onFavorite = { l -> toggleFavorite(db, uid, l) { } },
+                        onAddToCart = { l ->
+                            addToCart(db, uid, l, displayName) { err ->
+                                Toast.makeText(
+                                    context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                ).show()
                             }
                         }
-                    }
+                    )
+
+                    MarketTab.Cart -> CartScreen(uid) { tab = MarketTab.Home }
+
+                    MarketTab.Profile -> ProfileScreen(
+                        uid = uid,
+                        displayName = displayName,
+                        email = auth.currentUser?.email ?: "",
+                        myListings = listings.filter { it.sellerId == uid },
+                        onFavorites = { overlay = "favorites" },
+                        onLogout = onLogout,
+                        onDeleteAccount = { showDeleteAccount = true }
+                    )
+
+                    MarketTab.Sell -> HomeTab(
+                        query = query,
+                        onQuery = { query = it },
+                        category = category,
+                        onCategory = { category = it },
+                        listings = filtered,
+                        favorites = favorites,
+                        onOpen = { selected = it },
+                        onFavorite = { l -> toggleFavorite(db, uid, l) { } },
+                        onAddToCart = { l ->
+                            addToCart(db, uid, l, displayName) { err ->
+                                Toast.makeText(
+                                    context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onAllCategories = { tab = MarketTab.Categories },
+                        onMap = { showAllMap = true },
+                        onCompare = { showCompare = true },
+                        onSell = { showPost = true }
+                    )
                 }
             }
         }
@@ -289,6 +402,28 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                     Text("Contact: ${l.contact}")
                     Spacer(Modifier.height(8.dp))
                     Text("Pickup location: ${coordinatesLabel(l) ?: "wala pa ma-set"}")
+
+                    if (l.sellerId != uid) {
+                        Button(
+                            onClick = {
+                                addToCart(db, uid, l, displayName) { err ->
+                                    Toast.makeText(
+                                        context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("🛒 Add to Cart") }
+                        OutlinedButton(
+                            onClick = {
+                                chatListing = l
+                                chatWith = l.sellerId to l.sellerName
+                                selected = null
+                                overlay = "chat"
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("💬 Chat sa seller") }
+                    }
 
                     if (sellerLat != null && sellerLng != null) {
                         Button(

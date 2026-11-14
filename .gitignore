@@ -22,3 +22,7 @@ captures/
 # Cloudflare Wrangler local state
 worker/.wrangler/
 node_modules/
+
+# Python
+__pycache__/
+*.pyc
