@@ -297,6 +297,45 @@ check("mod: listing para sa non-admin delete", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="mod2")
 check("mod: dili-admin dili makapapas (2)", "DELETE", "/listings/mod2", 403, uid="u3")
 
+# --- reports -----------------------------------------------------------------
+def report_doc(listing_id, reporter, reason="Scam o pangilad"):
+    return {"fields": {
+        "listingId": {"stringValue": listing_id},
+        "listingTitle": {"stringValue": "Saging"},
+        "sellerId": {"stringValue": "u2"},
+        "sellerName": {"stringValue": "Nena"},
+        "reporterUid": {"stringValue": reporter},
+        "reporterName": {"stringValue": "Juan"},
+        "reason": {"stringValue": reason},
+        "note": {"stringValue": "Dili tinuod ang presyo."},
+        "status": {"stringValue": "open"},
+        "createdAt": {"integerValue": "1"},
+    }}
+
+
+check("report: naka-log in makahimo", "POST", "/reports", 200,
+      uid="u1", body=report_doc("appdoc1", "u1"), doc_id="rep1")
+check("report: dili makahimo sa ngalan sa uban", "POST", "/reports", 403,
+      uid="u1", body=report_doc("appdoc1", "u3"), doc_id="rep2")
+check("report: duha ka report alang sa listahan", "POST", "/reports", 200,
+      uid="u2", body=report_doc("appdoc1", "u2"), doc_id="rep3")
+check("report: reporter makabasa sa kaugalingon", "GET", "/reports/rep1", 200, uid="u1")
+check("report: laing user dili makabasa", "GET", "/reports/rep1", 403, uid="u2")
+check("report: admin makabasa", "GET", "/reports/rep1", 200, uid="admin1")
+check("report: admin makalista", "GET", "/reports", 200, uid="admin1")
+check("report: dili-admin dili maka-update", "PATCH", "/reports/rep1", 403,
+      uid="u1", body=report_doc("appdoc1", "u1"))
+
+
+def _resolved(doc):
+    doc = json.loads(json.dumps(doc))
+    doc["fields"]["status"] = {"stringValue": "resolved"}
+    return doc
+
+
+check("report: admin maka-resolve", "PATCH", "/reports/rep1", 200,
+      uid="admin1", body=_resolved(report_doc("appdoc1", "u1")))
+
 
 def main():
     failures = 0

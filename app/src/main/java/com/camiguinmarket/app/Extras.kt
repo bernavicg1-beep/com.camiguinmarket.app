@@ -2,6 +2,8 @@ package com.camiguinmarket.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
@@ -366,8 +369,27 @@ fun IconTextButton(icon: ImageVector, badge: Int, onClick: () -> Unit) {
     }
 }
 
+/** Recent searches: tipigan sa device aron dali makabalik ang user. */
+private fun searchPrefs(context: Context) =
+    context.getSharedPreferences("search_cache", Context.MODE_PRIVATE)
+
+fun loadRecentSearches(context: Context): List<String> =
+    searchPrefs(context).getString("recent", null)
+        ?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+
+fun addRecentSearch(context: Context, q: String) {
+    val clean = q.trim()
+    if (clean.isBlank()) return
+    val list = (listOf(clean) + loadRecentSearches(context).filter { it != clean }).take(8)
+    searchPrefs(context).edit().putString("recent", list.joinToString("\n")).apply()
+}
+
+fun clearRecentSearches(context: Context) {
+    searchPrefs(context).edit().remove("recent").apply()
+}
+
 @Composable
-fun SearchBar(query: String, onQuery: (String) -> Unit) {
+fun SearchBar(query: String, onQuery: (String) -> Unit, onSubmit: () -> Unit = {}) {
     OutlinedTextField(
         value = query,
         onValueChange = onQuery,
@@ -375,6 +397,8 @@ fun SearchBar(query: String, onQuery: (String) -> Unit) {
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         singleLine = true,
         shape = RoundedCornerShape(24.dp),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
         modifier = Modifier.fillMaxWidth()
     )
 }
@@ -1128,7 +1152,61 @@ fun HomeTab(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item { SearchBar(query, onQuery) }
+        item {
+            val ctx = LocalContext.current
+            var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }
+            Column {
+                SearchBar(
+                    query = query,
+                    onQuery = onQuery,
+                    onSubmit = {
+                        addRecentSearch(ctx, query)
+                        recent = loadRecentSearches(ctx)
+                    }
+                )
+                val suggestions = if (query.isBlank()) emptyList() else listings
+                    .map { it.title }
+                    .distinct()
+                    .filter { it.contains(query, true) && it != query }
+                    .take(5)
+                when {
+                    query.isBlank() && recent.isNotEmpty() -> Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Bag-ong gipangita", style = MaterialTheme.typography.labelSmall)
+                            TextButton(onClick = {
+                                clearRecentSearches(ctx)
+                                recent = emptyList()
+                            }) { Text("Klarohon") }
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(recent) { r ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { onQuery(r) },
+                                    label = { Text(r) }
+                                )
+                            }
+                        }
+                    }
+
+                    suggestions.isNotEmpty() -> LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(suggestions) { s ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    onQuery(s)
+                                    addRecentSearch(ctx, s)
+                                    recent = loadRecentSearches(ctx)
+                                },
+                                label = { Text(s) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         item { HeroBanner() }
         item {
             SectionTitle("Shop by Category") {

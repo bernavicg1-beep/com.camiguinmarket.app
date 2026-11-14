@@ -40,6 +40,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
     val db = remember { FirebaseFirestore.getInstance() }
     var listings by remember { mutableStateOf<List<Listing>>(emptyList()) }
     var toDelete by remember { mutableStateOf<Listing?>(null) }
+    var showReports by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val reg = db.collection("listings")
@@ -66,7 +67,24 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
             "${listings.size} ka listing sa tanan. Pilia ang angay papason.",
             style = MaterialTheme.typography.labelSmall
         )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !showReports,
+                onClick = { showReports = false },
+                label = { Text("Mga Listing") }
+            )
+            FilterChip(
+                selected = showReports,
+                onClick = { showReports = true },
+                label = { Text("Mga Report") }
+            )
+        }
         Spacer(Modifier.height(8.dp))
+        if (showReports) {
+            ReportsList(uid)
+            return@Column
+        }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(listings, key = { it.id }) { l ->
@@ -139,5 +157,73 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                 TextButton(onClick = { toDelete = null }) { Text("Dili") }
             }
         )
+    }
+}
+
+/** Lista sa mga report; admin ra ang makakita (rules: `allow read: if isAdmin()`). */
+@Composable
+fun ReportsList(uid: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var reports by remember { mutableStateOf<List<Report>>(emptyList()) }
+
+    DisposableEffect(Unit) {
+        val reg = db.collection("reports")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(50)
+            .addSnapshotListener { snap, _ ->
+                reports = snap?.documents.orEmpty().mapNotNull { d ->
+                    d.toObject(Report::class.java)?.copy(id = d.id)
+                }
+            }
+        onDispose { reg.remove() }
+    }
+
+    if (reports.isEmpty()) {
+        Text("Walay report nga nadawat.")
+        return
+    }
+
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(reports, key = { it.id }) { r ->
+            Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(10.dp)) {
+                    Text(
+                        r.listingTitle,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text("Rason: ${r.reason}", style = MaterialTheme.typography.labelSmall)
+                    if (r.note.isNotBlank()) {
+                        Text("\"${r.note}\"", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        "gi-report ni ${r.reporterName} • ${r.status}",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    if (r.status == "open") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                db.collection("listings").document(r.listingId).delete()
+                                db.collection("reports").document(r.id)
+                                    .update("status", "resolved")
+                                notifyUser(
+                                    db = db,
+                                    toUid = r.sellerId,
+                                    fromUid = uid,
+                                    fromName = "Moderator",
+                                    message = "Gi-remove sa moderator ang listing: ${r.listingTitle}"
+                                        .take(190)
+                                )
+                            }) { Text("Papas ang listing", color = Color(0xFFE53935)) }
+                            TextButton(onClick = {
+                                db.collection("reports").document(r.id)
+                                    .update("status", "dismissed")
+                            }) { Text("Dismiss") }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

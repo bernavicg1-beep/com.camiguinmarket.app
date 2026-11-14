@@ -28,6 +28,8 @@ service cloud.firestore {
         && data.price >= 0
         && data.contact is string
         && data.contact.size() <= 60
+        // Optional ang daghang litrato (max 6).
+        && (!('imageUrls' in data) || data.imageUrls.size() <= 6)
         // Optional ang pickup coordinates, apan kon naa kinahanglan numero.
         && (!('latitude' in data) || data.latitude == null || data.latitude is number)
         && (!('longitude' in data) || data.longitude == null || data.longitude is number);
@@ -87,6 +89,27 @@ service cloud.firestore {
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0
         && request.resource.data.message.size() <= 200;
+    }
+
+    // Reports: ang bisan kinsang naka-log in makahimo sa iyang kaugalingong
+    // report; ang reporter ug ang admin ra ang makabasa; admin ra ang maka-update.
+    match /reports/{reportId} {
+      allow create: if request.auth != null
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 80
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 500
+        && request.resource.data.status == "open";
+
+      // Duha ka linya aron makahimo ang admin og walay-filter nga query.
+      allow read: if isAdmin();
+      allow read: if request.auth != null
+        && resource.data.reporterUid == request.auth.uid;
+
+      allow update: if isAdmin();
+      allow delete: if false;
     }
 
     // Orders: ang buyer makahimo; ang buyer ug ang seller ra ang makabasa.

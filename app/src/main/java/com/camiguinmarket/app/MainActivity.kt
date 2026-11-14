@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -64,7 +65,9 @@ data class Listing(
     val latitude: Double? = null,
     val longitude: Double? = null,
     // Download URL sa litrato sa Firebase Storage ("" = walay litrato).
-    val imageUrl: String = ""
+    val imageUrl: String = "",
+    // Tanan nga litrato (ang `imageUrl` mao ang una, alang sa daan nga cards).
+    val imageUrls: List<String> = emptyList()
 )
 
 class MainActivity : ComponentActivity() {
@@ -184,6 +187,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
     var chatWith by remember { mutableStateOf<Pair<String, String>?>(null) }
     var chatListing by remember { mutableStateOf<Listing?>(null) }
+    var reportListing by remember { mutableStateOf<Listing?>(null) }
     var chatUnread by remember { mutableStateOf(0) }
     var orderDetail by remember { mutableStateOf<Order?>(null) }
     var isAdmin by remember { mutableStateOf(false) }
@@ -433,6 +437,13 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
         }
     }
 
+    reportListing?.let { l ->
+        ReportDialog(l, uid, displayName) {
+            reportListing = null
+            Toast.makeText(context, "Nadawat ang report. Salamat!", Toast.LENGTH_LONG).show()
+        }
+    }
+
     if (showPost) PostDialog(uid, displayName, db) { showPost = false }
     editListing?.let { l ->
         PostDialog(uid, displayName, db, existing = l) { editListing = null }
@@ -472,14 +483,29 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             title = { Text(l.title) },
             text = {
                 Column {
-                    if (l.imageUrl.isNotBlank()) {
-                        RemoteImage(
-                            url = l.imageUrl,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                        )
+                    val photos = l.imageUrls.takeIf { it.isNotEmpty() }
+                        ?: listOfNotNull(l.imageUrl.takeIf { it.isNotBlank() })
+                    if (photos.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            photos.forEach { url ->
+                                RemoteImage(
+                                    url = url,
+                                    modifier = Modifier
+                                        .width(if (photos.size == 1) 300.dp else 150.dp)
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            }
+                        }
+                        if (photos.size > 1) {
+                            Text(
+                                "${photos.size} ka litrato — i-scroll pakanan",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                     }
                     Text("₱%.2f".format(l.price), style = MaterialTheme.typography.titleMedium)
@@ -511,6 +537,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Chat sa seller") }
+                        TextButton(
+                            onClick = { reportListing = l },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("I-report kini nga listing", color = Color(0xFFE53935)) }
                     }
 
                     if (sellerLat != null && sellerLng != null) {
@@ -647,23 +677,29 @@ fun PostDialog(
     // Litrato sa listing: pilion gikan sa gallery, i-upload sa Firebase Storage.
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var imageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var previews by remember { mutableStateOf<List<ImageBitmap>>(emptyList()) }
     var uploading by remember { mutableStateOf(false) }
     var uploadError by remember { mutableStateOf<String?>(null) }
 
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            imageUri = uri
+    // Makapili og daghan ka litrato (max 6).
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) {
+            imageUris = uris.take(6)
             uploadError = null
         }
     }
 
-    LaunchedEffect(imageUri) {
-        preview = imageUri?.let { decodeImageBitmap(context, it) }
+    LaunchedEffect(imageUris) {
+        previews = imageUris.mapNotNull { decodeImageBitmap(context, it) }
     }
 
-    fun saveListing(imageUrl: String) {
+    val existingPhotos = remember(existing) {
+        existing?.imageUrls?.takeIf { it.isNotEmpty() }
+            ?: listOfNotNull(existing?.imageUrl?.takeIf { !it.isNullOrBlank() })
+    }
+
+    fun saveListing(imageUrls: List<String>) {
         val ref = if (existing == null) {
             db.collection("listings").document()
         } else {
@@ -680,7 +716,8 @@ fun PostDialog(
                 createdAt = existing?.createdAt?.takeIf { it > 0 }
                     ?: System.currentTimeMillis(),
                 latitude = pickup?.latitude, longitude = pickup?.longitude,
-                imageUrl = imageUrl
+                imageUrl = imageUrls.firstOrNull() ?: "",
+                imageUrls = imageUrls
             )
         )
         onClose()
@@ -720,27 +757,45 @@ fun PostDialog(
                 Spacer(Modifier.height(8.dp))
                 Text("Litrato", style = MaterialTheme.typography.labelMedium)
                 when {
-                    preview != null -> Image(
-                        bitmap = preview!!,
-                        contentDescription = "Bag-ong litrato sa listing",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                    )
+                    previews.isNotEmpty() -> Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        previews.forEach { bmp ->
+                            Image(
+                                bitmap = bmp,
+                                contentDescription = "Bag-ong litrato sa listing",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(92.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+                    }
 
-                    existing?.imageUrl?.isNotBlank() == true -> RemoteImage(
-                        url = existing.imageUrl,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                    )
+                    existingPhotos.isNotEmpty() -> Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        existingPhotos.forEach { url ->
+                            RemoteImage(
+                                url = url,
+                                modifier = Modifier
+                                    .size(92.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+                    }
 
                     else -> Text(
                         "Wala pay litrato.",
                         style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                if (imageUris.isNotEmpty()) {
+                    Text(
+                        "${imageUris.size} ka bag-ong litrato ang mapuli sa daan.",
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
                 OutlinedButton(
@@ -749,19 +804,22 @@ fun PostDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (preview != null || existing?.imageUrl?.isNotBlank() == true)
-                            "🖼️ Ilisi ang litrato" else "📷 Pumili og litrato"
+                        if (previews.isNotEmpty() || existingPhotos.isNotEmpty())
+                            "🖼️ Ilisi ang mga litrato" else "📷 Pumili og mga litrato (max 6)"
                     )
                 }
-                if (preview != null) {
+                if (previews.isNotEmpty()) {
                     TextButton(
-                        onClick = { imageUri = null; preview = null },
+                        onClick = { imageUris = emptyList(); previews = emptyList() },
                         enabled = !uploading
-                    ) { Text("Tangtanga ang bag-ong litrato") }
+                    ) { Text("Tangtanga ang bag-ong mga litrato") }
                 }
                 if (uploading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Gi-upload ang litrato…", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Gi-upload ang mga litrato (${imageUris.size})…",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 uploadError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error)
@@ -773,11 +831,11 @@ fun PostDialog(
                 enabled = !uploading && title.isNotBlank() &&
                     price.toDoubleOrNull() != null && contact.isNotBlank(),
                 onClick = {
-                    val picked = imageUri
+                    val picked = imageUris
                     val baseUrl = BuildConfig.R2_UPLOAD_URL
                     when {
                         // Walay bag-ong litrato: tipigan ang daan (kon edit).
-                        picked == null -> saveListing(existing?.imageUrl ?: "")
+                        picked.isEmpty() -> saveListing(existingPhotos)
 
                         baseUrl.isBlank() -> {
                             uploadError = "Wala ma-set ang R2_UPLOAD_URL " +
@@ -802,14 +860,14 @@ fun PostDialog(
                                             scope.launch {
                                                 val result = withContext(Dispatchers.IO) {
                                                     runCatching {
-                                                        uploadListingImage(
-                                                            context, baseUrl, token, picked
-                                                        )
+                                                        picked.map { uri ->
+                                                            uploadListingImage(context, baseUrl, token, uri)
+                                                        }
                                                     }
                                                 }
                                                 uploading = false
                                                 result
-                                                    .onSuccess { url -> saveListing(url) }
+                                                    .onSuccess { urls -> saveListing(urls) }
                                                     .onFailure {
                                                         uploadError = it.localizedMessage
                                                             ?: "Napakyas ang pag-upload sa litrato."

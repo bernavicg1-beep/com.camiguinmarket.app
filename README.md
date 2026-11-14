@@ -87,6 +87,23 @@ nga screen: tanang listing, ug makapapas ang moderator og bisan unsang listing
 `active` (boolean) = `true`. Wala kini UI sa app kay dili buot nga makahimo ang
 bisan kinsa og moderator; ang `admins` gina-block sa rules (`allow write: if false`).
 
+### Report sa listing
+
+Ang detalye sa listing dunay **I-report kini nga listing** (sa mga listing sa uban).
+Makapili ang user og rason (Dili tinuod, Scam o pangilad, Dili angay nga sulod,
+Sayop nga category, Uban pa) ug opsyonal nga detalye. Ang admin makakita niini sa
+**Moderation → Mga Report** ug makapili: **Papas ang listing** (ma-resolve ang report)
+o kaha **Dismiss**. Ang reporter ra ug ang admin ang makabasa sa report.
+
+### Search suggestions ug daghang litrato
+
+- Ang **SearchBar** dunay **recent searches** (8 ka pinakabag-o, gina-save sa device)
+  ug **suggestions** gikan sa mga titulo sa listing samtang nag-type. Pindot sa
+  keyboard search aron ma-save ang gipangita.
+- Ang usa ka listing makadala na og **hangtod 6 ka litrato** (`imageUrls`). Ang
+  upload sunod-sunod ug ang `imageUrl` mao gihapon ang unang litrato alang sa mga
+  card. Ang detalye dunay horizontal scroll sa mga litrato.
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
@@ -190,6 +207,8 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
   maka-update sa status; ang buyer makakanselar (`pending` → `cancelled`) ra.
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
+- **reports** — makahimo ang bisan kinsang naka-log in sa iyang kaugalingong
+  report; ang reporter ug ang admin ra ang makabasa; admin ra ang maka-update.
 - **admins** — mabasa sa naka-log in (aron ma-check sa app) apan `write: if false`,
   ug ang `isAdmin()` makapapas og listing.
 - **default deny** — wala nay laing collection nga gibuksan.
