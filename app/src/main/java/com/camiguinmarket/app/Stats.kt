@@ -53,7 +53,7 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
         )
         Spacer(Modifier.height(8.dp))
         if (myListings.isNotEmpty()) {
-            ViewsChart(myListings)
+            ViewsChart(mergedViews(myListings), "Tanang listing • kataposang 7 ka adlaw")
             Spacer(Modifier.height(8.dp))
         }
 
@@ -66,7 +66,12 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
             items(myListings, key = { it.id }) { l ->
                 val cartAdds = l.cartAdds
                 val orderCount = ordersByListing[l.id] ?: 0
-                Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                var expanded by remember(l.id) { mutableStateOf(false) }
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { expanded = !expanded }
+                ) {
                     Column(Modifier.padding(12.dp)) {
                         Text(
                             l.title,
@@ -84,6 +89,15 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
                             StatCard("$cartAdds", "🛒 Cart", Modifier.weight(1f))
                             StatCard("$orderCount", "📦 Order", Modifier.weight(1f))
                         }
+                        Text(
+                            if (expanded) "Pindota aron matago ang chart" else "Pindota aron makita ang chart",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        if (expanded) {
+                            Spacer(Modifier.height(8.dp))
+                            ViewsChart(l.viewsByDay, "Kini nga listing • kataposang 7 ka adlaw")
+                        }
                     }
                 }
             }
@@ -91,16 +105,23 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
     }
 }
 
-/** Bar chart sa views kada adlaw (7 ka adlaw) alang sa tanang listing sa seller. */
+/** I-merge ang viewsByDay sa daghang listing (total sa tindahan). */
+fun mergedViews(listings: List<Listing>): Map<String, Long> {
+    val out = mutableMapOf<String, Long>()
+    listings.forEach { l -> l.viewsByDay.forEach { (d, v) -> out[d] = (out[d] ?: 0L) + v } }
+    return out
+}
+
+/** Bar chart sa views kada adlaw (7 ka adlaw) alang sa usa ka listing o tibuok tindahan. */
 @Composable
-fun ViewsChart(myListings: List<Listing>) {
+fun ViewsChart(viewsByDay: Map<String, Long>, subtitle: String = "Kataposang 7 ka adlaw") {
     val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
     val days = (6 downTo 0).map { offset ->
         val c = java.util.Calendar.getInstance()
         c.add(java.util.Calendar.DAY_OF_YEAR, -offset)
         fmt.format(c.time)
     }
-    val totals = days.map { d -> myListings.sumOf { it.viewsByDay[d] ?: 0L } }
+    val totals = days.map { d -> viewsByDay[d] ?: 0L }
     val max = (totals.maxOrNull() ?: 0L).coerceAtLeast(1L)
 
     Card(
@@ -109,7 +130,7 @@ fun ViewsChart(myListings: List<Listing>) {
     ) {
         Column(Modifier.padding(12.dp)) {
             Text("Views kada adlaw", fontWeight = FontWeight.Bold)
-            Text("Kataposang 7 ka adlaw", style = MaterialTheme.typography.labelSmall)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.height(8.dp))
             Canvas(Modifier.fillMaxWidth().height(110.dp)) {
                 val slot = size.width / days.size

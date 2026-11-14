@@ -177,9 +177,14 @@ ug mabasa kini sa bisan kinsang naka-log in.
   sa cache ug moabli sa Android share sheet (`FileProvider`).
 - **Push notifications (FCM):** ang app nag-register sa token ngadto sa
   `users/{uid}/tokens/{token}` ug dunay `MarketMessagingService` nga magpakita sa
-  notification. **Ang pagpadala niini nagkinahanglan og backend/Cloud Function**
-  nga dunay service account kay wala kini server sa repo — andam na ang app sa
-  pagdawat, apan dili pa kini makapadala.
+  notification. Ang pagpadala naa sa **[`functions/`](functions/)** —
+  `onOrderCreated`, `onOrderStatus` ug `onChatMessage`. Wala kini ma-deploy dinhi
+  (gikinahanglan og Blaze plan ug `firebase deploy --only functions`).
+- **CSV filter:** ang Orders screen dunay filter sa **petsa** (Tanan / 7 / 30 ka
+  adlaw) ug sa **status**, ug ang CSV nag-export sa nahisubo ra nga mga order
+  (`CSV (n)`).
+- Ang matag listing sa Stats screen **mapindot** aron makita ang kaugalingong
+  7-day views chart.
 
 ### Share ug offline cart
 

@@ -3,6 +3,7 @@ package com.camiguinmarket.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -109,6 +110,9 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
     var asBuyer by remember { mutableStateOf(true) }
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    // Filter sa lista ug sa CSV: 0 = tanan ka adlaw, "" = tanang status.
+    var rangeDays by remember { mutableStateOf(0) }
+    var statusFilter by remember { mutableStateOf("") }
 
     DisposableEffect(asBuyer) {
         loading = true
@@ -124,6 +128,12 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
         onDispose { reg.remove() }
     }
 
+    val cutoff = if (rangeDays == 0) 0L
+    else System.currentTimeMillis() - rangeDays * 24L * 60L * 60L * 1000L
+    val visible = orders.filter { o ->
+        o.createdAt >= cutoff && (statusFilter.isBlank() || o.status == statusFilter)
+    }
+
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.ReceiptLong, contentDescription = null, tint = BrandBlue)
@@ -131,8 +141,11 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
             Text("Mga Order", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             val ctx = androidx.compose.ui.platform.LocalContext.current
-            TextButton(onClick = { shareOrdersCsv(ctx, orders) }) {
-                Text("CSV", style = MaterialTheme.typography.labelMedium)
+            TextButton(
+                onClick = { shareOrdersCsv(ctx, visible) },
+                enabled = visible.isNotEmpty()
+            ) {
+                Text("CSV (${visible.size})", style = MaterialTheme.typography.labelMedium)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -148,19 +161,51 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                 label = { Text("Ako ang gibaligya") }
             )
         }
+        Spacer(Modifier.height(4.dp))
+        // Filter sa petsa (gina-apply sa lista ug sa CSV export).
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(listOf(0 to "Tanan", 7 to "7 ka adlaw", 30 to "30 ka adlaw")) { (days, label) ->
+                FilterChip(
+                    selected = rangeDays == days,
+                    onClick = { rangeDays = days },
+                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+        // Filter sa status.
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val statuses = listOf(
+                "" to "Tanan status",
+                "pending" to "Pending",
+                "confirmed" to "Gikumpirma",
+                "done" to "Tapos",
+                "cancelled" to "Gikansela"
+            )
+            items(statuses) { (value, label) ->
+                FilterChip(
+                    selected = statusFilter == value,
+                    onClick = { statusFilter = value },
+                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
 
-            orders.isEmpty() -> Text(
-                if (asBuyer) "Wala pa kay order." else "Wala pay order nga nadawat.",
+            visible.isEmpty() -> Text(
+                if (orders.isEmpty()) {
+                    if (asBuyer) "Wala pa kay order." else "Wala pay order nga nadawat."
+                } else {
+                    "Walay order nga nahisubo sa filter."
+                },
                 style = MaterialTheme.typography.bodyMedium
             )
 
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(orders, key = { it.id }) { order ->
+                items(visible, key = { it.id }) { order ->
                     Card(
                         onClick = { onOpen(order) },
                         shape = RoundedCornerShape(14.dp),

@@ -26,3 +26,6 @@ node_modules/
 # Python
 __pycache__/
 *.pyc
+
+# Cloud Functions
+functions/node_modules/
