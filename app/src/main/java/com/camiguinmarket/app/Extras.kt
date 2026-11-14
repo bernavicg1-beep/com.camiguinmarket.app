@@ -1,6 +1,8 @@
 package com.camiguinmarket.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -46,6 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
@@ -247,6 +252,10 @@ data class ChatMessage(
 )
 
 fun chatIdFor(a: String, b: String): String = if (a < b) "${a}_$b" else "${b}_$a"
+
+/** Oras sa mensahe, pananglitan "7:42 PM". */
+fun chatTime(ts: Long): String =
+    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ts))
 
 fun ensureChat(db: FirebaseFirestore, uid: String, otherUid: String, otherName: String, listingTitle: String) {
     val id = chatIdFor(uid, otherUid)
@@ -774,13 +783,31 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     val db = remember { FirebaseFirestore.getInstance() }
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var text by remember { mutableStateOf("") }
+    // Kataposang oras nga giablihan/nabasahan sa pikas ang thread.
+    var otherRead by remember { mutableStateOf(0L) }
     val chatId = remember(otherUid) { chatIdFor(uid, otherUid) }
 
     LaunchedEffect(chatId) {
         ensureChat(db, uid, otherUid, otherName, listingTitle)
-        // Giablihan na ang thread: klarohon ang akong unread count.
-        db.collection("chats").document(chatId)
-            .update("unread.$uid", 0)
+    }
+
+    // Markahan nga nabasa samtang bukas ang thread (unread = 0, read receipt).
+    LaunchedEffect(chatId, messages.size) {
+        db.collection("chats").document(chatId).update(
+            mapOf(
+                "unread.$uid" to 0,
+                "lastRead.$uid" to System.currentTimeMillis()
+            )
+        )
+    }
+
+    DisposableEffect(chatId) {
+        val reg = db.collection("chats").document(chatId)
+            .addSnapshotListener { snap, _ ->
+                otherRead = ((snap?.get("lastRead") as? Map<*, *>)?.get(otherUid) as? Number)
+                    ?.toLong() ?: 0L
+            }
+        onDispose { reg.remove() }
     }
 
     DisposableEffect(chatId) {
@@ -814,11 +841,30 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                         color = if (m.from == uid) BrandBlue else BrandSky,
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(
-                            m.text,
-                            color = if (m.from == uid) Color.White else Color.Black,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
+                        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                            Text(
+                                m.text,
+                                color = if (m.from == uid) Color.White else Color.Black
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    chatTime(m.createdAt),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (m.from == uid) Color.White.copy(alpha = 0.8f)
+                                    else Color.Gray
+                                )
+                                if (m.from == uid) {
+                                    Spacer(Modifier.width(4.dp))
+                                    val seen = m.createdAt <= otherRead
+                                    Text(
+                                        if (seen) "✓✓" else "✓",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (seen) Color(0xFF90CAF9)
+                                        else Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -859,7 +905,7 @@ fun ProfileScreen(
     onDeleteAccount: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxSize().padding(16.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -886,6 +932,10 @@ fun ProfileScreen(
                 Modifier.weight(1f)
             )
         }
+        Spacer(Modifier.height(12.dp))
+
+        SellerStats(uid)
+
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

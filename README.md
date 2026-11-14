@@ -60,6 +60,11 @@ Ang mga icon Material icons na (`material-icons-extended`), dili na emoji.
 - Ang **chat unread badge** makita sa chat icon sa header. Ang unread gina-track sa
   `chats/{chatId}.unread.{uid}` — modaghan kon dunay mosulat ug mobalik sa 0 kon
   ablihan ang thread.
+- Kon ang seller mo-kumpirma o mo-tapos, **makadawat og notification ang buyer**.
+- Ang Profile dunay **Baligya** nga summary sa seller: kita (mga order nga `done`),
+  bag-o, gikumpirma, ug tapos.
+- Ang mga mensahe dunay oras (`7:42 PM`) ug **read receipt**: `✓` kon na-send pa lang,
+  `✓✓` kon nabasa na sa pikas (`chats/{chatId}.lastRead.{uid}`).
 - Walay composite index nga gikinahanglan: `whereEqualTo` ra ang query ug i-sort sa app.
 
 Kini nga mga feature dunay kaugalingong Firestore collections: `carts/{uid}/items`,

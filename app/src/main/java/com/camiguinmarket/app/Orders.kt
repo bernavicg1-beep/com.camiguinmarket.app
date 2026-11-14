@@ -194,8 +194,8 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit) {
                             SellerActions(
                                 status = order.status,
                                 modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
-                                onConfirm = { updateOrderStatus(db, order.id, "confirmed") },
-                                onDone = { updateOrderStatus(db, order.id, "done") }
+                                onConfirm = { updateOrderStatus(db, order, "confirmed") },
+                                onDone = { updateOrderStatus(db, order, "done") }
                             )
                         }
                       }
@@ -226,8 +226,64 @@ fun StatusChip(status: String) {
 }
 
 /** Ang seller ra ang makagamit niini (gitugotan sa Firestore rules). */
-fun updateOrderStatus(db: FirebaseFirestore, orderId: String, status: String) {
-    db.collection("orders").document(orderId).update("status", status)
+fun updateOrderStatus(db: FirebaseFirestore, order: Order, status: String) {
+    db.collection("orders").document(order.id).update("status", status)
+    val action = when (status) {
+        "confirmed" -> "gikumpirma"
+        "done" -> "natapos"
+        else -> "gi-update"
+    }
+    // Pahibaloon dayon ang buyer.
+    notifyUser(
+        db = db,
+        toUid = order.buyerId,
+        fromUid = order.sellerId,
+        fromName = order.sellerName,
+        message = "${order.sellerName} $action ang imong order: ${order.listingTitle}".take(190)
+    )
+}
+
+/** Sales summary sa seller: kita, bag-o, gikumpirma, tapos. */
+@Composable
+fun SellerStats(uid: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
+
+    DisposableEffect(uid) {
+        val reg = db.collection("orders").whereEqualTo("sellerId", uid)
+            .addSnapshotListener { snap, _ ->
+                orders = snap?.documents.orEmpty().mapNotNull { d ->
+                    d.toObject(Order::class.java)?.copy(id = d.id)
+                }
+            }
+        onDispose { reg.remove() }
+    }
+
+    val done = orders.filter { it.status == "done" }
+    val income = done.sumOf { it.total }
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Storefront, contentDescription = null, tint = BrandBlue)
+                Spacer(Modifier.width(6.dp))
+                Text("Baligya", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatCard("₱%.0f".format(income), "Kita (tapos)", Modifier.weight(1f))
+                StatCard("${orders.count { it.status == "pending" }}", "Bag-o", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatCard(
+                    "${orders.count { it.status == "confirmed" }}",
+                    "Gikumpirma",
+                    Modifier.weight(1f)
+                )
+                StatCard("${done.size}", "Tapos", Modifier.weight(1f))
+            }
+        }
+    }
 }
 
 @Composable
@@ -314,8 +370,8 @@ fun OrderDetailScreen(order: Order, uid: String, onChat: (String, String) -> Uni
         if (isSeller && order.status != "done") {
             SellerActions(
                 status = order.status,
-                onConfirm = { updateOrderStatus(db, order.id, "confirmed") },
-                onDone = { updateOrderStatus(db, order.id, "done") }
+                onConfirm = { updateOrderStatus(db, order, "confirmed") },
+                onDone = { updateOrderStatus(db, order, "done") }
             )
         }
 
