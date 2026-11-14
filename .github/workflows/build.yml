@@ -32,6 +32,7 @@ jobs:
           gradle assembleDebug --no-daemon
           -PMAPS_API_KEY="${{ secrets.MAPS_API_KEY }}"
           -PMAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          -PR2_UPLOAD_URL="${{ secrets.R2_UPLOAD_URL }}"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -115,6 +116,7 @@ jobs:
           gradle assembleRelease bundleRelease --no-daemon
           -PMAPS_API_KEY="${{ secrets.MAPS_API_KEY }}"
           -PMAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
+          -PR2_UPLOAD_URL="${{ secrets.R2_UPLOAD_URL }}"
 
       - name: Upload release APK
         if: steps.secrets.outputs.available == 'true'

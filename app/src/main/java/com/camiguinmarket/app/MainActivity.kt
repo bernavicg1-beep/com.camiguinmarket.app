@@ -34,7 +34,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.storage.FirebaseStorage
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 val categories = listOf("Tanan", "Pagkaon ug Seafood", "Lokal nga Produkto", "Sinina", "Gadgets", "Uban pa")
 val towns = listOf("Mambajao", "Mahinog", "Guinsiliban", "Sagay", "Catarman")
@@ -224,7 +229,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (l.imageUrl.isNotBlank()) {
-                                    StorageImage(
+                                    RemoteImage(
                                         url = l.imageUrl,
                                         modifier = Modifier
                                             .size(56.dp)
@@ -267,7 +272,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             text = {
                 Column {
                     if (l.imageUrl.isNotBlank()) {
-                        StorageImage(
+                        RemoteImage(
                             url = l.imageUrl,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -418,6 +423,7 @@ fun PostDialog(
 
     // Litrato sa listing: pilion gikan sa gallery, i-upload sa Firebase Storage.
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
     var uploading by remember { mutableStateOf(false) }
@@ -501,7 +507,7 @@ fun PostDialog(
                             .clip(RoundedCornerShape(8.dp))
                     )
 
-                    existing?.imageUrl?.isNotBlank() == true -> StorageImage(
+                    existing?.imageUrl?.isNotBlank() == true -> RemoteImage(
                         url = existing.imageUrl,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -545,32 +551,56 @@ fun PostDialog(
                     price.toDoubleOrNull() != null && contact.isNotBlank(),
                 onClick = {
                     val picked = imageUri
-                    if (picked == null) {
+                    val baseUrl = BuildConfig.R2_UPLOAD_URL
+                    when {
                         // Walay bag-ong litrato: tipigan ang daan (kon edit).
-                        saveListing(existing?.imageUrl ?: "")
-                    } else {
-                        uploading = true
-                        uploadError = null
-                        val storageRef = FirebaseStorage.getInstance()
-                            .reference.child("listing_images/$uid/${System.currentTimeMillis()}.jpg")
-                        storageRef.putFile(picked)
-                            .addOnSuccessListener {
-                                storageRef.downloadUrl
-                                    .addOnSuccessListener { uri ->
-                                        uploading = false
-                                        saveListing(uri.toString())
+                        picked == null -> saveListing(existing?.imageUrl ?: "")
+
+                        baseUrl.isBlank() -> {
+                            uploadError = "Wala ma-set ang R2_UPLOAD_URL " +
+                                "(local.properties o Gradle property)."
+                            Unit
+                        }
+
+                        else -> {
+                            val user = FirebaseAuth.getInstance().currentUser
+                            if (user == null) {
+                                uploadError = "Kinahanglan naka-log in aron maka-upload."
+                            } else {
+                                uploading = true
+                                uploadError = null
+                                user.getIdToken(false)
+                                    .addOnSuccessListener { tokenResult ->
+                                        val token = tokenResult.token
+                                        if (token.isNullOrBlank()) {
+                                            uploading = false
+                                            uploadError = "Wala makuha ang Firebase ID token."
+                                        } else {
+                                            scope.launch {
+                                                val result = withContext(Dispatchers.IO) {
+                                                    runCatching {
+                                                        uploadListingImage(
+                                                            context, baseUrl, token, picked
+                                                        )
+                                                    }
+                                                }
+                                                uploading = false
+                                                result
+                                                    .onSuccess { url -> saveListing(url) }
+                                                    .onFailure {
+                                                        uploadError = it.localizedMessage
+                                                            ?: "Napakyas ang pag-upload sa litrato."
+                                                    }
+                                            }
+                                        }
                                     }
                                     .addOnFailureListener { e ->
                                         uploading = false
                                         uploadError = e.localizedMessage
-                                            ?: "Napakyas ang pagkuha sa URL sa litrato."
+                                            ?: "Napakyas ang pagkuha sa ID token."
                                     }
                             }
-                            .addOnFailureListener { e ->
-                                uploading = false
-                                uploadError = e.localizedMessage
-                                    ?: "Napakyas ang pag-upload sa litrato."
-                            }
+                        }
                     }
                 }
             ) { Text(if (existing == null) "I-post" else "I-save") }
@@ -597,13 +627,13 @@ fun decodeImageBitmap(context: Context, uri: Uri): ImageBitmap? = runCatching {
 }.getOrNull()
 
 /**
- * Ang litrato sa listing gikan sa Firebase Storage.
+ * Ang litrato sa listing gikan sa Cloudflare R2 (agi sa atong Worker).
  *
  * Gi-download kausa ra matag URL sulod sa composition — igo na alang sa gagmay
  * nga thumbnail ug sa bug-os nga litrato sa detalye.
  */
 @Composable
-fun StorageImage(url: String, modifier: Modifier = Modifier) {
+fun RemoteImage(url: String, modifier: Modifier = Modifier) {
     var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(url) {
@@ -611,10 +641,15 @@ fun StorageImage(url: String, modifier: Modifier = Modifier) {
             bitmap = null
             return@LaunchedEffect
         }
-        val ref = runCatching { FirebaseStorage.getInstance().getReferenceFromUrl(url) }
-            .getOrNull() ?: return@LaunchedEffect
-        ref.getBytes(4L * 1024 * 1024).addOnSuccessListener { bytes ->
-            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                val conn = URL(url).openConnection() as HttpURLConnection
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 20_000
+                conn.inputStream.use { stream ->
+                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                }
+            }.getOrNull()
         }
     }
 
@@ -625,6 +660,45 @@ fun StorageImage(url: String, modifier: Modifier = Modifier) {
             contentScale = ContentScale.Crop,
             modifier = modifier
         )
+    }
+}
+
+/**
+ * I-upload ang litrato ngadto sa Cloudflare Worker nga motipig niini sa R2.
+ *
+ * Ang Firebase ID token maoy nagpamatuod sa user; ang Worker maoy mohimo sa R2
+ * key gikan sa `uid` sa token, busa walay R2 credentials dinhi sa app.
+ */
+fun uploadListingImage(
+    context: Context,
+    baseUrl: String,
+    idToken: String,
+    uri: Uri
+): String {
+    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        ?: error("Dili mabasa ang napiling litrato.")
+    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+
+    val conn = URL(baseUrl.trimEnd('/') + "/upload").openConnection() as HttpURLConnection
+    try {
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 60_000
+        conn.setRequestProperty("Authorization", "Bearer $idToken")
+        conn.setRequestProperty("Content-Type", mime)
+        conn.setFixedLengthStreamingMode(bytes.size)
+        conn.outputStream.use { it.write(bytes) }
+
+        val code = conn.responseCode
+        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+            ?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) {
+            error("Upload failed ($code): ${body.take(200)}")
+        }
+        return JSONObject(body).getString("url")
+    } finally {
+        conn.disconnect()
     }
 }
 

@@ -23,6 +23,9 @@ fun secret(name: String): String =
 
 val mapsApiKey: String = secret("MAPS_API_KEY")
 val mapboxAccessToken: String = secret("MAPBOX_ACCESS_TOKEN")
+// Base URL sa Cloudflare Worker nga nag-upload sa mga litrato ngadto sa R2.
+// Pananglitan: https://camiguin-market-images.<subdomain>.workers.dev
+val r2UploadUrl: String = secret("R2_UPLOAD_URL")
 
 // Keystore alang sa release APK. Kon wala niini, unsigned ang release APK.
 val releaseKeystoreFile: String = secret("RELEASE_KEYSTORE_FILE")
@@ -48,6 +51,8 @@ android {
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$mapboxAccessToken\"")
         // Gigamit sa Directions API (ruta A→B) ug Geocoding API (search bar).
         buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
+        // Ang Worker nga nagtipig sa litrato sa Cloudflare R2 (walay secret dinhi).
+        buildConfigField("String", "R2_UPLOAD_URL", "\"$r2UploadUrl\"")
     }
 
     signingConfigs {
@@ -92,7 +97,6 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-storage")
 
     // Google Map sulod sa Compose app (Option A).
     implementation("com.google.maps.android:maps-compose:9.0.1")

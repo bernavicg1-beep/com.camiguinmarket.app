@@ -41,22 +41,25 @@ Ang file sa HTML nga gigamit sa Mapbox: `app/src/main/assets/mapbox_map.html`.
   tugotan ang update.
 - **`Papas`** — tag-iya ra usab.
 
-## Litrato sa listing (Firebase Storage)
+## Litrato sa listing (Cloudflare R2)
 
 - **`📷 Pumili og litrato`** sa dialog sa pag-post, o **`🖼️ Ilisi ang litrato`** kon nag-edit.
-  Ang litrato gikan sa gallery, i-upload sa Storage sa
-  `listing_images/{uid}/{timestamp}.jpg`, ug ang download URL gitipigan sa
-  `imageUrl` field sa listing document.
+  Ang litrato gikan sa gallery, i-upload sa atong **Cloudflare Worker**, nga motipig
+  niini sa **R2** sa `listing_images/{uid}/{timestamp}-{random}.jpg`. Ang URL
+  gitipigan sa `imageUrl` field sa listing document.
 - Ang thumbnail makita sa list, ug ang bug-os nga litrato sa detalye sa listing.
-- **`storage.rules`**: kinahanglan naka-log in aron makakita; ang user makasulat ra
-  sa iyang kaugalingong folder; **image ra** ug **ubos sa 5 MB**.
-- I-deploy ang storage rules: `firebase deploy --only storage` (o **Storage → Rules**
-  sa Console). Ang CI mosulay usab niini, apan warning lang kon mapakyas.
+- **Walay R2 credentials sa app.** Ang app mogamit sa **Firebase ID token**, ug ang
+  Worker maoy mo-verify niini (Firebase Identity Toolkit) ug mohimo sa key gikan sa
+  `uid` sa token — busa ang user makasulat ra sa iyang kaugalingong folder.
+- Limitasyon sa Worker: **image/jpeg, image/png, image/webp** ra, ug **ubos 5 MB**.
+  Ang bucket pwede nga private kay ang Worker (`/i/…`) maoy mo-serve sa litrato.
 
-⚠️ **Gikinahanglan:** naka-enable ang **Firebase Storage** sa project, ug ang
-project naa sa **Blaze** (pay-as-you-go) plan — gikinahanglan na kini sa Google
-alang sa Storage. Kon Spark plan pa, mo-fail ang upload (ang ubang feature
-padayon gihapon nga mogana).
+**Setup sa Worker:** tan-awa ang [`worker/README.md`](worker/README.md) (mga 5
+ka minuto: `wrangler r2 bucket create`, `wrangler secret put FIREBASE_WEB_API_KEY`,
+`wrangler deploy`). Dayon ibutang ang URL sa `R2_UPLOAD_URL`.
+
+⚠️ Kon wala ma-set ang `R2_UPLOAD_URL`, mogana gihapon ang app — ang litrato lang
+ang mo-fail, ug klaro ang error message sa dialog.
 
 ## Gikinahanglan nga API keys (ayaw i-commit!)
 
@@ -81,7 +84,7 @@ Ang `app/build.gradle.kts` mokuha niini gikan sa `local.properties`, Gradle
 property (`-PMAPS_API_KEY=...`), o environment variable — wala gayud isulat sa code.
 
 Sa GitHub: **Settings → Secrets and variables → Actions**, idugang ang
-`MAPS_API_KEY` ug `MAPBOX_ACCESS_TOKEN`.
+`MAPS_API_KEY`, `MAPBOX_ACCESS_TOKEN`, ug `R2_UPLOAD_URL` (ang URL sa image Worker).
 
 ### Pag-sign sa release APK (opsyonal)
 
@@ -210,5 +213,5 @@ sa release variant ug i-upload isip `CamiguinMarket-release-apk` (APK) ug
 
 Walay device/emulator sa development environment, busa **wala ma-verify ang
 runtime**: ang GPS location, pag-tap sa mapa, ang WebView bridge (`onRoute`),
-ang pag-upload sa litrato sa Storage, ug ang tinuod nga tubag sa Google/Mapbox API. Ang nasiguro ra: `gradle assembleDebug`
+ang pag-upload sa litrato ngadto sa R2, ug ang tinuod nga tubag sa Google/Mapbox API. Ang nasiguro ra: `gradle assembleDebug`
 ug `gradle assembleRelease` mo-compile, ug husto ang JavaScript sa HTML page.

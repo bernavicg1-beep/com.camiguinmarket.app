@@ -18,3 +18,7 @@ ui-debug.log
 *.iml
 captures/
 .DS_Store
+
+# Cloudflare Wrangler local state
+worker/.wrangler/
+node_modules/
