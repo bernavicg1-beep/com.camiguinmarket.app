@@ -588,7 +588,7 @@ fun CamiguinMarketMapScreen(
                         Marker(
                             state = rememberUpdatedMarkerState(position = point),
                             title = "My Current Location",
-                            snippet = "Ikaw karon"
+                            snippet = "You are here"
                         )
                     }
                     // All seller pins (listings that have coordinates).

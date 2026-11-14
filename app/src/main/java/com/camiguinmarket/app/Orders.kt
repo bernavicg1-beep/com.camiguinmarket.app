@@ -140,7 +140,7 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.ReceiptLong, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
-            Text("Mga Order", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Orders", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             val ctx = androidx.compose.ui.platform.LocalContext.current
             TextButton(
@@ -179,8 +179,8 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
             val statuses = listOf(
                 "" to "All statuses",
                 "pending" to "Pending",
-                "confirmed" to "Gikumpirma",
-                "done" to "Tapos",
+                "confirmed" to "Confirmed",
+                "done" to "Done",
                 "cancelled" to "Gikansela"
             )
             items(statuses) { (value, label) ->
@@ -361,9 +361,9 @@ fun updateOrderStatus(db: FirebaseFirestore, order: Order, status: String) {
     db.collection("orders").document(order.id).update("status", status)
         .addOnSuccessListener { sendPush("status", orderId = order.id) }
     val action = when (status) {
-        "confirmed" -> "gikumpirma"
-        "done" -> "natapos"
-        else -> "gi-update"
+        "confirmed" -> "confirmed"
+        "done" -> "completed"
+        else -> "updated"
     }
     // Notify the buyer right away.
     notifyUser(
@@ -418,7 +418,7 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Storefront, contentDescription = null, tint = BrandBlue)
                 Spacer(Modifier.width(6.dp))
-                Text("Baligya", fontWeight = FontWeight.Bold)
+                Text("Sell", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
                 val ctx = androidx.compose.ui.platform.LocalContext.current
                 TextButton(
@@ -452,7 +452,7 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
                 StatCard("₱%.0f".format(income), "Revenue (done)", Modifier.weight(1f))
                 StatCard(
                     "${visible.count { it.status == "pending" }}",
-                    "Bag-o",
+                    "New",
                     Modifier.weight(1f)
                 )
             }
@@ -460,10 +460,10 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatCard(
                     "${visible.count { it.status == "confirmed" }}",
-                    "Gikumpirma",
+                    "Confirmed",
                     Modifier.weight(1f)
                 )
-                StatCard("${done.size}", "Tapos", Modifier.weight(1f))
+                StatCard("${done.size}", "Done", Modifier.weight(1f))
             }
             Spacer(Modifier.height(8.dp))
             StatCard(
@@ -576,7 +576,7 @@ fun OrderDetailScreen(
         Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Status", fontWeight = FontWeight.Bold)
-                OrderStep("Na-order", "pending", order.status)
+                OrderStep("Ordered", "pending", order.status)
                 OrderStep("Confirmed by the seller", "confirmed", order.status)
                 OrderStep("Done", "done", order.status)
                 if (order.status == "cancelled") {
@@ -692,7 +692,7 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Chat, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
-            Text("Mga Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Chats", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
         if (threads.isEmpty()) {

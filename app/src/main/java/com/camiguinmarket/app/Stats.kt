@@ -131,7 +131,7 @@ fun ViewsChart(viewsByDay: Map<String, Long>, subtitle: String = "Last 7 days") 
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text("Views kada adlaw", fontWeight = FontWeight.Bold)
+            Text("Views per day", fontWeight = FontWeight.Bold)
             Text(subtitle, style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.height(8.dp))
             Canvas(Modifier.fillMaxWidth().height(110.dp)) {
@@ -192,7 +192,7 @@ fun MonthlySalesChart(orders: List<Order>) {
 
     Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
-            Text("Kita kada bulan", fontWeight = FontWeight.Bold)
+            Text("Revenue per month", fontWeight = FontWeight.Bold)
             Text("Last 6 months (cancelled excluded)", style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.height(8.dp))
             Canvas(Modifier.fillMaxWidth().height(110.dp)) {

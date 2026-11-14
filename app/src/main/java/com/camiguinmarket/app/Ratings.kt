@@ -158,7 +158,7 @@ fun RatingDialog(order: Order, onClose: () -> Unit) {
         },
         dismissButton = {
             if (alreadyRated == false) {
-                TextButton(onClick = onClose, enabled = !sending) { Text("Dili") }
+                TextButton(onClick = onClose, enabled = !sending) { Text("No") }
             }
         }
     )
@@ -212,7 +212,7 @@ fun SellerReviews(sellerId: String) {
 
     Column {
         Text(
-            "Mga review (${reviews.size})",
+            "Reviews (${reviews.size})",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold
         )
@@ -254,7 +254,7 @@ fun ReviewsScreen(sellerId: String, sellerName: String) {
             Spacer(Modifier.width(6.dp))
             Column {
                 Text(
-                    "Mga review",
+                    "Reviews",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )

@@ -7,6 +7,7 @@ import android.widget.Toast
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -314,6 +315,11 @@ fun MarketScreen(
     // Navigation and the new features (mockup): tabs, cart, favorites, notifications, chat.
     var tab by remember { mutableStateOf(MarketTab.Home) }
     var overlay by remember { mutableStateOf<String?>(null) }
+
+    // Back closes an open screen, then returns to Home, and only exits from Home.
+    BackHandler(enabled = overlay != null || tab != MarketTab.Home) {
+        if (overlay != null) overlay = null else tab = MarketTab.Home
+    }
     var cartCount by remember { mutableStateOf(0) }
     var unread by remember { mutableStateOf(0) }
     var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -341,7 +347,7 @@ fun MarketScreen(
 
     var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
     var priceFilter by remember { mutableStateOf("All") }
-    var sort by remember { mutableStateOf("Bag-o") }
+    var sort by remember { mutableStateOf("Newest") }
     var chatUnread by remember { mutableStateOf(0) }
     var orderDetail by remember { mutableStateOf<Order?>(null) }
 
@@ -493,16 +499,16 @@ fun MarketScreen(
                     }
                     Text(
                         when (overlay) {
-                            "favorites" -> "Paborito"
+                            "favorites" -> "Favorites"
                             "notifications" -> "Notifications"
-                            "orders" -> "Mga Order"
+                            "orders" -> "Orders"
                             "order" -> "Order Details"
                             "moderation" -> "Moderation"
-                            "reviews" -> "Mga Review"
+                            "reviews" -> "Reviews"
                             "saved" -> "Saved searches"
                             "search" -> "Search"
                             "stats" -> "Listing stats"
-                            "inbox" -> "Mga Chat"
+                            "inbox" -> "Chats"
                             else -> "Chat"
                         },
                         style = MaterialTheme.typography.titleMedium,
@@ -520,7 +526,7 @@ fun MarketScreen(
         },
         floatingActionButton = {
             if (overlay == null && tab == MarketTab.Home) {
-                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Baligya") }
+                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Sell") }
             }
         }
     ) { pad ->
@@ -751,7 +757,7 @@ fun MarketScreen(
                                 db.collection("listings").document(l.id).delete()
                                 selected = null
                             }
-                        ) { Text("Papas") }
+                        ) { Text("Delete") }
                     }
                 }
             },
@@ -1023,7 +1029,7 @@ fun PostDialog(
                 OutlinedTextField(title, { title = it }, label = { Text("Product name") })
                 OutlinedTextField(desc, { desc = it }, label = { Text("Deskripsyon") })
                 OutlinedTextField(
-                    price, { price = it }, label = { Text("Presyo (₱)") },
+                    price, { price = it }, label = { Text("Price (₱)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
                 OutlinedTextField(

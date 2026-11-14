@@ -72,12 +72,12 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
             FilterChip(
                 selected = !showReports,
                 onClick = { showReports = false },
-                label = { Text("Mga Listing") }
+                label = { Text("Listings") }
             )
             FilterChip(
                 selected = showReports,
                 onClick = { showReports = true },
-                label = { Text("Mga Report") }
+                label = { Text("Reports") }
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -110,7 +110,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                                 style = MaterialTheme.typography.labelSmall
                             )
                             Text(
-                                "ni ${l.sellerName}",
+                                "by ${l.sellerName}",
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
@@ -122,7 +122,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("Papas", color = Color(0xFFE53935))
+                            Text("Delete", color = Color(0xFFE53935))
                         }
                     }
                 }
@@ -151,10 +151,10 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                         message = "A moderator removed the listing: ${l.title}".take(190)
                     )
                     toDelete = null
-                }) { Text("Papas", color = Color(0xFFE53935)) }
+                }) { Text("Delete", color = Color(0xFFE53935)) }
             },
             dismissButton = {
-                TextButton(onClick = { toDelete = null }) { Text("Dili") }
+                TextButton(onClick = { toDelete = null }) { Text("No") }
             }
         )
     }
@@ -198,7 +198,7 @@ fun ReportsList(uid: String) {
                         Text("\"${r.note}\"", style = MaterialTheme.typography.bodySmall)
                     }
                     Text(
-                        "gi-report ni ${r.reporterName} • ${r.status}",
+                        "reported by ${r.reporterName} • ${r.status}",
                         style = MaterialTheme.typography.labelSmall
                     )
                     if (r.status == "open") {

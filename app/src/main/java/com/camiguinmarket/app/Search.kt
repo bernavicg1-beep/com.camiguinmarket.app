@@ -32,7 +32,7 @@ fun GlobalSearchScreen(
     var category by remember { mutableStateOf(categories[0]) }
     var town by remember { mutableStateOf("All") }
     var priceFilter by remember { mutableStateOf("All") }
-    var sort by remember { mutableStateOf("Bag-o") }
+    var sort by remember { mutableStateOf("Newest") }
     var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }
 
     val results = listings.filter {
@@ -76,7 +76,7 @@ fun GlobalSearchScreen(
 
         if (q.isBlank() && recent.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Bag-ong gipangita", style = MaterialTheme.typography.labelSmall)
+                Text("Recent searches", style = MaterialTheme.typography.labelSmall)
                 TextButton(onClick = {
                     clearRecentSearches(ctx)
                     recent = emptyList()

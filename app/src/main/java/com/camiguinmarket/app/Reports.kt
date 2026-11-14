@@ -117,7 +117,7 @@ fun ReportDialog(
             ) { Text("Send") }
         },
         dismissButton = {
-            TextButton(onClick = onClose, enabled = !sending) { Text("Dili") }
+            TextButton(onClick = onClose, enabled = !sending) { Text("No") }
         }
     )
 }

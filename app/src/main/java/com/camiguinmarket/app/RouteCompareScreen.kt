@@ -86,15 +86,15 @@ fun RouteCompareScreen(
         val mMin = mapboxStats!!.second / 60.0
         val dKm = abs(gKm - mKm)
         val dMin = abs(gMin - mMin)
-        String.format(Locale.US, "📍 Pagkalahi: %.2f km • %.0f min", dKm, dMin) +
-            if (dKm <= 0.5) "  ✅ Very close" else "  ⚠️ Dili pareho"
+        String.format(Locale.US, "📍 Distance: %.2f km • %.0f min", dKm, dMin) +
+            if (dKm <= 0.5) "  ✅ Very close" else "  ⚠️ Not the same"
     } else null
 
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Itandi: Google vs Mapbox") },
+                title = { Text("Compare: Google vs Mapbox") },
                 navigationIcon = {
                     onBack?.let { TextButton(onClick = it) { Text("⬅ Balik") } }
                 }
@@ -136,7 +136,7 @@ fun RouteCompareScreen(
                     Button(
                         enabled = pointA != null && pointB != null,
                         onClick = { itandi() }
-                    ) { Text("🧭 Itandi") }
+                    ) { Text("🧭 Compare") }
                 }
                 Text(
                     "Google: " + (googleStats

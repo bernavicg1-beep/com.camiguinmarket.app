@@ -202,11 +202,11 @@ enum class MarketTab(val label: String, val icon: ImageVector) {
 
 /** The categories in the grid (with icons). */
 val priceFilters = listOf("All", "Under ₱50", "₱50–₱200", "₱200–₱500", "Over ₱500")
-val sortOptions = listOf("Bag-o", "Presyo ↑", "Presyo ↓", "Trending")
+val sortOptions = listOf("Newest", "Price ↑", "Price ↓", "Trending")
 
 fun sortListings(list: List<Listing>, sort: String): List<Listing> = when (sort) {
-    "Presyo ↑" -> list.sortedBy { it.price }
-    "Presyo ↓" -> list.sortedByDescending { it.price }
+    "Price ↑" -> list.sortedBy { it.price }
+    "Price ↓" -> list.sortedByDescending { it.price }
     "Trending" -> list.sortedByDescending { it.views }
     else -> list
 }
@@ -425,7 +425,7 @@ fun ensureChat(db: FirebaseFirestore, uid: String, otherUid: String, otherName: 
     db.collection("chats").document(id).set(
         mapOf(
             "participants" to listOf(uid, otherUid),
-            "names" to mapOf(uid to "Ako", otherUid to otherName),
+            "names" to mapOf(uid to "Me", otherUid to otherName),
             "listingTitle" to listingTitle,
             "updatedAt" to System.currentTimeMillis()
         ),
@@ -706,7 +706,7 @@ fun ListingCard(
                     IconButton(onClick = onFavorite, modifier = Modifier.size(28.dp)) {
                         Icon(
                             if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            contentDescription = "Paborito",
+                            contentDescription = "Favorites",
                             tint = if (isFavorite) Color(0xFFE53935) else Color.Gray
                         )
                     }
@@ -849,7 +849,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
-            Text("Akong Cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("My cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         if (offline) {
             Text(
@@ -913,7 +913,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
                 onClick = { onCheckout(items) },
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("✅ I-checkout (₱%.2f)".format(total)) }
+            ) { Text("✅ Checkout (₱%.2f)".format(total)) }
             Spacer(Modifier.height(6.dp))
             Text(
                 "Each seller receives their own order and notification.",
@@ -1686,7 +1686,7 @@ fun HomeTab(
         }
         item { CategoryGrid(category, onCategory) }
         if (trending.isNotEmpty()) {
-            item { SectionTitle("🔥 Trending karon") }
+            item { SectionTitle("🔥 Trending now") }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(trending, key = { it.id }) { l ->
@@ -1705,8 +1705,8 @@ fun HomeTab(
         }
         item {
             SectionTitle("Featured Products") {
-                TextButton(onClick = onMap) { Text("🗺️ Mapa") }
-                TextButton(onClick = onCompare) { Text("⚖️ Itandi") }
+                TextButton(onClick = onMap) { Text("🗺️ Map") }
+                TextButton(onClick = onCompare) { Text("⚖️ Compare") }
             }
         }
         if (listings.isEmpty()) {
@@ -1719,7 +1719,7 @@ fun HomeTab(
                         Text("No listings to show.", fontWeight = FontWeight.Bold)
                         Text("Press + Sell to post a listing.")
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = onSell) { Text("+ Baligya") }
+                        Button(onClick = onSell) { Text("+ Sell") }
                     }
                 }
             }
@@ -1765,7 +1765,7 @@ fun CategoriesTab(
     ) {
         item {
             Text(
-                "Mga Category",
+                "Categories",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 8.dp)
@@ -1780,7 +1780,7 @@ fun CategoriesTab(
         }
         item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
         if (trending.isNotEmpty()) {
-            item { SectionTitle("🔥 Trending karon") }
+            item { SectionTitle("🔥 Trending now") }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(trending, key = { it.id }) { l ->
@@ -1919,7 +1919,7 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
                 }) { Text("Tipigi") }
             },
             dismissButton = {
-                TextButton(onClick = { editing = null }) { Text("Dili") }
+                TextButton(onClick = { editing = null }) { Text("No") }
             }
         )
     }
