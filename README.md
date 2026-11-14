@@ -101,6 +101,38 @@ O kaha i-paste ang sulod sa `firestore.rules` sa **Firebase Console → Firestor
 Rules** ug pindota ang **Publish**. **Ayaw** ibilin sa test mode (`allow read, write:
 if true`) kay bisan kinsa makabasa ug makasulat sa `listings`.
 
+### Awtomatikong deploy pinaagi sa GitHub Actions
+
+Ang `.github/workflows/firestore-rules.yml` dunay duha ka job:
+
+1. **Validate** — i-compile ang `firestore.rules` sa Firestore emulator. Modagan sa
+   matag push sa `main` *ug* sa matag pull request nga nag-usab sa rules. Kon sayop
+   ang syntax, mo-fail ang job — dili ka makadeploy og guba nga rules.
+2. **Deploy** — `firebase deploy --only firestore:rules`. Modagan lamang kon na-set
+   ang `FIREBASE_TOKEN` secret; kon wala, **gilaktawan** kini (dili mo-fail) ug
+   ibutang ang pahinumdom sa run summary.
+
+Alang sa awtomatikong deploy, i-generate ang token sa imong machine:
+
+```bash
+firebase login:ci
+```
+
+Dayon **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Unsa kini |
+|---|---|
+| `FIREBASE_TOKEN` | Ang token gikan sa `firebase login:ci` |
+
+Ang default nga project naa sa `.firebaserc` (`camiguinmarket`), busa dili na
+kinahanglan ang `--project` matag higayon. Importante: ang token makabag-o sa
+Firebase project, busa i-treat kini isip password ug ayaw kini ibutang sa code.
+
+**Alternatibo (mas girekomendar sa Google):** service account key. I-download ang
+JSON key gikan sa **Project settings → Service accounts**, i-save isip
+`GOOGLE_APPLICATION_CREDENTIALS` nga file sa CI, ug ang `firebase deploy` mo-ila
+dayon niini. Ang `FIREBASE_TOKEN` gina-supportahan pa apan legasiya na kini.
+
 ## Pagpapas sa account (requirement sa Play Store)
 
 Kon ang app makahimo og account, kinahanglan nga ang user makapapas niini:
@@ -128,7 +160,9 @@ gradle bundleRelease        # release AAB: app/build/outputs/bundle/release/app-
 Ang `.aab` (Android App Bundle) mao ang format nga gidawat sa **Google Play Console**.
 Kon may keystore, signed kini; kon wala, unsigned ug dili ma-upload sa Play.
 
-Ang `.github/workflows/build.yml` mo-build sa debug APK sa matag push sa `main`,
+Ang `.github/workflows/firestore-rules.yml` maoy nagdeploy sa Firestore rules (tan-awa
+ang *Firestore security rules* sa ibabaw). Ang `.github/workflows/build.yml`
+mo-build sa debug APK sa matag push sa `main`,
 ug mo-upload niini isip artifact. Kon naa ang duha ka secret, mo-build usab kini
 sa release variant ug i-upload isip `CamiguinMarket-release-apk` (APK) ug
 `CamiguinMarket-release-aab` (AAB alang sa Play Store).
