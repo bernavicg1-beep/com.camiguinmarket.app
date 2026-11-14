@@ -2,6 +2,11 @@ package com.camiguinmarket.app
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import java.util.Locale
+import java.util.Date
+import java.text.SimpleDateFormat
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
@@ -219,6 +224,87 @@ fun SellerReviews(sellerId: String) {
                 Text("— ${r.buyerName}", style = MaterialTheme.typography.labelSmall)
             }
             Text(r.comment, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** Tanan nga review sa seller (gikuha gikan sa detalye sa listing). */
+@Composable
+fun ReviewsScreen(sellerId: String, sellerName: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var reviews by remember { mutableStateOf<List<Rating>>(emptyList()) }
+
+    DisposableEffect(sellerId) {
+        val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
+            .addSnapshotListener { snap, _ ->
+                reviews = snap?.documents.orEmpty()
+                    .mapNotNull { d -> d.toObject(Rating::class.java)?.copy(id = d.id) }
+                    .sortedByDescending { it.createdAt }
+            }
+        onDispose { reg.remove() }
+    }
+
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.Star,
+                contentDescription = null,
+                tint = BrandGold
+            )
+            Spacer(Modifier.width(6.dp))
+            Column {
+                Text(
+                    "Mga review",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(sellerName, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        if (reviews.isEmpty()) {
+            Text("Wala pay review ang seller.")
+            return@Column
+        }
+        val avg = reviews.map { it.rating }.average()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StarRow(avg.toInt(), size = 18)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "%.1f · ${reviews.size} ka review".format(avg),
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(reviews, key = { it.id }) { r ->
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StarRow(r.rating.toInt(), size = 14)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                r.buyerName,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+                                    .format(Date(r.createdAt)),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        if (r.comment.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(r.comment, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
         }
     }
 }

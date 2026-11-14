@@ -91,7 +91,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                 Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(BrandSky),
+                            Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
                             if (l.imageUrl.isNotBlank()) RemoteImage(l.imageUrl, Modifier.fillMaxSize())

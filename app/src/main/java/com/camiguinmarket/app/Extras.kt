@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
@@ -116,6 +117,7 @@ fun saveDarkMode(context: Context, dark: Boolean) {
 
 data class SavedSearch(
     val id: String = "",
+    val name: String = "",
     val query: String = "",
     val category: String = "Tanan",
     val town: String = "Tanan",
@@ -130,10 +132,12 @@ fun saveSearch(
     uid: String,
     query: String,
     category: String,
-    town: String
+    town: String,
+    name: String = ""
 ) {
     db.collection("savedSearches").document(uid).collection("items").document().set(
         SavedSearch(
+            name = name.trim(),
             query = query.trim(),
             category = category,
             town = town,
@@ -479,7 +483,7 @@ fun BrandHeader(
                     "Camiguin Market",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = BrandBlueDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text("Buy Local. Support Camiguin.", style = MaterialTheme.typography.labelSmall)
             }
@@ -605,7 +609,8 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                         onClick = { onSelect(name) },
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (active) BrandBlue else BrandSky
+                            containerColor = if (active) BrandBlue
+                            else MaterialTheme.colorScheme.surfaceVariant
                         ),
                         modifier = Modifier.weight(1f)
                     ) {
@@ -616,14 +621,14 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                             Icon(
                                 emoji,
                                 contentDescription = null,
-                                tint = if (active) Color.White else BrandBlueDark,
+                                tint = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(26.dp)
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 name,
                                 style = MaterialTheme.typography.labelMedium,
-                                color = if (active) Color.White else BrandBlueDark,
+                                color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -654,7 +659,7 @@ fun ListingCard(
                 Modifier
                     .size(84.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(BrandSky),
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 if (listing.imageUrl.isNotBlank()) {
@@ -837,7 +842,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
                     Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(BrandSky),
+                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (item.imageUrl.isNotBlank()) RemoteImage(item.imageUrl, Modifier.fillMaxSize())
@@ -866,10 +871,10 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Card(colors = CardDefaults.cardColors(containerColor = BrandSky), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text("₱%.2f".format(total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = BrandBlueDark)
+                    Text("₱%.2f".format(total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -922,7 +927,7 @@ fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
                     Card(onClick = { onOpenListing(f.listingId) }, shape = RoundedCornerShape(14.dp)) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(BrandSky),
+                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (f.imageUrl.isNotBlank()) RemoteImage(f.imageUrl, Modifier.fillMaxSize())
@@ -1163,6 +1168,7 @@ fun ProfileScreen(
     onOrders: () -> Unit,
     onInbox: () -> Unit,
     onModeration: () -> Unit,
+    onSavedSearches: () -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -1218,6 +1224,12 @@ fun ProfileScreen(
             Spacer(Modifier.width(4.dp))
             Text("Mga Chat")
         }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onSavedSearches, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Saved searches")
+        }
         if (isAdmin) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onModeration, modifier = Modifier.fillMaxWidth()) {
@@ -1257,9 +1269,9 @@ fun ProfileScreen(
 
 @Composable
 fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    Card(colors = CardDefaults.cardColors(containerColor = BrandSky), modifier = modifier) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = modifier) {
         Column(Modifier.padding(12.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = BrandBlueDark)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }
@@ -1377,7 +1389,12 @@ fun HomeTab(
             }
             Column {
                 TextButton(
-                    onClick = { saveSearch(db, uid, query, category, "Tanan") },
+                    onClick = {
+                        saveSearch(
+                            db, uid, query, category, "Tanan",
+                            name = query.ifBlank { category }
+                        )
+                    },
                     enabled = query.isNotBlank() || category != "Tanan"
                 ) {
                     Icon(
@@ -1429,7 +1446,7 @@ fun HomeTab(
         if (listings.isEmpty()) {
             item {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = BrandSky),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(16.dp)) {
@@ -1503,5 +1520,115 @@ fun CategoriesTab(
             )
         }
         item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Manage saved searches
+// ---------------------------------------------------------------------------
+
+@Composable
+fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var searches by remember { mutableStateOf<List<SavedSearch>>(emptyList()) }
+    var editing by remember { mutableStateOf<SavedSearch?>(null) }
+
+    DisposableEffect(uid) {
+        val reg = db.collection("savedSearches").document(uid).collection("items")
+            .addSnapshotListener { snap, _ ->
+                searches = snap?.documents?.mapNotNull { d ->
+                    d.toObject(SavedSearch::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt } ?: emptyList()
+            }
+        onDispose { reg.remove() }
+    }
+
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Notifications, contentDescription = null, tint = BrandBlue)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Saved searches",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Text(
+            "Pindota aron magamit ang filter. Usba ang pangan o tangtanga.",
+            style = MaterialTheme.typography.labelSmall
+        )
+        Spacer(Modifier.height(8.dp))
+
+        if (searches.isEmpty()) {
+            Text("Wala pa kay saved search. Sa Home, pindota ang \"I-save kini nga pagpangita\".")
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(searches, key = { it.id }) { s ->
+                    Card(
+                        onClick = { onApply(s.query, s.category, s.town) },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    s.name.ifBlank { s.label },
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    listOfNotNull(
+                                        s.query.takeIf { it.isNotBlank() },
+                                        s.category.takeIf { it != "Tanan" },
+                                        s.town.takeIf { it != "Tanan" }
+                                    ).joinToString(" • ").ifBlank { "Tanan nga listing" },
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                            IconButton(onClick = { editing = s }) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Usba ang pangan")
+                            }
+                            IconButton(onClick = { deleteSavedSearch(db, uid, s.id) }) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Tangtanga",
+                                    tint = Color(0xFFE53935)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    editing?.let { s ->
+        var name by remember(s.id) { mutableStateOf(s.name.ifBlank { s.label }) }
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("Usba ang pangan") },
+            text = {
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("Pangan sa saved search") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    db.collection("savedSearches").document(uid).collection("items")
+                        .document(s.id).update("name", name.trim())
+                    editing = null
+                }) { Text("Tipigi") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = null }) { Text("Dili") }
+            }
+        )
     }
 }

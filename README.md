@@ -131,7 +131,12 @@ ug mabasa kini sa bisan kinsang naka-log in.
   makadawat ka og notification (diha-diha, walay server). Ang chip dunay ✕ aron
   pagtangtang.
 - **Dark mode:** toggle sa Profile, gina-save sa `ui_prefs` sa device. Ang header,
-  bottom nav, ug chat bubbles naggamit na sa theme colors (`marketDarkColorScheme`).
+  bottom nav, chat bubbles, thumbnails ug stat cards naggamit na sa theme colors
+  (`marketDarkColorScheme`) — wala nay hardcoded nga puti nga mga panel.
+- **Tanan nga review:** ang detalye dunay "Tan-awa ang tanan nga review" →
+  `ReviewsScreen` (average, bituon, komentaryo, buyer, petsa).
+- **Manage saved searches:** Profile → **Saved searches** — pindoton aron magamit
+  ang filter, usbon ang pangan (✏️), o tangtangon (🗑️).
 
 ### Share ug offline cart
 

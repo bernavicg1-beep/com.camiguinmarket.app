@@ -210,6 +210,7 @@ fun MarketScreen(
     var chatListing by remember { mutableStateOf<Listing?>(null) }
     var reportListing by remember { mutableStateOf<Listing?>(null) }
     var ratingOrder by remember { mutableStateOf<Order?>(null) }
+    var reviewsSeller by remember { mutableStateOf<Pair<String, String>?>(null) }
     var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
     var priceFilter by remember { mutableStateOf("Tanan") }
     var sort by remember { mutableStateOf("Bag-o") }
@@ -314,6 +315,8 @@ fun MarketScreen(
                             "orders" -> "Mga Order"
                             "order" -> "Detalye sa Order"
                             "moderation" -> "Moderation"
+                            "reviews" -> "Mga Review"
+                            "saved" -> "Saved searches"
                             "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
@@ -355,6 +358,18 @@ fun MarketScreen(
                 )
 
                 "moderation" -> ModerationScreen(uid, isAdmin)
+
+                "reviews" -> reviewsSeller?.let { (sid, sname) ->
+                    ReviewsScreen(sid, sname)
+                }
+
+                "saved" -> SavedSearchesScreen(uid) { q, c, t ->
+                    query = q
+                    category = c
+                    town = t
+                    tab = MarketTab.Home
+                    overlay = null
+                }
 
                 "order" -> orderDetail?.let { order ->
                     OrderDetailScreen(
@@ -455,6 +470,7 @@ fun MarketScreen(
                         onOrders = { overlay = "orders" },
                         onInbox = { overlay = "inbox" },
                         onModeration = { overlay = "moderation" },
+                        onSavedSearches = { overlay = "saved" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }
                     )
@@ -578,7 +594,14 @@ fun MarketScreen(
                         Spacer(Modifier.width(8.dp))
                         SellerRatingSummary(l.sellerId)
                     }
-                    if (l.sellerId != uid) SellerReviews(l.sellerId)
+                    if (l.sellerId != uid) {
+                        SellerReviews(l.sellerId)
+                        TextButton(onClick = {
+                            reviewsSeller = l.sellerId to l.sellerName
+                            selected = null
+                            overlay = "reviews"
+                        }) { Text("Tan-awa ang tanan nga review") }
+                    }
                     Text("Lugar: ${l.town}")
                     Text("Contact: ${l.contact}")
                     Spacer(Modifier.height(8.dp))

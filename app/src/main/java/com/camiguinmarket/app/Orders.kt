@@ -157,7 +157,7 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                       Column {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(BrandSky),
+                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (order.imageUrl.isNotBlank()) RemoteImage(order.imageUrl, Modifier.fillMaxSize())
@@ -404,7 +404,7 @@ fun OrderDetailScreen(
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(BrandSky),
+                        Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
                         if (order.imageUrl.isNotBlank()) RemoteImage(order.imageUrl, Modifier.fillMaxSize())
