@@ -60,6 +60,20 @@ jobs:
           PY
           echo "path=$dir/key.json" >> "$GITHUB_OUTPUT"
 
+      - name: Check credentials
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.creds.outputs.path }}
+        run: npx --yes firebase-tools@latest projects:list --non-interactive
+
+      # Ang functions v2 nanginahanglan niini nga mga API. Kon kulang ang
+      # permission sa service account, dili kini makapugong sa deploy.
+      - name: Enable required APIs
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.creds.outputs.path }}
+        run: |
+          gcloud services enable             cloudfunctions.googleapis.com             cloudbuild.googleapis.com             run.googleapis.com             artifactregistry.googleapis.com             eventarc.googleapis.com             --project camiguinmarket
+
       - name: Deploy functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.creds.outputs.path }}
