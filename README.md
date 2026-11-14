@@ -177,9 +177,11 @@ ug mabasa kini sa bisan kinsang naka-log in.
   sa cache ug moabli sa Android share sheet (`FileProvider`).
 - **Push notifications (FCM):** ang app nag-register sa token ngadto sa
   `users/{uid}/tokens/{token}` ug dunay `MarketMessagingService` nga magpakita sa
-  notification. Ang pagpadala naa sa **[`functions/`](functions/)** —
-  `onOrderCreated`, `onOrderStatus` ug `onChatMessage`. Wala kini ma-deploy dinhi
-  (gikinahanglan og Blaze plan ug `firebase deploy --only functions`).
+  notification. Ang **pagpadala naa sa Cloudflare Worker** (`POST /push`, pareho
+  sa R2 upload): ang Worker maoy mo-verify sa ID token, mopili sa recipient gikan
+  sa Firestore, ug mokontak sa FCM gamit ang service account — walay secret sa
+  app ug walay Firebase Functions/Blaze nga gikinahanglan. Tan-awa ang
+  [`worker/README.md`](worker/README.md).
 - **CSV filter:** ang Orders screen dunay filter sa **petsa** (Tanan / 7 / 30 ka
   adlaw) ug sa **status**, ug ang CSV nag-export sa nahisubo ra nga mga order
   (`CSV (n)`).
@@ -189,15 +191,11 @@ ug mabasa kini sa bisan kinsang naka-log in.
 - **Push → screen:** ang tap sa notification moabli sa app ug modiretso sa
   **order detail** o sa **chat** (`type=order|chat` + `orderId`/`chatId` extras;
   `singleTop` + `onNewIntent`).
-- **CI sa functions:** ang `.github/workflows/functions.yml` mag-deploy kon
-  mausab ang `functions/**`. Gikinahanglan ang GitHub secret
-  **`FIREBASE_SERVICE_ACCOUNT`** (service account JSON sa Firebase project) —
-  kon wala kini, mapakyas ang workflow sa "Prepare service account" step. Ang
-  secret mahimong JSON mismo o **base64** sa JSON — gi-detect kini sa workflow ug
-  gi-print ang `client_email`/`project_id` (dili ang key) aron sayon ma-diagnose.
-  Ang Firebase project gina-set sa `.firebaserc`. Gikinahanglan usab ang
-  **Blaze plan** ug mga API (Cloud Functions, Cloud Build, Artifact Registry,
-  Eventarc) nga naka-enable.
+- **Push sa app:** ang `sendPush(kind, orderId/chatId)` (sa `Push.kt`) nag-POST
+  ngadto sa `${R2_UPLOAD_URL}/push` human sa order, status update, ug bag-ong
+  chat message — best-effort lang, dili makapugong sa order/chat.
+- Wala nay Firebase Functions: giwagtang ang `functions/` ug ang deploy
+  workflow niini, kay ang push gina-host na sa Worker.
 
 ### Share ug offline cart
 

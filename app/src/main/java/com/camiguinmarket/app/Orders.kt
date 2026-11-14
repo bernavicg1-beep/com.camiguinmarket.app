@@ -85,7 +85,7 @@ fun checkoutCart(
         )
         batch.set(ref, order)
         batch.delete(db.collection("carts").document(uid).collection("items").document(item.id))
-        order to item
+        order.copy(id = ref.id) to item
     }
     batch.commit()
         .addOnSuccessListener {
@@ -97,6 +97,8 @@ fun checkoutCart(
                     fromName = buyerName,
                     message = "$buyerName mi-order: ${item.title} ×${item.quantity}"
                 )
+                // Push sa seller pinaagi sa Worker.
+                sendPush("order", orderId = order.id)
             }
             onResult(null)
         }
@@ -326,6 +328,7 @@ fun StatusChip(status: String) {
 /** Ang seller ra ang makagamit niini (gitugotan sa Firestore rules). */
 fun updateOrderStatus(db: FirebaseFirestore, order: Order, status: String) {
     db.collection("orders").document(order.id).update("status", status)
+        .addOnSuccessListener { sendPush("status", orderId = order.id) }
     val action = when (status) {
         "confirmed" -> "gikumpirma"
         "done" -> "natapos"

@@ -455,6 +455,8 @@ fun sendChatMessage(
             "unread.$otherUid" to FieldValue.increment(1)
         )
     )
+    // Push sa pikas nga participant pinaagi sa Worker (best-effort).
+    sendPush("chat", chatId = id, text = text.trim())
     db.collection("chats").document(id).get().addOnSuccessListener { snap ->
         val participants = (snap.get("participants") as? List<*>)?.filterIsInstance<String>().orEmpty()
         participants.filter { it != uid }.forEach { other ->
