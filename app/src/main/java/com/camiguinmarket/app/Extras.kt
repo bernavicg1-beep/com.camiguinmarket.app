@@ -54,6 +54,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import com.camiguinmarket.app.BuildConfig
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -1302,6 +1303,10 @@ fun ProfileScreen(
         Spacer(Modifier.height(16.dp))
         Text(
             "Camiguin Market • Buy Local. Support Local!",
+            style = MaterialTheme.typography.labelSmall
+        )
+        Text(
+            "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             style = MaterialTheme.typography.labelSmall
         )
     }
