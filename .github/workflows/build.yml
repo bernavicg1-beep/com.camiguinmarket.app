@@ -80,6 +80,8 @@ jobs:
               else
                 echo "Ang release build modagan niini nga run (unsigned)."
               fi
+              echo ""
+              echo "I-upload usab ang **AAB** (\`CamiguinMarket-release-aab\`) alang sa Google Play Console."
             else
               echo "⚠️ **Gilaktawan ang release build** kay kulang ang \`MAPS_API_KEY\` o \`MAPBOX_ACCESS_TOKEN\`. Idugang kini sa Settings → Secrets and variables → Actions, dayon i-run pag-usab ang workflow."
               echo ""
@@ -101,7 +103,8 @@ jobs:
           test -s "$RUNNER_TEMP/release.keystore"
 
       # Kon naa ang KEYSTORE_BASE64, signed ang APK; kon wala, unsigned.
-      - name: Build release APK
+      # Apil usab ang AAB (App Bundle) alang sa Play Store.
+      - name: Build release APK + AAB
         if: steps.secrets.outputs.available == 'true'
         env:
           RELEASE_KEYSTORE_FILE: ${{ steps.secrets.outputs.signing == 'true' && format('{0}/release.keystore', runner.temp) || '' }}
@@ -109,7 +112,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: >-
-          gradle assembleRelease --no-daemon
+          gradle assembleRelease bundleRelease --no-daemon
           -PMAPS_API_KEY="${{ secrets.MAPS_API_KEY }}"
           -PMAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
 
@@ -119,4 +122,13 @@ jobs:
         with:
           name: CamiguinMarket-release-apk
           path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+      # Ang .aab mao ang format nga gidawat sa Google Play Console.
+      - name: Upload release AAB
+        if: steps.secrets.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: CamiguinMarket-release-aab
+          path: app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn

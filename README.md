@@ -87,11 +87,16 @@ RELEASE_KEY_PASSWORD=…
 ```bash
 gradle assembleDebug        # debug APK: app/build/outputs/apk/debug/app-debug.apk
 gradle assembleRelease      # release APK (signed kon may keystore, kon wala unsigned)
+gradle bundleRelease        # release AAB: app/build/outputs/bundle/release/app-release.aab
 ```
+
+Ang `.aab` (Android App Bundle) mao ang format nga gidawat sa **Google Play Console**.
+Kon may keystore, signed kini; kon wala, unsigned ug dili ma-upload sa Play.
 
 Ang `.github/workflows/build.yml` mo-build sa debug APK sa matag push sa `main`,
 ug mo-upload niini isip artifact. Kon naa ang duha ka secret, mo-build usab kini
-sa release variant ug i-upload isip `CamiguinMarket-release-apk`.
+sa release variant ug i-upload isip `CamiguinMarket-release-apk` (APK) ug
+`CamiguinMarket-release-aab` (AAB alang sa Play Store).
 
 ## Wala pa ma-test
 
