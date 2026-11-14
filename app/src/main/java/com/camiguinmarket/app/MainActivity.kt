@@ -1,9 +1,20 @@
 package com.camiguinmarket.app
 
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +34,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.storage.FirebaseStorage
 
 val categories = listOf("Tanan", "Pagkaon ug Seafood", "Lokal nga Produkto", "Sinina", "Gadgets", "Uban pa")
 val towns = listOf("Mambajao", "Mahinog", "Guinsiliban", "Sagay", "Catarman")
@@ -40,7 +52,9 @@ data class Listing(
     val createdAt: Long = 0L,
     // Pickup location sa seller (pin sa Google Map).
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    // Download URL sa litrato sa Firebase Storage ("" = walay litrato).
+    val imageUrl: String = ""
 )
 
 class MainActivity : ComponentActivity() {
@@ -205,10 +219,24 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(filtered, key = { it.id }) { l ->
                         Card(onClick = { selected = l }, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(l.title, style = MaterialTheme.typography.titleMedium)
-                                Text("₱%.2f".format(l.price), color = MaterialTheme.colorScheme.primary)
-                                Text("${l.category} • ${l.town}", style = MaterialTheme.typography.bodySmall)
+                            Row(
+                                Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (l.imageUrl.isNotBlank()) {
+                                    StorageImage(
+                                        url = l.imageUrl,
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                }
+                                Column {
+                                    Text(l.title, style = MaterialTheme.typography.titleMedium)
+                                    Text("₱%.2f".format(l.price), color = MaterialTheme.colorScheme.primary)
+                                    Text("${l.category} • ${l.town}", style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }
@@ -238,6 +266,16 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             title = { Text(l.title) },
             text = {
                 Column {
+                    if (l.imageUrl.isNotBlank()) {
+                        StorageImage(
+                            url = l.imageUrl,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     Text("₱%.2f".format(l.price), style = MaterialTheme.typography.titleMedium)
                     Text(l.description)
                     Spacer(Modifier.height(8.dp))
@@ -378,6 +416,47 @@ fun PostDialog(
     }
     var showPicker by remember { mutableStateOf(false) }
 
+    // Litrato sa listing: pilion gikan sa gallery, i-upload sa Firebase Storage.
+    val context = LocalContext.current
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var uploading by remember { mutableStateOf(false) }
+    var uploadError by remember { mutableStateOf<String?>(null) }
+
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            imageUri = uri
+            uploadError = null
+        }
+    }
+
+    LaunchedEffect(imageUri) {
+        preview = imageUri?.let { decodeImageBitmap(context, it) }
+    }
+
+    fun saveListing(imageUrl: String) {
+        val ref = if (existing == null) {
+            db.collection("listings").document()
+        } else {
+            db.collection("listings").document(existing.id)
+        }
+        ref.set(
+            Listing(
+                title = title.trim(), description = desc.trim(),
+                price = price.toDouble(), category = category, town = town,
+                // Sa edit, dili mausab ang tag-iya niini nga listing.
+                sellerId = existing?.sellerId ?: uid,
+                sellerName = existing?.sellerName ?: sellerName,
+                contact = contact.trim(),
+                createdAt = existing?.createdAt?.takeIf { it > 0 }
+                    ?: System.currentTimeMillis(),
+                latitude = pickup?.latitude, longitude = pickup?.longitude,
+                imageUrl = imageUrl
+            )
+        )
+        onClose()
+    }
+
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text(if (existing == null) "Bag-ong baligya" else "I-edit ang listing") },
@@ -408,35 +487,97 @@ fun PostDialog(
                     onClick = { showPicker = true },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("📌 Pili og Pickup Location sa Mapa") }
+
+                Spacer(Modifier.height(8.dp))
+                Text("Litrato", style = MaterialTheme.typography.labelMedium)
+                when {
+                    preview != null -> Image(
+                        bitmap = preview!!,
+                        contentDescription = "Bag-ong litrato sa listing",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+
+                    existing?.imageUrl?.isNotBlank() == true -> StorageImage(
+                        url = existing.imageUrl,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+
+                    else -> Text(
+                        "Wala pay litrato.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                OutlinedButton(
+                    onClick = { pickImage.launch("image/*") },
+                    enabled = !uploading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (preview != null || existing?.imageUrl?.isNotBlank() == true)
+                            "🖼️ Ilisi ang litrato" else "📷 Pumili og litrato"
+                    )
+                }
+                if (preview != null) {
+                    TextButton(
+                        onClick = { imageUri = null; preview = null },
+                        enabled = !uploading
+                    ) { Text("Tangtanga ang bag-ong litrato") }
+                }
+                if (uploading) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("Gi-upload ang litrato…", style = MaterialTheme.typography.bodySmall)
+                }
+                uploadError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
             }
         },
         confirmButton = {
             TextButton(
-                enabled = title.isNotBlank() && price.toDoubleOrNull() != null && contact.isNotBlank(),
+                enabled = !uploading && title.isNotBlank() &&
+                    price.toDoubleOrNull() != null && contact.isNotBlank(),
                 onClick = {
-                    val ref = if (existing == null) {
-                        db.collection("listings").document()
+                    val picked = imageUri
+                    if (picked == null) {
+                        // Walay bag-ong litrato: tipigan ang daan (kon edit).
+                        saveListing(existing?.imageUrl ?: "")
                     } else {
-                        db.collection("listings").document(existing.id)
+                        uploading = true
+                        uploadError = null
+                        val storageRef = FirebaseStorage.getInstance()
+                            .reference.child("listing_images/$uid/${System.currentTimeMillis()}.jpg")
+                        storageRef.putFile(picked)
+                            .addOnSuccessListener {
+                                storageRef.downloadUrl
+                                    .addOnSuccessListener { uri ->
+                                        uploading = false
+                                        saveListing(uri.toString())
+                                    }
+                                    .addOnFailureListener { e ->
+                                        uploading = false
+                                        uploadError = e.localizedMessage
+                                            ?: "Napakyas ang pagkuha sa URL sa litrato."
+                                    }
+                            }
+                            .addOnFailureListener { e ->
+                                uploading = false
+                                uploadError = e.localizedMessage
+                                    ?: "Napakyas ang pag-upload sa litrato."
+                            }
                     }
-                    ref.set(
-                        Listing(
-                            title = title.trim(), description = desc.trim(),
-                            price = price.toDouble(), category = category, town = town,
-                            // Sa edit, dili mausab ang tag-iya niini nga listing.
-                            sellerId = existing?.sellerId ?: uid,
-                            sellerName = existing?.sellerName ?: sellerName,
-                            contact = contact.trim(),
-                            createdAt = existing?.createdAt?.takeIf { it > 0 }
-                                ?: System.currentTimeMillis(),
-                            latitude = pickup?.latitude, longitude = pickup?.longitude
-                        )
-                    )
-                    onClose()
                 }
             ) { Text(if (existing == null) "I-post" else "I-save") }
         },
-        dismissButton = { TextButton(onClick = onClose) { Text("Kanselar") } }
+        dismissButton = {
+            TextButton(onClick = onClose, enabled = !uploading) { Text("Kanselar") }
+        }
     )
 
     if (showPicker) {
@@ -444,6 +585,45 @@ fun PostDialog(
             initial = pickup,
             onPicked = { pickup = it },
             onDismiss = { showPicker = false }
+        )
+    }
+}
+
+/** Decode sa napiling litrato gikan sa gallery (walay dugang nga library). */
+fun decodeImageBitmap(context: Context, uri: Uri): ImageBitmap? = runCatching {
+    context.contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream)?.asImageBitmap()
+    }
+}.getOrNull()
+
+/**
+ * Ang litrato sa listing gikan sa Firebase Storage.
+ *
+ * Gi-download kausa ra matag URL sulod sa composition — igo na alang sa gagmay
+ * nga thumbnail ug sa bug-os nga litrato sa detalye.
+ */
+@Composable
+fun StorageImage(url: String, modifier: Modifier = Modifier) {
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+
+    LaunchedEffect(url) {
+        if (url.isBlank()) {
+            bitmap = null
+            return@LaunchedEffect
+        }
+        val ref = runCatching { FirebaseStorage.getInstance().getReferenceFromUrl(url) }
+            .getOrNull() ?: return@LaunchedEffect
+        ref.getBytes(4L * 1024 * 1024).addOnSuccessListener { bytes ->
+            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        }
+    }
+
+    bitmap?.let {
+        Image(
+            bitmap = it,
+            contentDescription = "Litrato sa listing",
+            contentScale = ContentScale.Crop,
+            modifier = modifier
         )
     }
 }

@@ -92,6 +92,7 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-storage")
 
     // Google Map sulod sa Compose app (Option A).
     implementation("com.google.maps.android:maps-compose:9.0.1")

@@ -41,6 +41,23 @@ Ang file sa HTML nga gigamit sa Mapbox: `app/src/main/assets/mapbox_map.html`.
   tugotan ang update.
 - **`Papas`** — tag-iya ra usab.
 
+## Litrato sa listing (Firebase Storage)
+
+- **`📷 Pumili og litrato`** sa dialog sa pag-post, o **`🖼️ Ilisi ang litrato`** kon nag-edit.
+  Ang litrato gikan sa gallery, i-upload sa Storage sa
+  `listing_images/{uid}/{timestamp}.jpg`, ug ang download URL gitipigan sa
+  `imageUrl` field sa listing document.
+- Ang thumbnail makita sa list, ug ang bug-os nga litrato sa detalye sa listing.
+- **`storage.rules`**: kinahanglan naka-log in aron makakita; ang user makasulat ra
+  sa iyang kaugalingong folder; **image ra** ug **ubos sa 5 MB**.
+- I-deploy ang storage rules: `firebase deploy --only storage` (o **Storage → Rules**
+  sa Console). Ang CI mosulay usab niini, apan warning lang kon mapakyas.
+
+⚠️ **Gikinahanglan:** naka-enable ang **Firebase Storage** sa project, ug ang
+project naa sa **Blaze** (pay-as-you-go) plan — gikinahanglan na kini sa Google
+alang sa Storage. Kon Spark plan pa, mo-fail ang upload (ang ubang feature
+padayon gihapon nga mogana).
+
 ## Gikinahanglan nga API keys (ayaw i-commit!)
 
 1. **Google Maps API key** — sa Google Cloud Console i-enable ang:
@@ -192,6 +209,6 @@ sa release variant ug i-upload isip `CamiguinMarket-release-apk` (APK) ug
 ## Wala pa ma-test
 
 Walay device/emulator sa development environment, busa **wala ma-verify ang
-runtime**: ang GPS location, pag-tap sa mapa, ang WebView bridge (`onRoute`), ug
-ang tinuod nga tubag sa Google/Mapbox API. Ang nasiguro ra: `gradle assembleDebug`
+runtime**: ang GPS location, pag-tap sa mapa, ang WebView bridge (`onRoute`),
+ang pag-upload sa litrato sa Storage, ug ang tinuod nga tubag sa Google/Mapbox API. Ang nasiguro ra: `gradle assembleDebug`
 ug `gradle assembleRelease` mo-compile, ug husto ang JavaScript sa HTML page.

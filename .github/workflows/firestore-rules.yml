@@ -164,3 +164,34 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase deploy --only firestore:rules --non-interactive
+
+      # Ang storage.rules alang sa mga litrato sa listing. Kon wala pa naka-enable
+      # ang Firebase Storage (o wala sa Blaze plan), dili kini maka-deploy —
+      # warning lang kini, dili babag sa Firestore rules.
+      - name: Deploy storage.rules
+        if: steps.creds.outputs.method == 'service_account'
+        env:
+          NO_COLOR: "1"
+        run: |
+          set +e
+          firebase deploy --only storage --non-interactive \
+            > "$RUNNER_TEMP/storage.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/storage.log"
+          {
+            echo ""
+            if [ "$status" -eq 0 ]; then
+              echo "✅ Na-deploy ang storage.rules."
+            else
+              echo "## ⚠️ Wala na-deploy ang storage.rules (exit $status)"
+              echo ""
+              echo "Kasagaran: wala pa naka-enable ang **Firebase Storage** sa project,"
+              echo "o wala ang project sa **Blaze** plan. Ang Firestore rules na-deploy lang gihapon."
+              echo ""
+              echo '```'
+              grep -iE "error|bucket|billing|403|404|not found|failed" \
+                "$RUNNER_TEMP/storage.log" | head -10
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
