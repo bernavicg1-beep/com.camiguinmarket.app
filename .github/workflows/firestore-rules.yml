@@ -63,7 +63,7 @@ jobs:
         with:
           node-version: 22
 
-      # Ang secrets dili magamit direkta sa `if`, busa i-check dinhi.
+      # Secrets cannot be used directly in `if`, so check them here.
       # Wala gayud i-print ang value niini.
       - name: Check kon unsang credential ang naa
         id: creds
