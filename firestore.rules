@@ -1,0 +1,58 @@
+rules_version = '2';
+
+// Camiguin Market — Firestore security rules.
+//
+// Palisiya:
+//   - Kinahanglan naka-log in (Firebase Auth) aron makabasa sa listings.
+//   - Ang tag-iya (sellerId == uid) ra ang makabuhat, makausab, ug makapapas
+//     sa iyang listing.
+//   - Wala nay laing collection nga gibuksan; default deny ang tanan.
+//
+// I-deploy:  firebase deploy --only firestore:rules
+// (o i-paste sa Firebase Console → Firestore → Rules).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Ang listing balido kon kompleto ang importante nga fields ug husto ang tipo.
+    function validListing(data) {
+      return data.sellerId is string
+        && data.sellerId.size() > 0
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 200
+        && data.price is number
+        && data.price >= 0
+        && data.contact is string
+        && data.contact.size() <= 60
+        // Optional ang pickup coordinates, apan kon naa kinahanglan numero.
+        && (!('latitude' in data) || data.latitude == null || data.latitude is number)
+        && (!('longitude' in data) || data.longitude == null || data.longitude is number);
+    }
+
+    match /listings/{listingId} {
+      // Ang customer kinahanglan makakita sa mga listing, apan kinahanglan log in.
+      allow read: if request.auth != null;
+
+      // Ang seller ra ang makahimo og listing sa iyang kaugalingong ngalan.
+      allow create: if request.auth != null
+        && request.resource.data.sellerId == request.auth.uid
+        && validListing(request.resource.data);
+
+      // Dili ma-transfer ang listing ngadto sa laing seller.
+      allow update: if request.auth != null
+        && resource.data.sellerId == request.auth.uid
+        && request.resource.data.sellerId == request.auth.uid
+        && validListing(request.resource.data);
+
+      // Gigamit usab ni sa account deletion (papason ang tanan listing sa user).
+      allow delete: if request.auth != null
+        && resource.data.sellerId == request.auth.uid;
+    }
+
+    // Default deny sa ubang dalan.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

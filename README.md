@@ -82,6 +82,25 @@ RELEASE_KEY_ALIAS=…
 RELEASE_KEY_PASSWORD=…
 ```
 
+## Firestore security rules
+
+Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
+
+- **read** — kinahanglan naka-log in (`request.auth != null`).
+- **create / update / delete** — ang tag-iya ra (`sellerId == request.auth.uid`),
+  ug dili ma-transfer ang listing ngadto sa laing seller.
+- **default deny** — wala nay laing collection nga gibuksan.
+
+I-deploy ang rules (usa ra ka beses, o kon may kausaban):
+
+```bash
+firebase deploy --only firestore:rules --project camiguinmarket
+```
+
+O kaha i-paste ang sulod sa `firestore.rules` sa **Firebase Console → Firestore →
+Rules** ug pindota ang **Publish**. **Ayaw** ibilin sa test mode (`allow read, write:
+if true`) kay bisan kinsa makabasa ug makasulat sa `listings`.
+
 ## Pagpapas sa account (requirement sa Play Store)
 
 Kon ang app makahimo og account, kinahanglan nga ang user makapapas niini:

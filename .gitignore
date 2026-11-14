@@ -8,6 +8,11 @@ app/build/
 *.apk
 *.aab
 
+# Firebase emulator / CLI logs
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
 # IDE
 .idea/
 *.iml
