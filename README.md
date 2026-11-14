@@ -106,11 +106,14 @@ if true`) kay bisan kinsa makabasa ug makasulat sa `listings`.
 Ang `.github/workflows/firestore-rules.yml` dunay duha ka job:
 
 1. **Validate** — i-compile ang `firestore.rules` sa Firestore emulator, dayon i-run
-   ang `scripts/test-firestore-rules.py` (10 ka behavioral check: anonymous denied,
+   ang `scripts/test-firestore-rules.py` (19 ka behavioral check: anonymous denied,
    tag-iya allowed, laing user denied, dili ma-transfer ang listing, sayop nga tipo
-   sa `price` denied). Modagan sa matag push sa `main` *ug* sa matag pull request nga
-   nag-usab sa rules. Kon sayop ang syntax o may ni-fail nga check, mo-fail ang job —
-   dili ka makadeploy og guba nga rules.
+   sa `price` denied, **ug ang eksaktong dokumento nga isulat sa app** — `id = ""`,
+   `price` nga double, `createdAt` nga long, `latitude`/`longitude` nga `null` kon
+   walay pickup pin, `orderBy createdAt`, ug ang query sa account deletion).
+   Modagan sa matag push sa `main` *ug* sa matag pull request nga nag-usab sa rules.
+   Kon sayop ang syntax o may ni-fail nga check, mo-fail ang job — dili ka
+   makadeploy og guba nga rules.
 
    I-run kini sa lokal (nanginahanglan og JDK 21+ alang sa emulator):
 
