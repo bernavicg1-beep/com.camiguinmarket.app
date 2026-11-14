@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ceb">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Camiguin Market — Pagpapas sa Account</title>
+<title>Camiguin Market — Account Deletion</title>
 <style>
   :root { color-scheme: light; }
   body {
@@ -28,77 +28,77 @@
 </style>
 </head>
 <body>
-<h1>Pagpapas sa Account</h1>
+<h1>Account Deletion</h1>
 <p class="sub">Camiguin Market · <code>com.camiguinmarket.app</code></p>
 
 <p>
-  Kon gusto nimong papason ang imong account sa <strong>Camiguin Market</strong> ug ang
-  tanan niini nga data, adunay duha ka paagi: sa sulod sa app, o pinaagi sa email.
+  If you want to delete your <strong>Camiguin Market</strong> account and all of its
+  data, there are two ways: inside the app, or by email.
 </p>
 
-<h2>1. Sa sulod sa app (pinakadali)</h2>
+<h2>1. Inside the app (easiest)</h2>
 <ol>
-  <li>Sulod sa app gamit ang imong account.</li>
-  <li>Sa ibabaw nga bahin sa screen, pindota ang <strong>🗑️</strong> nga button.</li>
-  <li>Basaha ang pasidaan, dayon pindota ang <strong>Papason</strong>.</li>
-  <li>Kon dugay na ang imong login, hangyoa ka sa pag-log out ug pag-log in pag-usab
-      para seguridad, dayon sulayi pag-usab.</li>
+  <li>Sign in to the app with your account.</li>
+  <li>At the top of the screen, press the <strong>🗑️</strong> button.</li>
+  <li>Read the warning, then press <strong>Delete</strong>.</li>
+  <li>If your login is old, you will be asked to log out and log in again for
+      security, then try again.</li>
 </ol>
 <p>
-  Human niini, permanenteng mapapas ang imong account ug ma-sign out ka.
+  After that your account is permanently deleted and you are signed out.
 </p>
 
-<h2>2. Pinaagi sa email</h2>
+<h2>2. By email</h2>
 <p>
-  Kon dili na nimo ma-access ang app, magpadala og email ug hangyoa ang pagpapas sa account.
-  Apila kining mga detalye:
+  If you can no longer access the app, send an email requesting account deletion.
+  Include these details:
 </p>
 <ul>
-  <li>Ang <strong>email address</strong> nga gigamit sa account.</li>
-  <li>Ang subject: <code>Account deletion request</code>.</li>
+  <li>The <strong>email address</strong> used for the account.</li>
+  <li>The subject: <code>Account deletion request</code>.</li>
 </ul>
 <p>
-  Ipadala sa: <strong><!-- ILISI: ibutang dinhi ang imong support email -->YOUR_SUPPORT_EMAIL_HERE</strong>
+  Send it to: <strong><!-- REPLACE: put your support email here -->YOUR_SUPPORT_EMAIL_HERE</strong>
 </p>
 <p>
-  Mo-reply kami sulod sa <strong>7 ka adlaw</strong> sa trabaho ug tapuson ang pagpapas
-  sulod sa <strong>30 ka adlaw</strong>.
+  We reply within <strong>7 business days</strong> and complete the deletion
+  within <strong>30 days</strong>.
 </p>
 
 <div class="box">
-  <strong>Importante:</strong> ang pagpapas permanente. Dili na mabalik ang account,
-  ang mga listing, ug ang mga litrato niini.
+  <strong>Important:</strong> deletion is permanent. The account, its listings,
+  and their photos cannot be recovered.
 </div>
 
-<h2>Unsa ang mapapas</h2>
+<h2>What gets deleted</h2>
 <table>
-  <tr><th>Data</th><th>Unsa ang mahitabo</th></tr>
+  <tr><th>Data</th><th>What happens</th></tr>
   <tr>
     <td>Account (email, password, display name)</td>
-    <td>Mapapas gikan sa Firebase Authentication.</td>
+    <td>Deleted from Firebase Authentication.</td>
   </tr>
   <tr>
-    <td>Mga listing (ngalan sa produkto, presyo, deskripsyon, contact, lungsod, kategorya)</td>
-    <td>Mapapas gikan sa Firestore.</td>
+    <td>Listings (product name, price, description, contact, town, category)</td>
+    <td>Deleted from Firestore.</td>
   </tr>
   <tr>
     <td>Pickup location (latitude/longitude)</td>
-    <td>Mapapas uban sa listing.</td>
+    <td>Deleted together with the listing.</td>
   </tr>
 </table>
 <p>
-  Wala kami magtipig og laing kopya sa imong data. Ang mga backup sa Firebase mawala
-  human sa ilang normal nga retention period (hangtod 30 ka adlaw).
+  We keep no other copy of your data. Firebase backups expire after their normal
+  retention period (up to 30 days).
 </p>
 
-<h2>Kon dili nimo papason ang account</h2>
+<h2>If you do not want to delete your account</h2>
 <p>
-  Pwede ka lang mo-log out ug dili na mogamit sa app. Ang imong data magpabilin
-  hangtod mangayo ka og pagpapas.
+  You can simply log out and stop using the app. Your data stays until you ask for
+  deletion.
 </p>
 
 <footer>
-  Camiguin Market · Kini nga page gigamit isip account-deletion URL sa Google Play.
+  Camiguin Market · This page is used as the account-deletion URL on Google Play.
 </footer>
 </body>
 </html>

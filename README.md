@@ -1,299 +1,303 @@
 # Camiguin Market 🛒
 
-Android app (Kotlin + Jetpack Compose + Firebase) alang sa pagbaligya ug pagpalit
-sa tibuok Camiguin. Ang seller makabutang og **pickup location sa mapa**, ug ang
-customer makakita niini, makakuha og **ruta A→B**, ug makapangita og lugar.
+Android app (Kotlin + Jetpack Compose + Firebase) for buying and selling across
+Camiguin. The seller can drop a **pickup location on the map**, and the customer
+sees it, gets an **A→B route**, and can search for places.
 
-## Ang duha ka mapa
+## The two maps
 
 | | Option A — Google Map | Option B — Mapbox |
 |---|---|---|
-| Unsaon pag-abli | `🗺️ Mapa` o `View Map` sa listing | `🌐 Tan-awa sa Mapbox (web)` |
-| Teknolohiya | Google Maps SDK + `maps-compose` (Compose) | Mapbox GL JS v3 sa `WebView` |
-| Ruta A→B | Google Directions API | Mapbox Directions API |
+| How to open | `🗺️ Map` or `View Map` on a listing | `🌐 View on Mapbox (web)` |
+| Technology | Google Maps SDK + `maps-compose` (Compose) | Mapbox GL JS v3 in a `WebView` |
+| A→B route | Google Directions API | Mapbox Directions API |
 | Place search | Google Geocoding API | Mapbox Geocoding API |
 
-Pareho ang duha: **tanan seller pin**, **search bar sa ibabaw**, ug **ruta A→B**.
-Ang file sa HTML nga gigamit sa Mapbox: `app/src/main/assets/mapbox_map.html`.
+Both work the same way: **all seller pins**, a **search bar on top**, and an
+**A→B route**. The HTML used by Mapbox lives in `app/src/main/assets/mapbox_map.html`.
 
-## Mga feature sa mapa
+## Map features
 
-- **Pickup pin per listing** — `latitude`/`longitude` (Double) ang gitipigan sa
-  Firestore `listings` document. Ang seller mo-pindot sa mapa aron ibutang ang pin.
-- **View Map / Get Directions** — makita ang pin sa sulod sa app, o ablihan ang
-  Google Maps app alang sa navigation.
-- **`📍 Use My Current Location`** — GPS location (kinahanglan ang location permission).
-- **Ruta A→B** — `🅰️ Set A` / `🅱️ Set B` (tap sa mapa), dayon `🧭 Ipakita ang Ruta A→B`.
-  Magpakita kini sa polyline sa dalan, gilay-on (`km`) ug oras (`min`).
-- **Search bar** — `Pangita og lugar o seller…`: seller una (ngalan, lungsod,
-  kategorya), dayon place search sa Camiguin kon walay seller nga match.
-- **`⚖️ Itandi` (Google vs Mapbox)** — pareho nga Point A ug Point B ang ipasa sa
-  duha ka mapa; ipakita ang gilay-on/oras sa matag usa ug ang ilang kalainan
-  (`✅ Duol ra kaayo` kon ≤ 0.5 km). Maayo kini alang sa pagsulay ug pagpares.
+- **Pickup pin per listing** — `latitude`/`longitude` (Double) stored in the
+  Firestore `listings` document. The seller taps the map to place the pin.
+- **View Map / Get Directions** — see the pin inside the app, or open the
+  Google Maps app for navigation.
+- **`📍 Use My Current Location`** — GPS location (requires the location permission).
+- **A→B route** — `🅰️ Set A` / `🅱️ Set B` (tap the map), then `🧭 Show the A→B Route`.
+  It draws the road polyline, the distance (`km`) and the time (`min`).
+- **Search bar** — `Search a place or seller…`: sellers first (name, town,
+  category), then a place search in Camiguin when no seller matches.
+- **`⚖️ Compare` (Google vs Mapbox)** — the same Point A and Point B go to both
+  maps; it shows distance/time for each and the difference
+  (`✅ Very close` when ≤ 0.5 km). Handy for testing and comparing.
 
-## Bag-ong design (mockup)
+## New design (mockup)
 
-Asul nga tema, logo header, ug bottom navigation:
+Blue theme, logo header, and bottom navigation:
 
-| Tab | Unsa ang sulod |
+| Tab | What's inside |
 |---|---|
-| **Home** | Search bar, hero banner, **Shop by Category** grid nga dunay icons, ug **Featured Products** (thumbnail, presyo, lungsod, ♡, `Add to Cart`) |
-| **Categories** | Category grid + filter sa lungsod + list sa mga listing |
-| **Sell** | Moabli sa dialog sa pag-post |
-| **Cart** | Ang mga nadugang sa cart, `+`/`−` sa quantity, total, ug **I-checkout** |
-| **Profile** | Ngalan, email, ihap sa imong listing, Paborito, **Mga Order**, **Mga Chat**, Log out, ug Papas sa account |
+| **Home** | Search bar, hero banner, **Shop by Category** grid with icons, and **Featured Products** (thumbnail, price, town, ♡, `Add to Cart`) |
+| **Categories** | Category grid + town filter + listing list |
+| **Sell** | Opens the post dialog |
+| **Cart** | Items in the cart, `+`/`−` quantity, total, and **Checkout** |
+| **Profile** | Name, email, listing count, Favorites, **Orders**, **Chats**, Log out, and Delete account |
 
-Dugang pa: **Notifications** (kon dunay magdugang sa imong listing sa cart, mag-order, o
-mag-chat), **Chat sa seller** nga dunay **inbox** (tanan nga thread), ug **checkout**.
-Ang mga icon Material icons na (`material-icons-extended`), dili na emoji.
+Also: **Notifications** (when someone adds your listing to their cart, orders, or
+messages you), **Chat with seller** with an **inbox** (all threads), and **checkout**.
+Icons are Material icons (`material-icons-extended`), no emoji.
 
-### Checkout ug orders
+### Checkout and orders
 
-- Ang **I-checkout** sa Cart maghimo og usa ka `orders` document kada cart item (kada
-  seller dunay kaugalingong order), dayon i-empty ang cart ug pahibaloon ang seller.
-- Ang Profile → **Mga Order** dunay duha ka filter: *Ako ang mipalit* ug *Ako ang
-  gibaligya*. Ang status: `pending` → `confirmed` → `done`.
-- Ang **seller** dunay `Kumpirmahon` ug `Tapos na` nga mga button (sa list ug sa
-  detalye), ug makita dayon ang kausaban kay live ang order list.
-- Pindota ang order aron maabli ang **detalye**: litrato, presyo × quantity, total,
-  buyer/seller, contact, status timeline, ug `Chat sa buyer`/`Chat sa seller`.
-- Ang **chat unread badge** makita sa chat icon sa header. Ang unread gina-track sa
-  `chats/{chatId}.unread.{uid}` — modaghan kon dunay mosulat ug mobalik sa 0 kon
-  ablihan ang thread.
-- Kon ang seller mo-kumpirma o mo-tapos, **makadawat og notification ang buyer**.
-- **Cancel:** ang buyer makakanselar samtang `pending` pa, ang seller bisan kanus-a nga
-  wala pa `done`; dunay `cancelled` nga status ug pahibalo sa pikas.
-- Ang **Baligya** nga summary dunay filter: **Karon** / **Kini nga bulan** / **Tanan**.
-- Ang chat dunay **typing indicator** ("nagsulat…", mawala human og 7s) ug ang
-  typing signal gina-throttle sa 2.5s aron dili maghuot ang writes.
-- Ang Profile dunay **Baligya** nga summary sa seller: kita (mga order nga `done`),
-  bag-o, gikumpirma, ug tapos.
-- Ang mga mensahe dunay oras (`7:42 PM`) ug **read receipt**: `✓` kon na-send pa lang,
-  `✓✓` kon nabasa na sa pikas (`chats/{chatId}.lastRead.{uid}`).
-- Walay composite index nga gikinahanglan: `whereEqualTo` ra ang query ug i-sort sa app.
+- **Checkout** in the Cart creates one `orders` document per cart item (each
+  seller gets their own order), then empties the cart and notifies the seller.
+- Profile → **Orders** has two filters: *I'm the buyer* and *I'm the seller*.
+  Status: `pending` → `confirmed` → `done`.
+- The **seller** gets `Confirm` and `Done` buttons (in the list and in the
+  detail), and changes appear immediately because the order list is live.
+- Tap an order to open the **detail**: photo, price × quantity, total,
+  buyer/seller, contact, status timeline, and `Chat with buyer`/`Chat with seller`.
+- The **chat unread badge** is shown on the chat icon in the header. Unread is
+  tracked in `chats/{chatId}.unread.{uid}` — it grows when someone writes and goes
+  back to 0 when the thread is opened.
+- When the seller confirms or completes an order, the **buyer gets a notification**.
+- **Cancel:** the buyer can cancel while `pending`, the seller at any time before
+  `done`; there is a `cancelled` status and the other side is notified.
+- The **Sales** summary has filters: **Today** / **This month** / **All**.
+- Chat has a **typing indicator** ("typing…", disappears after 7s) and the typing
+  signal is throttled to 2.5s so writes don't pile up.
+- Profile has a **Sales** summary for the seller: revenue (`done` orders),
+  new, confirmed, and done counts.
+- Messages show a time (`7:42 PM`) and a **read receipt**: `✓` when sent,
+  `✓✓` when read by the other side (`chats/{chatId}.lastRead.{uid}`).
+- No composite indexes are required: only `whereEqualTo` queries, sorted in the app.
 
-Kini nga mga feature dunay kaugalingong Firestore collections: `carts/{uid}/items`,
-`favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, ug
+These features have their own Firestore collections: `carts/{uid}/items`,
+`favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, and
 `chats/{chatId}/messages`.
 
 ### Moderation
 
-Kon dunay `admins/{uid}` document sa Firestore, makita sa Profile ang **Moderation**
-nga screen: tanang listing, ug makapapas ang moderator og bisan unsang listing
-(pahibaloon ang seller).
+When an `admins/{uid}` document exists in Firestore, Profile shows the
+**Moderation** screen: all listings, and a moderator can delete any listing
+(the seller is notified).
 
-**Unsaon paghimo og moderator:** Firebase Console → Firestore → **Start collection**
-`admins` → document ID = ang `uid` sa user (makita sa Authentication tab) → field
-`active` (boolean) = `true`. Wala kini UI sa app kay dili buot nga makahimo ang
-bisan kinsa og moderator; ang `admins` gina-block sa rules (`allow write: if false`).
+**How to make a moderator:** Firebase Console → Firestore → **Start collection**
+`admins` → document ID = the user's `uid` (visible in the Authentication tab) →
+field `active` (boolean) = `true`. There is no UI for this in the app because not
+just anyone should be able to create a moderator; `admins` is blocked by the rules
+(`allow write: if false`).
 
-### Report sa listing
+### Reporting a listing
 
-Ang detalye sa listing dunay **I-report kini nga listing** (sa mga listing sa uban).
-Makapili ang user og rason (Dili tinuod, Scam o pangilad, Dili angay nga sulod,
-Sayop nga category, Uban pa) ug opsyonal nga detalye. Ang admin makakita niini sa
-**Moderation → Mga Report** ug makapili: **Papas ang listing** (ma-resolve ang report)
-o kaha **Dismiss**. Ang reporter ra ug ang admin ang makabasa sa report.
+The listing detail has **Report this listing** (on other people's listings).
+The user picks a reason (Not real, Scam or fraud, Inappropriate content,
+Wrong category, Other) and can add optional details. The admin sees it in
+**Moderation → Reports** and can choose **Delete listing** (resolves the report)
+or **Dismiss**. Only the reporter and the admin can read the report.
 
-### Search suggestions ug daghang litrato
+### Search suggestions and multiple photos
 
-- Ang **SearchBar** dunay **recent searches** (8 ka pinakabag-o, gina-save sa device)
-  ug **suggestions** gikan sa mga titulo sa listing samtang nag-type. Pindot sa
-  keyboard search aron ma-save ang gipangita.
-- Ang usa ka listing makadala na og **hangtod 6 ka litrato** (`imageUrls`). Ang
-  upload sunod-sunod ug ang `imageUrl` mao gihapon ang unang litrato alang sa mga
-  card. Ang detalye dunay horizontal scroll sa mga litrato.
+- The **SearchBar** has **recent searches** (latest 8, saved on the device) and
+  **suggestions** from listing titles while typing. Press the keyboard search
+  action to save the query.
+- A listing can carry up to **6 photos** (`imageUrls`). Uploads run in sequence
+  and `imageUrl` stays the first photo for the cards. The detail screen scrolls
+  the photos horizontally.
 
-### Photo viewer ug filters
+### Photo viewer and filters
 
-- Pindot sa litrato sa detalye → **fullscreen viewer**: swipe pakanan/pakawala,
-  counter (`2 / 5`), ug ✕ aron pagsira.
-- Ang Home ug Categories dunay **filter sa presyo** (Tanan, Ubos sa ₱50,
-  ₱50–₱200, ₱200–₱500, Sobras ₱500) ug **sort** (Bag-o, Presyo ↑, Presyo ↓).
+- Tap a photo in the detail → **fullscreen viewer**: swipe left/right,
+  counter (`2 / 5`), and ✕ to close.
+- Home and Categories have a **price filter** (All, Under ₱50, ₱50–₱200,
+  ₱200–₱500, Over ₱500) and **sort** (Newest, Price ↑, Price ↓).
 
-### Rating sa seller
+### Seller rating
 
-Human sa `done` nga order, makahatag ang buyer og **1–5 ka bituon + komentaryo**
-(sa Orders list o sa detalye). Ang doc id = order id, busa **usa ra ka rating kada
-order** (dili ma-edit, `allow update: if false`). Ang average makita sa seller
-isip `⭐ 4.6 (12)` sa Profile → Baligya.
+After a `done` order, the buyer can give **1–5 stars + a comment** (in the Orders
+list or the detail). The doc id is the order id, so there is **one rating per
+order** (not editable, `allow update: if false`). The average is shown to the
+seller as `⭐ 4.6 (12)` in Profile → Sales.
 
-**Rules:** ang buyer ra sa `done` nga order ang makahimo (`get()` sa order),
-ug mabasa kini sa bisan kinsang naka-log in.
+**Rules:** only the buyer of a `done` order can create it (`get()` on the order),
+and any signed-in user can read it.
 
-### Reviews sa listing, saved search ug dark mode
+### Listing reviews, saved searches, and dark mode
 
-- Ang detalye sa listing nagpakita sa **average nga rating** sa seller ug hangtod
-  **3 ka pinakabag-o nga komentaryo**.
-- **Saved search:** sa Home (o Categories) dunay **"I-save kini nga pagpangita"** —
-  gina-save ang query ug category sa `savedSearches/{uid}/items`. Pag-abli sa app,
-  i-check ang mga listing nga bag-o pa kay sa `lastCheckedAt`; kon dunay mohaom,
-  makadawat ka og notification (diha-diha, walay server). Ang chip dunay ✕ aron
-  pagtangtang.
-- **Dark mode:** toggle sa Profile, gina-save sa `ui_prefs` sa device. Ang header,
-  bottom nav, chat bubbles, thumbnails ug stat cards naggamit na sa theme colors
-  (`marketDarkColorScheme`) — wala nay hardcoded nga puti nga mga panel.
-- **Tanan nga review:** ang detalye dunay "Tan-awa ang tanan nga review" →
-  `ReviewsScreen` (average, bituon, komentaryo, buyer, petsa).
-- **Manage saved searches:** Profile → **Saved searches** — pindoton aron magamit
-  ang filter, usbon ang pangan (✏️), o tangtangon (🗑️).
+- The listing detail shows the seller's **average rating** and up to
+  **3 latest comments**.
+- **Saved search:** Home (or Categories) has **"Save this search"** — it saves the
+  query and category to `savedSearches/{uid}/items`. When the app opens, it checks
+  for listings newer than `lastCheckedAt`; if any match, you get a notification
+  (client-side, no server). The chip has ✕ to remove it.
+- **Dark mode:** toggle in Profile, saved in `ui_prefs` on the device. The header,
+  bottom nav, chat bubbles, thumbnails, and stat cards all use theme colors
+  (`marketDarkColorScheme`) — no hardcoded white panels.
+- **All reviews:** the detail has "See all reviews" → `ReviewsScreen` (average,
+  stars, comment, buyer, date).
+- **Manage saved searches:** Profile → **Saved searches** — tap to apply the
+  filter, rename (✏️), or remove (🗑️).
 
-### Global search, email verification ug listing views
+### Global search, email verification, and listing views
 
-- **Search icon sa header** → global search screen: query, category, lungsod,
-  presyo, sort, ug history — tanan sa usa ka dapit.
-- **Email verification:** human sa register, gipadalhan dayon og verification email;
-  samtang wala pa ma-verify, dunay banner sa taas nga dunay *Ipadala pag-usab* ug
-  *Na-verify na?*. Dunay **Nakalimot sa password?** sa login
+- **Search icon in the header** → global search screen: query, category, town,
+  price, sort, and history — all in one place.
+- **Email verification:** after registering, a verification email is sent
+  immediately; until it is verified a banner appears at the top with *Resend* and
+  *Already verified?*. Login also has **Forgot password?**
   (`sendPasswordResetEmail`).
-- **Listing views:** kada abli sa detalye (dili sa tag-iya, kausa kada session)
-  modugang ang `views` sa listing; makita kini isip `👁 12 ka views`.
-  Ang rules nagtugot sa **+1 ra gayud** ug niini nga field ra.
+- **Listing views:** every time a detail is opened (not by the owner, once per
+  session) the listing's `views` is incremented; it is shown as `👁 12 views`.
+  The rules allow **exactly +1**, and only on that field.
 
-### Views sa seller, verified-only posting ug trending
+### Seller views, verified-only posting, and trending
 
-- Ang **tag-iya** makakita sa `👁 N ka views` sa iyang kaugalingong listing card,
-  ug dunay **Views sa akong listing** nga stat sa Profile → Baligya.
-- Ang wala pa **ma-verify** nga email **dili makabaligya** ug **dili maka-checkout** —
-  dunay toast nga nagpahinumdom sa verification link.
-- Bag-ong sort option: **Trending** (base sa views), ug dunay **🔥 Trending karon**
-  nga horizontal list sa Home (top 5, views > 0).
+- The **owner** sees `👁 N views` on their own listing cards, and Profile → Sales
+  has a **Views on my listings** stat.
+- An email that is **not verified** cannot **post** or **check out** — a toast
+  points to the verification link.
+- New sort option: **Trending** (based on views), plus a **🔥 Trending now**
+  horizontal list on Home (top 5, views > 0).
 
-### Per-listing stats, verification cooldown ug trending sa Categories
+### Per-listing stats, verification cooldown, and trending in Categories
 
-- **Profile → Stats sa listing**: kada listing dunay **views**, **cart adds**
-  (`cartAdds` field, gina-increment sa transaction ni `addToCart`) ug **ihap sa
-  orders**. Usa ra ka `orders` query (`sellerId`), gi-group sa app — walay index.
-- Ang **Ipadala pag-usab** sa verification dunay **60s cooldown** (`ui_prefs`),
-  ug magpakita og countdown aron dili spam.
-- Ang **🔥 Trending karon** naa na usab sa **Categories** tab.
+- **Profile → Listing stats**: each listing shows **views**, **cart adds**
+  (`cartAdds` field, incremented in the `addToCart` transaction), and the **order
+  count**. One `orders` query (`sellerId`), grouped in the app — no index.
+- Verification **Resend** has a **60s cooldown** (`ui_prefs`) and shows a countdown
+  so it can't be spammed.
+- **🔥 Trending now** also appears in the **Categories** tab.
 
-### Views chart, CSV export ug push notifications
+### Views chart, CSV export, and push notifications
 
-- Ang **Stats sa listing** dunay **bar chart sa views kada adlaw** (7 ka adlaw) gikan
-  sa `viewsByDay` map; ang `openListing` nag-increment sa `views` ug
-  `viewsByDay."YYYY-MM-DD"` sa usa ka update.
-- **CSV export:** ang Orders screen dunay **CSV** button — maghimo og `orders.csv`
-  sa cache ug moabli sa Android share sheet (`FileProvider`).
-- **Push notifications (FCM):** ang app nag-register sa token ngadto sa
-  `users/{uid}/tokens/{token}` ug dunay `MarketMessagingService` nga magpakita sa
-  notification. Ang **pagpadala naa sa Cloudflare Worker** (`POST /push`, pareho
-  sa R2 upload): ang Worker maoy mo-verify sa ID token, mopili sa recipient gikan
-  sa Firestore, ug mokontak sa FCM gamit ang service account — walay secret sa
-  app ug walay Firebase Functions/Blaze nga gikinahanglan. Tan-awa ang
-  [`worker/README.md`](worker/README.md).
-- **CSV filter:** ang Orders screen dunay filter sa **petsa** (Tanan / 7 / 30 ka
-  adlaw) ug sa **status**, ug ang CSV nag-export sa nahisubo ra nga mga order
-  (`CSV (n)`).
-- Ang matag listing sa Stats screen **mapindot** aron makita ang kaugalingong
-  7-day views chart, ug dunay **kita kada bulan** nga chart (6 ka bulan, walay
-  cancelled orders).
-- **Push → screen:** ang tap sa notification moabli sa app ug modiretso sa
-  **order detail** o sa **chat** (`type=order|chat` + `orderId`/`chatId` extras;
+- **Listing stats** has a **daily views bar chart** (7 days) built from the
+  `viewsByDay` map; `openListing` increments `views` and
+  `viewsByDay."YYYY-MM-DD"` in a single update.
+- **CSV export:** the Orders screen has a **CSV** button — it writes `orders.csv`
+  to the cache and opens the Android share sheet (`FileProvider`).
+- **Push notifications (FCM):** the app registers its token at
+  `users/{uid}/tokens/{token}` and has a `MarketMessagingService` that shows the
+  notification. **Delivery lives in the Cloudflare Worker** (`POST /push`, same as
+  the R2 upload): the Worker verifies the ID token, picks the recipient from
+  Firestore, and calls FCM with the service account — no secret in the app and no
+  Firebase Functions/Blaze required. See [`worker/README.md`](worker/README.md).
+- **CSV filter:** the Orders screen has a **date** filter (All / 7 / 30 days) and a
+  **status** filter, and the CSV exports only the matching orders (`CSV (n)`).
+- Each listing on the Stats screen is **tappable** to show its own 7-day views
+  chart, and there is a **monthly revenue** chart (6 months, cancelled orders
+  excluded).
+- **Push → screen:** tapping a notification opens the app and goes straight to the
+  **order detail** or the **chat** (`type=order|chat` + `orderId`/`chatId` extras;
   `singleTop` + `onNewIntent`).
-- **Chat unread badge:** ang badge sa header gina-sum gikan sa `unread.<uid>` sa
-  matag chat, ug ang Inbox dunay **badge kada thread** (bold ang bag-ong mensahe).
-  Ang pag-abli sa thread nag-reset sa `unread.<uid>` ngadto sa 0.
-- **Debug sa deep link:** sa debug build, ang `readPushTarget` ug ang pag-abli sa
-  order/chat nag-log sa tag nga `CamiguinPush`. Testing nga walay push:
+- **Chat unread badge:** the header badge sums `unread.<uid>` across chats, and the
+  Inbox has a **per-thread badge** (new messages in bold). Opening a thread resets
+  `unread.<uid>` to 0.
+- **Deep link debugging:** in debug builds, `readPushTarget` and the order/chat
+  opening log under the `CamiguinPush` tag. Testing without a push:
   ```bash
   adb shell am start -n com.camiguinmarket.app/.MainActivity \
     --es type order --es orderId <ORDER_ID>
   adb logcat -s CamiguinPush
   ```
-  (singleTop + `onNewIntent`, busa magamit bisan bukas na ang app.)
-- **Sales CSV:** ang sales dashboard dunay `CSV` button nga mag-export sa
-  **kita kada adlaw** (`date,orders,revenue` + TOTAL row) sa nasulod nga range.
-- **Push sa app:** ang `sendPush(kind, orderId/chatId)` (sa `Push.kt`) nag-POST
-  ngadto sa `${R2_UPLOAD_URL}/push` human sa order, status update, ug bag-ong
-  chat message — best-effort lang, dili makapugong sa order/chat.
-- Wala nay Firebase Functions: giwagtang ang `functions/` ug ang deploy
-  workflow niini, kay ang push gina-host na sa Worker.
+  (singleTop + `onNewIntent`, so it works even when the app is already open.)
+- **Sales CSV:** the sales dashboard has a `CSV` button that exports
+  **daily revenue** (`date,orders,revenue` + a TOTAL row) for the selected range.
+- **Push in the app:** `sendPush(kind, orderId/chatId)` (in `Push.kt`) POSTs to
+  `${R2_UPLOAD_URL}/push` after an order, a status update, and a new chat message —
+  best-effort, it never blocks the order/chat.
+- No more Firebase Functions: `functions/` and its deploy workflow were removed
+  because push is hosted in the Worker.
 
-### Share ug offline cart
+### Sharing and the offline cart
 
-- Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
-  presyo, lungsod, ug contact ang gipadala.
-- Ang cart dunay **local cache** (`SharedPreferences`, `cart_cache`): makita gihapon
-  ang mga item bisan offline, ug dunay gamay nga "Offline" nga pahibalo. Ang
-  Firestore offline queue ang bahala sa writes kon mobalik ang internet.
+- The listing detail has **Share** (Android share sheet) — title, price, town, and
+  contact are sent.
+- The cart has a **local cache** (`SharedPreferences`, `cart_cache`): items are
+  still visible offline, with a small "Offline" notice. The Firestore offline
+  queue handles the writes when the internet comes back.
 
-## Pag-post, pag-edit, ug pagpapas sa listing
+## Posting, editing, and deleting a listing
 
-- **`+ Baligya`** — mag-post og listing (ngalan, presyo, contact, kategorya, lungsod,
-  ug opsyonal nga pickup pin sa mapa).
-- **`✏️ Edit`** — makita sa tag-iya ra, sulod sa detalye sa listing. Ma-prefill ang
-  tanan nga field (apil ang pickup pin). Ang `sellerId`, `sellerName`, ug `createdAt`
-  sa orihinal wala mausab — mao kini ang gikinahanglan sa `firestore.rules` aron
-  tugotan ang update.
-- **`Papas`** — tag-iya ra usab.
+- **`+ Sell`** — post a listing (name, price, contact, category, town, and an
+  optional pickup pin on the map).
+- **`✏️ Edit`** — visible to the owner only, inside the listing detail. Every field
+  is prefilled (including the pickup pin). The original `sellerId`, `sellerName`,
+  and `createdAt` stay unchanged — the `firestore.rules` update rule needs that.
+- **`Delete`** — owner only as well.
 
-## Litrato sa listing (Cloudflare R2)
+## Listing photos (Cloudflare R2)
 
-- **`📷 Pumili og litrato`** sa dialog sa pag-post, o **`🖼️ Ilisi ang litrato`** kon nag-edit.
-  Ang litrato gikan sa gallery, i-upload sa atong **Cloudflare Worker**, nga motipig
-  niini sa **R2** sa `listing_images/{uid}/{timestamp}-{random}.jpg`. Ang URL
-  gitipigan sa `imageUrl` field sa listing document.
-- Ang thumbnail makita sa list, ug ang bug-os nga litrato sa detalye sa listing.
-- **Walay R2 credentials sa app.** Ang app mogamit sa **Firebase ID token**, ug ang
-  Worker maoy mo-verify niini (Firebase Identity Toolkit) ug mohimo sa key gikan sa
-  `uid` sa token — busa ang user makasulat ra sa iyang kaugalingong folder.
-- Limitasyon sa Worker: **image/jpeg, image/png, image/webp** ra, ug **ubos 5 MB**.
-  Ang bucket pwede nga private kay ang Worker (`/i/…`) maoy mo-serve sa litrato.
+- **`📷 Choose photos`** in the post dialog, or **`🖼️ Replace photos`** when editing.
+  Photos come from the gallery and are uploaded to our **Cloudflare Worker**, which
+  stores them in **R2** at `listing_images/{uid}/{timestamp}-{random}.jpg`. The URL
+  is saved in the listing's `imageUrl` field.
+- The thumbnail appears in lists, and the full photo in the listing detail.
+- **No R2 credentials in the app.** The app uses its **Firebase ID token**, and the
+  Worker verifies it (Firebase Identity Toolkit) and builds the key from the
+  token's `uid` — so a user can only write inside their own folder.
+- Worker limits: **image/jpeg, image/png, image/webp** only, and **under 5 MB**.
+  The bucket can stay private because the Worker (`/i/…`) serves the images.
 
-**Setup sa Worker:** tan-awa ang [`worker/README.md`](worker/README.md) (mga 5
-ka minuto: `wrangler r2 bucket create`, `wrangler secret put FIREBASE_WEB_API_KEY`,
-`wrangler deploy`). Dayon ibutang ang URL sa `R2_UPLOAD_URL`.
+**Worker setup:** see [`worker/README.md`](worker/README.md) (about 5 minutes:
+`wrangler r2 bucket create`, `wrangler secret put FIREBASE_WEB_API_KEY`,
+`wrangler deploy`). Then set the URL in `R2_UPLOAD_URL`.
 
-⚠️ Kon wala ma-set ang `R2_UPLOAD_URL`, mogana gihapon ang app — ang litrato lang
-ang mo-fail, ug klaro ang error message sa dialog.
+⚠️ Without `R2_UPLOAD_URL` the app still works — only photo upload fails, and the
+dialog shows a clear error message.
 
-## Gikinahanglan nga API keys (ayaw i-commit!)
+## Required API keys (never commit these!)
 
-1. **Google Maps API key** — sa Google Cloud Console i-enable ang:
+1. **Google Maps API key** — in Google Cloud Console enable:
    - `Maps SDK for Android`
-   - `Directions API` (alang sa ruta A→B)
-   - `Geocoding API` (alang sa search bar)
+   - `Directions API` (for the A→B route)
+   - `Geocoding API` (for the search bar)
 
-   I-restrict ang key sa package name (`com.camiguinmarket.app`) ug SHA-1.
-   Ayaw gamita ang Firebase key niini.
+   Restrict the key to the package name (`com.camiguinmarket.app`) and SHA-1.
+   Do not reuse the Firebase key for this.
 2. **Mapbox public access token** — `mapbox.com` → Account → Tokens (public token).
-   Apil na sa free tier ang Directions ug Geocoding API.
+   Directions and Geocoding are included in the free tier.
 
-Ibutang kini sa `local.properties` (wala kini ma-commit, naa sa `.gitignore`):
+Put them in `local.properties` (not committed, it is in `.gitignore`):
 
 ```properties
-MAPS_API_KEY=ang_imong_google_maps_key
-MAPBOX_ACCESS_TOKEN=pk.ang_imong_mapbox_token
+MAPS_API_KEY=your_google_maps_key
+MAPBOX_ACCESS_TOKEN=pk.your_mapbox_token
 ```
 
-Ang `app/build.gradle.kts` mokuha niini gikan sa `local.properties`, Gradle
-property (`-PMAPS_API_KEY=...`), o environment variable — wala gayud isulat sa code.
+`app/build.gradle.kts` reads them from `local.properties`, a Gradle property
+(`-PMAPS_API_KEY=...`), or an environment variable — they are never written into
+the code.
 
-Sa GitHub: **Settings → Secrets and variables → Actions**, idugang ang
-`MAPS_API_KEY`, `MAPBOX_ACCESS_TOKEN`, ug `R2_UPLOAD_URL` (ang URL sa image Worker).
+On GitHub: **Settings → Secrets and variables → Actions**, add `MAPS_API_KEY`,
+`MAPBOX_ACCESS_TOKEN`, and `R2_UPLOAD_URL` (the image Worker URL).
 
-### Pag-sign sa release APK (opsyonal)
+The build workflow writes a **Build secrets status** table to the run summary. It
+shows ✅ for every secret that is set and ⬜ for the ones that are not — values are
+never printed. The debug APK is always built; the release build runs only when
+`MAPS_API_KEY` and `MAPBOX_ACCESS_TOKEN` are set.
 
-Kon gusto nimo og **installable** nga release APK, idugang kini nga secrets:
+### Signing the release APK (optional)
 
-| Secret | Unsa kini |
+For an **installable** release APK, add these secrets:
+
+| Secret | What it is |
 |---|---|
-| `KEYSTORE_BASE64` | Ang imong keystore file, gi-encode sa base64: `base64 -w0 release.keystore` |
-| `KEYSTORE_PASSWORD` | Ang store password |
-| `KEY_ALIAS` | Ang key alias |
-| `KEY_PASSWORD` | Ang key password |
+| `KEYSTORE_BASE64` | Your keystore file, base64 encoded: `base64 -w0 release.keystore` |
+| `KEYSTORE_PASSWORD` | The store password |
+| `KEY_ALIAS` | The key alias |
+| `KEY_PASSWORD` | The key password |
 
-Kon naa ang `KEYSTORE_BASE64`, i-decode sa CI ang keystore ngadto sa runner temp,
-mo-himo og `release` signing config, ug **signed** ang mogawas (`app-release.apk`).
-Kon wala, **unsigned** ang APK (`app-release-unsigned.apk`) ug dili kini ma-install.
+When `KEYSTORE_BASE64` is present, CI decodes the keystore to the runner temp,
+creates a `release` signing config, and the output is **signed**
+(`app-release.apk`). Without it the APK is **unsigned**
+(`app-release-unsigned.apk`) and cannot be installed.
 
-Sa lokal nga machine, ihatag kini isip environment variables o Gradle properties
+On a local machine, pass them as environment variables or Gradle properties
 (`RELEASE_KEYSTORE_FILE`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
-`RELEASE_KEY_PASSWORD`) — o isulat sa `local.properties` nga dili ma-commit:
+`RELEASE_KEY_PASSWORD`) — or write them into the uncommitted `local.properties`:
 
 ```properties
-RELEASE_KEYSTORE_FILE=/home/ikaw/release.keystore
+RELEASE_KEYSTORE_FILE=/home/you/release.keystore
 RELEASE_KEYSTORE_PASSWORD=…
 RELEASE_KEY_ALIAS=…
 RELEASE_KEY_PASSWORD=…
@@ -301,122 +305,123 @@ RELEASE_KEY_PASSWORD=…
 
 ## Firestore security rules
 
-Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
+`firestore.rules` controls database access:
 
-- **read** — kinahanglan naka-log in (`request.auth != null`).
-- **create / update / delete** — ang tag-iya ra (`sellerId == request.auth.uid`),
-  ug dili ma-transfer ang listing ngadto sa laing seller.
-- **carts / favorites** — ang user ra ang makabasa ug makasulat sa kaugalingon.
-- **notifications** — ang tag-iya ra ang makabasa; ang bisan kinsang naka-log in
-  makahimo og notification para sa uban, apan `fromUid` kinahanglan siya gayud.
-- **orders** — ang buyer makahimo; ang buyer ug seller ra ang makabasa; ang seller
-  maka-update sa status; ang buyer makakanselar (`pending` → `cancelled`) ra.
-- **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
-  nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
-- **savedSearches** — ang tag-iya ra ang makabasa/makasulat.
-- **users/{uid}/tokens** — FCM tokens, kaugalingon ra.
-- **listings.views / viewsByDay / cartAdds** — bisan kinsang naka-log in makadugang og
-  **+1** ra niini nga field (`hasOnly(['views'])` o `hasOnly(['cartAdds'])`), ug
-  gigamit ang `get(field, 0)` sa duha ka side aron dili mo-error kon wala pa ang field.
-- **ratings** — create ra sa buyer sa `done` nga order (doc id = order id);
-  mabasa sa naka-log in; dili ma-edit o mapapas.
-- **reports** — makahimo ang bisan kinsang naka-log in sa iyang kaugalingong
-  report; ang reporter ug ang admin ra ang makabasa; admin ra ang maka-update.
-- **admins** — mabasa sa naka-log in (aron ma-check sa app) apan `write: if false`,
-  ug ang `isAdmin()` makapapas og listing.
-- **default deny** — wala nay laing collection nga gibuksan.
+- **read** — must be signed in (`request.auth != null`).
+- **create / update / delete** — owner only (`sellerId == request.auth.uid`), and a
+  listing cannot be transferred to another seller.
+- **carts / favorites** — a user can only read and write their own.
+- **notifications** — owner only can read; any signed-in user can create a
+  notification for someone else, but `fromUid` must be themselves.
+- **orders** — the buyer creates; only the buyer and seller can read; the seller can
+  update the status; the buyer can cancel (`pending` → `cancelled`) only.
+- **chats** — only the two participants can read/write; a message requires
+  membership in the chat (checked with `get()`).
+- **savedSearches** — owner only.
+- **users/{uid}/tokens** — FCM tokens, owner only.
+- **listings.views / viewsByDay / cartAdds** — any signed-in user can add **+1** to
+  those fields only (`hasOnly(['views','viewsByDay'])` or
+  `hasOnly(['cartAdds'])`), and `get(field, 0)` is used on both sides so it does not
+  error when the field is still missing.
+- **ratings** — create only by the buyer of a `done` order (doc id = order id);
+  readable by signed-in users; cannot be edited or deleted.
+- **reports** — any signed-in user can create their own report; only the reporter
+  and an admin can read it; only an admin can update it.
+- **admins** — readable by signed-in users (so the app can check) but
+  `write: if false`, and `isAdmin()` can delete a listing.
+- **default deny** — no other collection is open.
 
-I-deploy ang rules (usa ra ka beses, o kon may kausaban):
+Deploy the rules (once, or after changes):
 
 ```bash
 firebase deploy --only firestore:rules --project camiguinmarket
 ```
 
-O kaha i-paste ang sulod sa `firestore.rules` sa **Firebase Console → Firestore →
-Rules** ug pindota ang **Publish**. **Ayaw** ibilin sa test mode (`allow read, write:
-if true`) kay bisan kinsa makabasa ug makasulat sa `listings`.
+Or paste the contents of `firestore.rules` into **Firebase Console → Firestore →
+Rules** and press **Publish**. **Never** leave it in test mode (`allow read, write:
+if true`), otherwise anyone can read and write `listings`.
 
-### Awtomatikong deploy pinaagi sa GitHub Actions
+### Automatic deploy through GitHub Actions
 
-Ang `.github/workflows/firestore-rules.yml` dunay duha ka job:
+`.github/workflows/firestore-rules.yml` has two jobs:
 
-1. **Validate** — i-compile ang `firestore.rules` sa Firestore emulator, dayon i-run
-   ang `scripts/test-firestore-rules.py` (19 ka behavioral check: anonymous denied,
-   tag-iya allowed, laing user denied, dili ma-transfer ang listing, sayop nga tipo
-   sa `price` denied, **ug ang eksaktong dokumento nga isulat sa app** — `id = ""`,
-   `price` nga double, `createdAt` nga long, `latitude`/`longitude` nga `null` kon
-   walay pickup pin, `orderBy createdAt`, ug ang query sa account deletion).
-   Modagan sa matag push sa `main` *ug* sa matag pull request nga nag-usab sa rules.
-   Kon sayop ang syntax o may ni-fail nga check, mo-fail ang job — dili ka
-   makadeploy og guba nga rules.
+1. **Validate** — compiles `firestore.rules` in the Firestore emulator, then runs
+   `scripts/test-firestore-rules.py` (86 behavioral checks: anonymous denied,
+   owner allowed, another user denied, listing not transferable, wrong type for
+   `price` denied, **and the exact documents the app writes** — `id = ""`, `price`
+   as double, `createdAt` as long, `latitude`/`longitude` as `null` when there is no
+   pickup pin, `orderBy createdAt`, and the account deletion query).
+   It runs on every push to `main` *and* on every pull request that changes the
+   rules. A syntax error or a failing check fails the job — so broken rules cannot
+   be deployed.
 
-   I-run kini sa lokal (nanginahanglan og JDK 21+ alang sa emulator):
+   Run it locally (needs JDK 21+ for the emulator):
 
    ```bash
    firebase emulators:exec --only firestore --project demo-camiguin \
      "python3 scripts/test-firestore-rules.py"
    ```
-2. **Deploy** — `firebase deploy --only firestore:rules`. Modagan lamang kon na-set
-   ang credential secret; kon wala, **gilaktawan** kini (dili mo-fail) ug ibutang
-   ang pahinumdom sa run summary.
+2. **Deploy** — `firebase deploy --only firestore:rules`. It runs only when the
+   credential secret is set; otherwise it is **skipped** (not failed) and a note is
+   written to the run summary.
 
-Pag-set sa credential — **Settings → Secrets and variables → Actions →
-New repository secret**. Mas girekomendar ang service account:
+Set the credential — **Settings → Secrets and variables → Actions →
+New repository secret**. A service account is recommended:
 
-| Secret | Unsa kini | Status |
+| Secret | What it is | Status |
 |---|---|---|
-| `FIREBASE_SERVICE_ACCOUNT` | Ang **tibuok sulod** sa JSON key gikan sa Firebase Console → ⚙️ Project settings → **Service accounts → Generate new private key** | ✅ girekomendar |
-| `FIREBASE_TOKEN` | Token gikan sa `firebase login:ci` | ⚠️ legasiya (deprecated sa Google) |
+| `FIREBASE_SERVICE_ACCOUNT` | The **entire JSON** key from Firebase Console → ⚙️ Project settings → **Service accounts → Generate new private key** | ✅ recommended |
+| `FIREBASE_TOKEN` | Token from `firebase login:ci` | ⚠️ legacy (deprecated by Google) |
 
-Kon naa ang duha, `FIREBASE_SERVICE_ACCOUNT` ang gamiton. Ang service account
-nga gi-generate sa Firebase Console duna nay saktong role, busa walay laing
-i-set nga permission.
+If both exist, `FIREBASE_SERVICE_ACCOUNT` wins. The service account generated in
+the Firebase Console already has the right role, so no extra permission is needed.
 
-Ang default nga project naa sa `.firebaserc` (`camiguinmarket`), busa dili na
-kinahanglan ang `--project` matag higayon.
+The default project lives in `.firebaserc` (`camiguinmarket`), so `--project` is
+not needed every time.
 
-**Importante:** kining duha ka secret naghatag og bug-os nga acesso sa Firebase
-project — i-treat kini isip password. Wala kini i-print sa CI, wala usab kini
-i-commit; ang service account key isulat sa `$RUNNER_TEMP` ra ug papason sa
-runner human sa job.
+**Important:** those secrets grant full access to the Firebase project — treat them
+as passwords. They are never printed by CI and never committed; the service account
+key is written only to `$RUNNER_TEMP` and deleted after the job.
 
-## Pagpapas sa account (requirement sa Play Store)
+## Account deletion (Play Store requirement)
 
-Kon ang app makahimo og account, kinahanglan nga ang user makapapas niini:
+If the app can create accounts, the user must be able to delete one:
 
-- **Sa app** — pindota ang **🗑️** sa top bar sulod sa market screen. Mapapas ang
-tanan niyang listing sa Firestore, dayon ang Firebase Auth account.
-- **Sa web** — `docs/account-deletion.html`. I-host kini via **GitHub Pages**
-  (Settings → Pages → Branch: `main`, folder: `/docs`) ug ibutang ang URL sa
-  Play Console → *App content → Data deletion*.
+- **In the app** — press **🗑️** in the top bar inside the market screen. All of the
+  user's Firestore listings are deleted, then the Firebase Auth account.
+- **On the web** — `docs/account-deletion.html`. Host it with **GitHub Pages**
+  (Settings → Pages → Branch: `main`, folder: `/docs`) and put the URL in Play
+  Console → *App content → Data deletion*.
 
-**Importante:** ilisi ang `YOUR_SUPPORT_EMAIL_HERE` sa `docs/account-deletion.html`
-sa imong tinuod nga support email sa wala pa i-publish ang page.
+**Important:** replace `YOUR_SUPPORT_EMAIL_HERE` in `docs/account-deletion.html`
+with your real support email before publishing the page.
 
-Kon dugay na ang login sa user, mobalik ang `FirebaseAuthRecentLoginRequiredException`
-ug hangyoon siya sa pag-log out/log in pag-usab — normal kini sa Firebase.
+If the user's login is old, Firebase returns
+`FirebaseAuthRecentLoginRequiredException` and asks them to log out/log in again —
+that is normal Firebase behaviour.
 
-## Pag-build
+## Building
 
 ```bash
 gradle assembleDebug        # debug APK: app/build/outputs/apk/debug/app-debug.apk
-gradle assembleRelease      # release APK (signed kon may keystore, kon wala unsigned)
+gradle assembleRelease      # release APK (signed with a keystore, unsigned without)
 gradle bundleRelease        # release AAB: app/build/outputs/bundle/release/app-release.aab
 ```
 
-Ang `.aab` (Android App Bundle) mao ang format nga gidawat sa **Google Play Console**.
-Kon may keystore, signed kini; kon wala, unsigned ug dili ma-upload sa Play.
+The `.aab` (Android App Bundle) is the format the **Google Play Console** accepts.
+With a keystore it is signed; without one it is unsigned and cannot be uploaded to
+Play.
 
-Ang `.github/workflows/firestore-rules.yml` maoy nagdeploy sa Firestore rules (tan-awa
-ang *Firestore security rules* sa ibabaw). Ang `.github/workflows/build.yml`
-mo-build sa debug APK sa matag push sa `main`,
-ug mo-upload niini isip artifact. Kon naa ang duha ka secret, mo-build usab kini
-sa release variant ug i-upload isip `CamiguinMarket-release-apk` (APK) ug
-`CamiguinMarket-release-aab` (AAB alang sa Play Store).
+`.github/workflows/firestore-rules.yml` deploys the Firestore rules (see *Firestore
+security rules* above). `.github/workflows/build.yml` builds the debug APK on every
+push to `main` and uploads it as an artifact. When both map secrets are set it also
+builds the release variant and uploads it as `CamiguinMarket-release-apk` (APK) and
+`CamiguinMarket-release-aab` (AAB for the Play Store).
 
-## Wala pa ma-test
+## Not tested yet
 
-Walay device/emulator sa development environment, busa **wala ma-verify ang
-runtime**: ang GPS location, pag-tap sa mapa, ang WebView bridge (`onRoute`),
-ang pag-upload sa litrato ngadto sa R2, ug ang tinuod nga tubag sa Google/Mapbox API. Ang nasiguro ra: `gradle assembleDebug`
-ug `gradle assembleRelease` mo-compile, ug husto ang JavaScript sa HTML page.
+There is no device/emulator in the development environment, so **runtime behaviour
+is unverified**: GPS location, tapping the map, the WebView bridge (`onRoute`),
+photo upload to R2, and the real Google/Mapbox API responses. What is confirmed:
+`gradle assembleDebug` and `gradle assembleRelease` compile, and the JavaScript in
+the HTML page is correct.

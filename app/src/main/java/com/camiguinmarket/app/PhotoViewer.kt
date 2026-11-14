@@ -19,8 +19,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
 /**
- * Fullscreen nga photo viewer: swipe pakanan/pakawala tali sa mga litrato,
- * tap sa numero aron pagsira.
+ * Fullscreen photo viewer: swipe left/right between photos,
+ * tap the counter to close.
  */
 @Composable
 fun PhotoViewer(urls: List<String>, startIndex: Int, onClose: () -> Unit) {

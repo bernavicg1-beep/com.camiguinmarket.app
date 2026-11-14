@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.firebase.firestore.FirebaseFirestore
 
-/** Reklamo sa usa ka listing (Firestore: reports/{autoId}). */
+/** Report about a listing (Firestore: reports/{autoId}). */
 data class Report(
     val id: String = "",
     val listingId: String = "",
@@ -26,11 +26,11 @@ data class Report(
 )
 
 val reportReasons = listOf(
-    "Dili tinuod",
-    "Scam o pangilad",
-    "Dili angay nga sulod",
-    "Sayop nga category",
-    "Uban pa"
+    "Not real",
+    "Scam or fraud",
+    "Inappropriate content",
+    "Wrong category",
+    "Other"
 )
 
 fun submitReport(
@@ -43,7 +43,7 @@ fun submitReport(
     onResult: (String?) -> Unit
 ) {
     if (reason.isBlank()) {
-        onResult("Pilia ang rason sa report.")
+        onResult("Pick a report reason.")
         return
     }
     val report = Report(
@@ -60,7 +60,7 @@ fun submitReport(
     )
     db.collection("reports").document().set(report)
         .addOnSuccessListener { onResult(null) }
-        .addOnFailureListener { onResult(it.localizedMessage ?: "Napakyas ang report.") }
+        .addOnFailureListener { onResult(it.localizedMessage ?: "Report failed.") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,7 +79,7 @@ fun ReportDialog(
 
     AlertDialog(
         onDismissRequest = { if (!sending) onClose() },
-        title = { Text("I-report ang listing") },
+        title = { Text("Report listing") },
         text = {
             Column {
                 Text("\"${listing.title}\"", style = MaterialTheme.typography.bodyMedium)
@@ -114,7 +114,7 @@ fun ReportDialog(
                         if (err == null) onClose() else error = err
                     }
                 }
-            ) { Text("Ipadala") }
+            ) { Text("Send") }
         },
         dismissButton = {
             TextButton(onClick = onClose, enabled = !sending) { Text("Dili") }
@@ -122,7 +122,7 @@ fun ReportDialog(
     )
 }
 
-/** Yano nga wrap sa mga chip (LazyRow ang gigamit sa ubang dapit). */
+/** Simple chip row wrapper (other screens use LazyRow). */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FlowChips(options: List<String>, selected: String, onSelect: (String) -> Unit) {

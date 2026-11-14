@@ -49,8 +49,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-val categories = listOf("Tanan", "Pagkaon ug Seafood", "Lokal nga Produkto", "Sinina", "Gadgets", "Uban pa")
+val categories = listOf("All", "Food & Seafood", "Local Products", "Clothing", "Gadgets", "Other")
 val towns = listOf("Mambajao", "Mahinog", "Guinsiliban", "Sagay", "Catarman")
+
+/** Old Bisaya category values stored by earlier versions → English labels. */
+fun normalizeCategory(raw: String): String = when (raw) {
+    "Pagkaon ug Seafood" -> "Food & Seafood"
+    "Lokal nga Produkto" -> "Local Products"
+    "Sinina" -> "Clothing"
+    "Uban pa" -> "Other"
+    "All" -> "All"
+    else -> raw
+}
 
 data class Listing(
     val id: String = "",
@@ -63,26 +73,26 @@ data class Listing(
     val sellerName: String = "",
     val contact: String = "",
     val createdAt: Long = 0L,
-    // Pickup location sa seller (pin sa Google Map).
+    // Seller pickup location (pin on the Google Map).
     val latitude: Double? = null,
     val longitude: Double? = null,
-    // Download URL sa litrato sa Firebase Storage ("" = walay litrato).
+    // Photo download URL ("" = no photo).
     val imageUrl: String = "",
-    // Tanan nga litrato (ang `imageUrl` mao ang una, alang sa daan nga cards).
+    // All photos (`imageUrl` is the first one, for older cards).
     val imageUrls: List<String> = emptyList(),
-    // Ihap sa pag-abli sa detalye (gina-increment sa bisan kinsang naka-log in).
+    // Number of detail opens (incremented by any signed-in user).
     val views: Long = 0L,
-    // Ihap sa pagdugang sa cart.
+    // Number of cart adds.
     val cartAdds: Long = 0L,
     // Views kada adlaw: {"2026-11-14": 5}
     val viewsByDay: Map<String, Long> = emptyMap()
 )
 
 class MainActivity : ComponentActivity() {
-    // Tap sa push notification: "order:<id>" o "chat:<id>".
+    // Notification tap target: "order:<id>" or "chat:<id>".
     private var pushTarget by mutableStateOf<String?>(null)
 
-    /** Basahon ang extras sa notification intent. */
+    /** Read the extras from the notification intent. */
     private fun readPushTarget(intent: Intent?): String? {
         val type = intent?.getStringExtra("type") ?: return null
         val target = when (type) {
@@ -109,8 +119,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pushTarget = readPushTarget(intent)
-        // Target SDK 36: enforced ang edge-to-edge, busa i-enable nga tarong
-        // ang window aron dili ma-tabunan sa system bars ang sulod.
+        // Target SDK 36 enforces edge-to-edge, so enable the window properly
+        // so the system bars do not cover the content.
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
@@ -175,7 +185,7 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
         verticalArrangement = Arrangement.Center
     ) {
         Text("Camiguin Market 🛒", style = MaterialTheme.typography.headlineMedium)
-        Text("Palit ug baligya sa tibuok Camiguin", style = MaterialTheme.typography.bodyMedium)
+        Text("Buy and sell across Camiguin", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(24.dp))
         if (isRegister) {
             OutlinedTextField(name, { name = it }, label = { Text("Ngalan") }, modifier = Modifier.fillMaxWidth())
@@ -188,7 +198,7 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
         )
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
-            password, { password = it }, label = { Text("Password (6+ ka letra)") },
+            password, { password = it }, label = { Text("Password (6+ characters)") },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
@@ -219,11 +229,11 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
             }
         ) { Text(if (isRegister) "Mag-register" else "Log in") }
         TextButton(onClick = { isRegister = !isRegister }) {
-            Text(if (isRegister) "Naa nay account? Log in" else "Wala pay account? Mag-register")
+            Text(if (isRegister) "Naa nay account? Log in" else "No account yet? Register")
         }
         if (!isRegister) {
             TextButton(onClick = { showReset = true }) {
-                Text("Nakalimot sa password?")
+                Text("Forgot password?")
             }
         }
     }
@@ -233,10 +243,10 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
         var resetMsg by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { showReset = false },
-            title = { Text("I-reset ang password") },
+            title = { Text("Reset password") },
             text = {
                 Column {
-                    Text("Ipadala namo ang link sa imong email.")
+                    Text("We'll send the link to your email.")
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         resetEmail,
@@ -254,17 +264,17 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     if (resetEmail.isBlank()) {
-                        resetMsg = "Isulat ang email."
+                        resetMsg = "Enter your email."
                     } else {
                         auth.sendPasswordResetEmail(resetEmail.trim())
                             .addOnSuccessListener {
-                                resetMsg = "Gipadala ang reset link. Tan-awa ang imong email."
+                                resetMsg = "Reset link sent. Check your email."
                             }
                             .addOnFailureListener { e ->
                                 resetMsg = e.localizedMessage ?: "Napakyas."
                             }
                     }
-                }) { Text("Ipadala") }
+                }) { Text("Send") }
             },
             dismissButton = {
                 TextButton(onClick = { showReset = false }) { Text("Sira") }
@@ -273,7 +283,7 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
     }
 }
 
-/** Pahinumdom kon wala pa ma-verify ang email sa naka-log in nga user. */
+/** Reminder when the signed-in user's email is not verified yet. */
 @Composable
 fun VerifyEmailBanner(auth: FirebaseAuth) {
     val user = auth.currentUser ?: return
@@ -292,7 +302,7 @@ fun VerifyEmailBanner(auth: FirebaseAuth) {
     Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
             Text(
-                "Wala pa ma-verify ang imong email.",
+                "Your email is not verified yet.",
                 style = MaterialTheme.typography.labelSmall
             )
             Row {
@@ -303,24 +313,24 @@ fun VerifyEmailBanner(auth: FirebaseAuth) {
                             .addOnSuccessListener {
                                 markVerifySent(context)
                                 cooldownUntil = verifyCooldownUntil(context)
-                                info = "Gipadala pag-usab ang verification email."
+                                info = "Verification email sent again."
                             }
                             .addOnFailureListener { info = it.localizedMessage }
                     }
                 ) {
                     Text(
-                        if (remaining > 0L) "Ipadala pag-usab (${remaining}s)"
-                        else "Ipadala pag-usab",
+                        if (remaining > 0L) "Resend (${remaining}s)"
+                        else "Resend",
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
                 TextButton(onClick = {
                     user.reload().addOnSuccessListener {
                         info = if (auth.currentUser?.isEmailVerified == true)
-                            "Na-verify na ✅ (pag-reopen kon wala ma-refresh ang app)"
-                        else "Wala pa gihapon ma-verify."
+                            "Verified ✅ (reopen if the app didn't refresh)"
+                        else "Still not verified."
                     }
-                }) { Text("Na-verify na?", style = MaterialTheme.typography.labelSmall) }
+                }) { Text("Already verified?", style = MaterialTheme.typography.labelSmall) }
             }
             info?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         }
@@ -341,10 +351,10 @@ fun MarketScreen(
     val db = remember { FirebaseFirestore.getInstance() }
     var listings by remember { mutableStateOf<List<Listing>>(emptyList()) }
     var category by remember { mutableStateOf(categories[0]) }
-    var town by remember { mutableStateOf("Tanan") }
+    var town by remember { mutableStateOf("All") }
     var query by remember { mutableStateOf("") }
     var showPost by remember { mutableStateOf(false) }
-    // Ang listing nga gi-edit sa tag-iya (null = wala).
+    // The listing being edited by the owner (null = none).
     var editListing by remember { mutableStateOf<Listing?>(null) }
     var selected by remember { mutableStateOf<Listing?>(null) }
     var mapListing by remember { mutableStateOf<Listing?>(null) }
@@ -355,7 +365,7 @@ fun MarketScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
 
-    // Navigation ug mga bag-ong feature (mockup): tabs, cart, paborito, notifications, chat.
+    // Navigation and the new features (mockup): tabs, cart, favorites, notifications, chat.
     var tab by remember { mutableStateOf(MarketTab.Home) }
     var overlay by remember { mutableStateOf<String?>(null) }
     var cartCount by remember { mutableStateOf(0) }
@@ -368,7 +378,7 @@ fun MarketScreen(
     var reviewsSeller by remember { mutableStateOf<Pair<String, String>?>(null) }
     val viewed = remember { mutableSetOf<String>() }
 
-    // Ablihan ang detalye ug ihapon ang view (dili sa tag-iya, kausa kada session).
+    // Open the detail and count the view (not for the owner, once per session).
     fun openListing(l: Listing) {
         if (l.sellerId != uid && viewed.add(l.id)) {
             val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
@@ -383,30 +393,30 @@ fun MarketScreen(
         selected = l
     }
 
-    // Ang wala pa ma-verify nga email dili makabaligya o maka-checkout.
+    // An unverified email cannot post or check out.
     fun requireVerified(action: () -> Unit) {
         if (auth.currentUser?.isEmailVerified == true) {
             action()
         } else {
             Toast.makeText(
                 context,
-                "I-verify una ang imong email gikan sa link nga among gipadala.",
+                "Verify your email first using the link we sent.",
                 Toast.LENGTH_LONG
             ).show()
         }
     }
     var photoViewer by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
-    var priceFilter by remember { mutableStateOf("Tanan") }
+    var priceFilter by remember { mutableStateOf("All") }
     var sort by remember { mutableStateOf("Bag-o") }
     var chatUnread by remember { mutableStateOf(0) }
     var orderDetail by remember { mutableStateOf<Order?>(null) }
 
-    // Deep link gikan sa push notification: ablihan ang order o ang chat.
+    // Deep link from a push notification: open the order or the chat.
     LaunchedEffect(pushTarget, uid) {
         val target = pushTarget ?: return@LaunchedEffect
         val parts = target.split(":", limit = 2)
         val id = parts.getOrNull(1) ?: return@LaunchedEffect
-        if (BuildConfig.DEBUG) android.util.Log.d("CamiguinPush", "ablihan ang $parts[0] id=$id")
+        if (BuildConfig.DEBUG) android.util.Log.d("CamiguinPush", "opening $parts[0] id=$id")
         when (parts[0]) {
             "order" -> db.collection("orders").document(id).get()
                 .addOnSuccessListener { d ->
@@ -430,7 +440,7 @@ fun MarketScreen(
                         chatWith = other to (names?.get(other) as? String ?: "User")
                         overlay = "chat"
                         if (BuildConfig.DEBUG) {
-                            android.util.Log.d("CamiguinPush", "chat giablihan: $id (uban ni $other)")
+                            android.util.Log.d("CamiguinPush", "chat opened: $id (with $other)")
                         }
                     }
                 }
@@ -454,7 +464,7 @@ fun MarketScreen(
         onDispose { reg.remove() }
     }
 
-    // FCM: i-save ang token aron makapadala ang server og push notifications.
+    // FCM: save the token so the server can send push notifications.
     LaunchedEffect(uid) {
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
@@ -463,7 +473,7 @@ fun MarketScreen(
             }
     }
 
-    // POST_NOTIFICATIONS (Android 13+) alang sa push ug lokal nga notifications.
+    // POST_NOTIFICATIONS (Android 13+) for push and local notifications.
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -473,14 +483,14 @@ fun MarketScreen(
         }
     }
 
-    // Admin kon dunay `admins/{uid}` document (gina-set sa Console).
+    // Admin when an `admins/{uid}` document exists (created in the Console).
     DisposableEffect(Unit) {
         val reg = db.collection("admins").document(uid)
             .addSnapshotListener { snap, _ -> isAdmin = snap?.exists() == true }
         onDispose { reg.remove() }
     }
 
-    // Sum sa akong unread sa tanan chat thread (badge sa header).
+    // Sum of my unread across all chat threads (header badge).
     DisposableEffect(Unit) {
         val reg = db.collection("chats")
             .whereArrayContains("participants", uid)
@@ -506,15 +516,17 @@ fun MarketScreen(
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .addSnapshotListener { snap, _ ->
                 listings = snap?.documents?.mapNotNull { d ->
-                    d.toObject(Listing::class.java)?.copy(id = d.id)
+                    d.toObject(Listing::class.java)?.let { l ->
+                        l.copy(id = d.id, category = normalizeCategory(l.category))
+                    }
                 } ?: emptyList()
             }
         onDispose { reg.remove() }
     }
 
     val filtered = listings.filter {
-        (category == "Tanan" || it.category == category) &&
-            (town == "Tanan" || it.town == town) &&
+        (category == "All" || it.category == category) &&
+            (town == "All" || it.town == town) &&
             matchesPrice(it.price, priceFilter) &&
             (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true))
     }.let { list -> sortListings(list, sort) }
@@ -551,12 +563,12 @@ fun MarketScreen(
                             "favorites" -> "Paborito"
                             "notifications" -> "Notifications"
                             "orders" -> "Mga Order"
-                            "order" -> "Detalye sa Order"
+                            "order" -> "Order Details"
                             "moderation" -> "Moderation"
                             "reviews" -> "Mga Review"
                             "saved" -> "Saved searches"
                             "search" -> "Search"
-                            "stats" -> "Stats sa listing"
+                            "stats" -> "Listing stats"
                             "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
@@ -663,7 +675,7 @@ fun MarketScreen(
                         onAddToCart = { l ->
                             addToCart(db, uid, l, displayName) { err ->
                                 Toast.makeText(
-                                    context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                    context, err ?: "Added to cart ✅", Toast.LENGTH_SHORT
                                 ).show()
                             }
                         },
@@ -690,7 +702,7 @@ fun MarketScreen(
                         onAddToCart = { l ->
                             addToCart(db, uid, l, displayName) { err ->
                                 Toast.makeText(
-                                    context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                    context, err ?: "Added to cart ✅", Toast.LENGTH_SHORT
                                 ).show()
                             }
                         }
@@ -703,7 +715,7 @@ fun MarketScreen(
                             checkoutCart(db, uid, displayName, items) { err ->
                                 Toast.makeText(
                                     context,
-                                    err ?: "Malampuson ang order ✅",
+                                    err ?: "Order placed ✅",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -745,7 +757,7 @@ fun MarketScreen(
                         onAddToCart = { l ->
                             addToCart(db, uid, l, displayName) { err ->
                                 Toast.makeText(
-                                    context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                    context, err ?: "Added to cart ✅", Toast.LENGTH_SHORT
                                 ).show()
                             }
                         },
@@ -770,7 +782,7 @@ fun MarketScreen(
     reportListing?.let { l ->
         ReportDialog(l, uid, displayName) {
             reportListing = null
-            Toast.makeText(context, "Nadawat ang report. Salamat!", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Report received. Thanks!", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -791,11 +803,11 @@ fun MarketScreen(
                             type = "text/plain"
                             putExtra(
                                 Intent.EXTRA_TEXT,
-                                "${l.title} — ₱%.2f sa ${l.town}\nContact: ${l.contact}\n\n".format(l.price) +
-                                    "Tan-awa sa Camiguin Market app."
+                                "${l.title} — ₱%.2f in ${l.town}\nContact: ${l.contact}\n\n".format(l.price) +
+                                    "View it in the Camiguin Market app."
                             )
                         }
-                        context.startActivity(Intent.createChooser(share, "Ipakigbahin ang listing"))
+                        context.startActivity(Intent.createChooser(share, "Share listing"))
                     }) {
                         Text("Ipakigbahin")
                     }
@@ -833,7 +845,7 @@ fun MarketScreen(
                         }
                         if (photos.size > 1) {
                             Text(
-                                "${photos.size} ka litrato — i-scroll pakanan",
+                                "${photos.size} photos — swipe right",
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
@@ -841,7 +853,7 @@ fun MarketScreen(
                     }
                     Text("₱%.2f".format(l.price), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "👁 ${l.views} ka views",
+                        "👁 ${l.views} views",
                         style = MaterialTheme.typography.labelSmall
                     )
                     Text(l.description)
@@ -857,7 +869,7 @@ fun MarketScreen(
                             reviewsSeller = l.sellerId to l.sellerName
                             selected = null
                             overlay = "reviews"
-                        }) { Text("Tan-awa ang tanan nga review") }
+                        }) { Text("See all reviews") }
                     }
                     Text("Lugar: ${l.town}")
                     Text("Contact: ${l.contact}")
@@ -869,7 +881,7 @@ fun MarketScreen(
                             onClick = {
                                 addToCart(db, uid, l, displayName) { err ->
                                     Toast.makeText(
-                                        context, err ?: "Nadugang sa cart ✅", Toast.LENGTH_SHORT
+                                        context, err ?: "Added to cart ✅", Toast.LENGTH_SHORT
                                     ).show()
                                 }
                             },
@@ -883,11 +895,11 @@ fun MarketScreen(
                                 overlay = "chat"
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Chat sa seller") }
+                        ) { Text("Chat with seller") }
                         TextButton(
                             onClick = { reportListing = l },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("I-report kini nga listing", color = Color(0xFFE53935)) }
+                        ) { Text("Report this listing", color = Color(0xFFE53935)) }
                     }
 
                     if (sellerLat != null && sellerLng != null) {
@@ -908,19 +920,19 @@ fun MarketScreen(
                         TextButton(
                             onClick = { selected = null; mapboxListing = l },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("🌐 Tan-awa sa Mapbox (web)") }
+                        ) { Text("🌐 View on Mapbox (web)") }
                     } else if (l.sellerId == uid) {
                         Button(
                             onClick = { selected = null; mapListing = l },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("📍 I-set ang Pickup Location") }
+                        ) { Text("📍 Set the Pickup Location") }
                     }
                 }
             }
         )
     }
 
-    // Option A: native Google Map sulod sa app.
+    // Option A: native Google Map inside the app.
     mapListing?.let { l ->
         SellerMapDialog(
             listing = l,
@@ -933,12 +945,12 @@ fun MarketScreen(
         )
     }
 
-    // Itandi ang ruta A→B sa Google Map ug Mapbox (pareho nga coordinates).
+    // Compare the A→B route on Google Map and Mapbox (same coordinates).
     if (showCompare) {
         RouteCompareDialog(onDismiss = { showCompare = false })
     }
 
-    // Play requirement: ang user makahimo sa pagpapas sa iyang account ug data.
+    // Play requirement: the user can delete their account and data.
     if (showDeleteAccount) {
         DeleteAccountDialog(
             auth = auth,
@@ -952,7 +964,7 @@ fun MarketScreen(
         )
     }
 
-    // Tanan nga seller pins sa usa ka mapa (search bar + ruta A→B).
+    // All seller pins on one map (search bar + A→B route).
     if (showAllMap) {
         AllSellersMapDialog(
             listings = filtered,
@@ -964,7 +976,7 @@ fun MarketScreen(
         )
     }
 
-    // Option B: Mapbox GL JS nga naa sa WebView.
+    // Option B: Mapbox GL JS inside a WebView.
     mapboxListing?.let { l ->
         MapboxMapDialog(
             latitude = l.latitude ?: CamiguinCenter.latitude,
@@ -987,11 +999,11 @@ fun ChipRow(options: List<String>, selected: String, onSelect: (String) -> Unit)
 }
 
 /**
- * Pag-post og bag-ong listing, o pag-edit sa existing nga listing sa tag-iya.
+ * Post a new listing, or edit an existing listing owned by the user.
  *
- * Kon `existing` ang gihatag, ma-prefill ang mga field ug i-update ang maong
- * document imbes nga maghimo og bag-o. Ang `sellerId`, `sellerName`, ug
- * `createdAt` sa orihinal wala gayud mausab — busa tugotan kini sa rules.
+ * When `existing` is given, the fields are prefilled and that
+ * document is updated instead of creating a new one. `sellerId`, `sellerName`, and
+ * the original `createdAt` never change — that is what the rules allow.
  */
 @Composable
 fun PostDialog(
@@ -1021,7 +1033,7 @@ fun PostDialog(
     }
     var showPicker by remember { mutableStateOf(false) }
 
-    // Litrato sa listing: pilion gikan sa gallery, i-upload sa Firebase Storage.
+    // Listing photo: picked from the gallery, uploaded to the Worker.
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var imageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -1029,7 +1041,7 @@ fun PostDialog(
     var uploading by remember { mutableStateOf(false) }
     var uploadError by remember { mutableStateOf<String?>(null) }
 
-    // Makapili og daghan ka litrato (max 6).
+    // Multiple photos can be picked (max 6).
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) {
             imageUris = uris.take(6)
@@ -1056,7 +1068,7 @@ fun PostDialog(
             Listing(
                 title = title.trim(), description = desc.trim(),
                 price = price.toDouble(), category = category, town = town,
-                // Sa edit, dili mausab ang tag-iya niini nga listing.
+                // When editing, the owner of this listing cannot change.
                 sellerId = existing?.sellerId ?: uid,
                 sellerName = existing?.sellerName ?: sellerName,
                 contact = contact.trim(),
@@ -1072,10 +1084,10 @@ fun PostDialog(
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (existing == null) "Bag-ong baligya" else "I-edit ang listing") },
+        title = { Text(if (existing == null) "New listing" else "Edit listing") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(title, { title = it }, label = { Text("Ngalan sa produkto") })
+                OutlinedTextField(title, { title = it }, label = { Text("Product name") })
                 OutlinedTextField(desc, { desc = it }, label = { Text("Deskripsyon") })
                 OutlinedTextField(
                     price, { price = it }, label = { Text("Presyo (₱)") },
@@ -1094,12 +1106,12 @@ fun PostDialog(
                 Text("Pickup location", style = MaterialTheme.typography.labelMedium)
                 Text(
                     pickup?.let { "Napili: ${formatCoordinates(it)}" }
-                        ?: "Wala pa makapili og pickup point."
+                        ?: "No pickup point selected yet."
                 )
                 OutlinedButton(
                     onClick = { showPicker = true },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("📌 Pili og Pickup Location sa Mapa") }
+                ) { Text("📌 Pick a pickup location on the Map") }
 
                 Spacer(Modifier.height(8.dp))
                 Text("Litrato", style = MaterialTheme.typography.labelMedium)
@@ -1111,7 +1123,7 @@ fun PostDialog(
                         previews.forEach { bmp ->
                             Image(
                                 bitmap = bmp,
-                                contentDescription = "Bag-ong litrato sa listing",
+                                contentDescription = "New listing photo",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .size(92.dp)
@@ -1135,13 +1147,13 @@ fun PostDialog(
                     }
 
                     else -> Text(
-                        "Wala pay litrato.",
+                        "No photos yet.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
                 if (imageUris.isNotEmpty()) {
                     Text(
-                        "${imageUris.size} ka bag-ong litrato ang mapuli sa daan.",
+                        "${imageUris.size} new photo(s) will replace the old ones.",
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
@@ -1152,19 +1164,19 @@ fun PostDialog(
                 ) {
                     Text(
                         if (previews.isNotEmpty() || existingPhotos.isNotEmpty())
-                            "🖼️ Ilisi ang mga litrato" else "📷 Pumili og mga litrato (max 6)"
+                            "🖼️ Replace photos" else "📷 Choose photos (max 6)"
                     )
                 }
                 if (previews.isNotEmpty()) {
                     TextButton(
                         onClick = { imageUris = emptyList(); previews = emptyList() },
                         enabled = !uploading
-                    ) { Text("Tangtanga ang bag-ong mga litrato") }
+                    ) { Text("Remove the new photos") }
                 }
                 if (uploading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(
-                        "Gi-upload ang mga litrato (${imageUris.size})…",
+                        "Uploading photos (${imageUris.size})…",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -1181,11 +1193,11 @@ fun PostDialog(
                     val picked = imageUris
                     val baseUrl = BuildConfig.R2_UPLOAD_URL
                     when {
-                        // Walay bag-ong litrato: tipigan ang daan (kon edit).
+                        // No new photo: keep the old ones (when editing).
                         picked.isEmpty() -> saveListing(existingPhotos)
 
                         baseUrl.isBlank() -> {
-                            uploadError = "Wala ma-set ang R2_UPLOAD_URL " +
+                            uploadError = "R2_UPLOAD_URL is not set " +
                                 "(local.properties o Gradle property)."
                             Unit
                         }
@@ -1193,7 +1205,7 @@ fun PostDialog(
                         else -> {
                             val user = FirebaseAuth.getInstance().currentUser
                             if (user == null) {
-                                uploadError = "Kinahanglan naka-log in aron maka-upload."
+                                uploadError = "You must be signed in to upload."
                             } else {
                                 uploading = true
                                 uploadError = null
@@ -1202,7 +1214,7 @@ fun PostDialog(
                                         val token = tokenResult.token
                                         if (token.isNullOrBlank()) {
                                             uploading = false
-                                            uploadError = "Wala makuha ang Firebase ID token."
+                                            uploadError = "Couldn't get the Firebase ID token."
                                         } else {
                                             scope.launch {
                                                 val result = withContext(Dispatchers.IO) {
@@ -1217,7 +1229,7 @@ fun PostDialog(
                                                     .onSuccess { urls -> saveListing(urls) }
                                                     .onFailure {
                                                         uploadError = it.localizedMessage
-                                                            ?: "Napakyas ang pag-upload sa litrato."
+                                                            ?: "Photo upload failed."
                                                     }
                                             }
                                         }
@@ -1225,7 +1237,7 @@ fun PostDialog(
                                     .addOnFailureListener { e ->
                                         uploading = false
                                         uploadError = e.localizedMessage
-                                            ?: "Napakyas ang pagkuha sa ID token."
+                                            ?: "Failed to get the ID token."
                                     }
                             }
                         }
@@ -1247,7 +1259,7 @@ fun PostDialog(
     }
 }
 
-/** Decode sa napiling litrato gikan sa gallery (walay dugang nga library). */
+/** Decode the selected gallery photo (no extra library). */
 fun decodeImageBitmap(context: Context, uri: Uri): ImageBitmap? = runCatching {
     context.contentResolver.openInputStream(uri)?.use { stream ->
         BitmapFactory.decodeStream(stream)?.asImageBitmap()
@@ -1255,10 +1267,10 @@ fun decodeImageBitmap(context: Context, uri: Uri): ImageBitmap? = runCatching {
 }.getOrNull()
 
 /**
- * Ang litrato sa listing gikan sa Cloudflare R2 (agi sa atong Worker).
+ * Listing photos come from Cloudflare R2 (through our Worker).
  *
- * Gi-download kausa ra matag URL sulod sa composition — igo na alang sa gagmay
- * nga thumbnail ug sa bug-os nga litrato sa detalye.
+ * Downloaded once per URL inside the composition — enough for the small
+ * thumbnails and the full photo in the detail.
  */
 @Composable
 fun RemoteImage(url: String, modifier: Modifier = Modifier) {
@@ -1284,7 +1296,7 @@ fun RemoteImage(url: String, modifier: Modifier = Modifier) {
     bitmap?.let {
         Image(
             bitmap = it,
-            contentDescription = "Litrato sa listing",
+            contentDescription = "Listing photo",
             contentScale = ContentScale.Crop,
             modifier = modifier
         )
@@ -1292,10 +1304,10 @@ fun RemoteImage(url: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * I-upload ang litrato ngadto sa Cloudflare Worker nga motipig niini sa R2.
+ * Upload the photo to the Cloudflare Worker that stores it in R2.
  *
- * Ang Firebase ID token maoy nagpamatuod sa user; ang Worker maoy mohimo sa R2
- * key gikan sa `uid` sa token, busa walay R2 credentials dinhi sa app.
+ * The Firebase ID token identifies the user; the Worker builds the R2
+ * key from the token's `uid`, so no R2 credentials live in the app.
  */
 fun uploadListingImage(
     context: Context,
@@ -1304,7 +1316,7 @@ fun uploadListingImage(
     uri: Uri
 ): String {
     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        ?: error("Dili mabasa ang napiling litrato.")
+        ?: error("Can't read the selected photo.")
     val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
 
     val conn = URL(baseUrl.trimEnd('/') + "/upload").openConnection() as HttpURLConnection
@@ -1331,8 +1343,8 @@ fun uploadListingImage(
 }
 
 /**
- * Play Store requirement: ang user makahimo sa pagpapas sa iyang account ug data
- * gikan mismo sa app. Ang web version naa sa `docs/account-deletion.html`.
+ * Play Store requirement: the user can delete their account and data
+ * from the app itself. The web version is `docs/account-deletion.html`.
  */
 @Composable
 fun DeleteAccountDialog(
@@ -1347,12 +1359,12 @@ fun DeleteAccountDialog(
 
     AlertDialog(
         onDismissRequest = { if (!deleting) onDismiss() },
-        title = { Text("Papason ang account?") },
+        title = { Text("Delete account?") },
         text = {
             Column {
                 Text(
-                    "Permanenteng mapapas ang imong account, profile, ug tanan nimong " +
-                        "listing. Dili na kini mabalik."
+                    "This permanently deletes your account, profile, and all your " +
+                        "listing. This cannot be undone."
                 )
                 error?.let {
                     Spacer(Modifier.height(8.dp))
@@ -1371,7 +1383,7 @@ fun DeleteAccountDialog(
                         if (result == null) onDeleted() else error = result
                     }
                 }
-            ) { Text(if (deleting) "Ginapas…" else "Papason") }
+            ) { Text(if (deleting) "Ginapas…" else "Delete") }
         },
         dismissButton = {
             TextButton(enabled = !deleting, onClick = onDismiss) { Text("Kanselar") }
@@ -1380,11 +1392,11 @@ fun DeleteAccountDialog(
 }
 
 /**
- * Papason ang tanan listing sa user, dayon ang Firebase Auth account.
+ * Delete all of the user's listings, then the Firebase Auth account.
  *
- * Ang `delete()` nagkinahanglan og bag-ong login; kon dugay na ang session,
+ * `delete()` requires a fresh login; when the session is old,
  * makadawat kitag [FirebaseAuthRecentLoginRequiredException].
- * `onResult` makadawat og `null` kon malampuson, o mensahe kon mapakyas.
+ * `onResult` receives `null` on success, or a message on failure.
  */
 fun deleteAccountAndData(
     auth: FirebaseAuth,
@@ -1397,7 +1409,7 @@ fun deleteAccountAndData(
             val deleteUser = {
                 val user = auth.currentUser
                 if (user == null) {
-                    onResult("Wala nay naka-log in nga account. Log in pag-usab.")
+                    onResult("No signed-in account. Please log in again.")
                 } else {
                     user.delete().addOnCompleteListener { task ->
                         if (task.isSuccessful) onResult(null)
@@ -1415,8 +1427,8 @@ fun deleteAccountAndData(
                         deleteUser()
                     } else {
                         onResult(
-                            "Napakyas ang pagpapas sa imong mga listing: " +
-                                (task.exception?.localizedMessage ?: "wala mailhi nga sayop")
+                            "Failed to delete your listings: " +
+                                (task.exception?.localizedMessage ?: "unknown error")
                         )
                     }
                 }
@@ -1424,16 +1436,16 @@ fun deleteAccountAndData(
         }
         .addOnFailureListener { e ->
             onResult(
-                "Napakyas ang pagbasa sa imong mga listing: " +
-                    (e.localizedMessage ?: "wala mailhi nga sayop")
+                "Failed to read your listings: " +
+                    (e.localizedMessage ?: "unknown error")
             )
         }
 }
 
 private fun deleteAccountError(e: Exception?): String = when (e) {
     is FirebaseAuthRecentLoginRequiredException ->
-        "Para seguridad, log out dayon log in pag-usab, unya sulayi ang pagpapas."
+        "For security, log out and log in again, then retry the deletion."
     else ->
-        "Napakyas ang pagpapas sa account: " +
-            (e?.localizedMessage ?: "wala mailhi nga sayop")
+        "Failed to delete the account: " +
+            (e?.localizedMessage ?: "unknown error")
 }

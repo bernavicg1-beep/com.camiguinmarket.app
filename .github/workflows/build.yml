@@ -39,62 +39,80 @@ jobs:
           name: CamiguinMarket-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # Kon naa ang duha ka secret, i-build usab ang release variant.
       - name: Check secrets
         id: secrets
         env:
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          R2_UPLOAD_URL: ${{ secrets.R2_UPLOAD_URL }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          # Ang mga value mismo dili gayud i-print, status ra (na-set o kulang).
+          # Values are never printed — only whether each secret is set.
           if [ -n "$MAPS_API_KEY" ] && [ -n "$MAPBOX_ACCESS_TOKEN" ]; then
             available=true
           else
             available=false
           fi
-          if [ -n "$KEYSTORE_BASE64" ]; then signing=true; else signing=false; fi
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] \
+             && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            signing=true
+          else
+            signing=false
+          fi
 
           echo "available=$available" >> "$GITHUB_OUTPUT"
           echo "signing=$signing" >> "$GITHUB_OUTPUT"
 
-          mark() { if [ -n "$1" ]; then echo "✅ na-set"; else echo "❌ kulang"; fi; }
+          mark() { if [ -n "$1" ]; then echo "✅ set"; else echo "⬜ not set"; fi; }
+
+          missing=0
+          total=8
+          for v in "$MAPS_API_KEY" "$MAPBOX_ACCESS_TOKEN" "$R2_UPLOAD_URL" \
+                   "$FIREBASE_SERVICE_ACCOUNT" "$KEYSTORE_BASE64" "$KEYSTORE_PASSWORD" \
+                   "$KEY_ALIAS" "$KEY_PASSWORD"; do
+            [ -z "$v" ] && missing=$((missing + 1))
+          done
 
           {
-            echo "## Status sa build secrets"
+            echo "## Build secrets status"
             echo ""
-            echo "| Secret | Status | Alang sa unsa |"
-            echo "|---|---|---|"
-            echo "| \`MAPS_API_KEY\` | $(mark "$MAPS_API_KEY") | Google map, ruta A→B, place search |"
-            echo "| \`MAPBOX_ACCESS_TOKEN\` | $(mark "$MAPBOX_ACCESS_TOKEN") | Mapbox map sa WebView |"
-            echo "| \`KEYSTORE_BASE64\` | $(mark "$KEYSTORE_BASE64") | signed release APK |"
-            echo "| \`KEYSTORE_PASSWORD\` | $(mark "$KEYSTORE_PASSWORD") | signing |"
-            echo "| \`KEY_ALIAS\` | $(mark "$KEY_ALIAS") | signing |"
-            echo "| \`KEY_PASSWORD\` | $(mark "$KEY_PASSWORD") | signing |"
+            echo "| Secret | Status | Used for | Required |"
+            echo "|---|---|---|---|"
+            echo "| \`MAPS_API_KEY\` | $(mark "$MAPS_API_KEY") | Google Maps, A→B route, place search | for release build |"
+            echo "| \`MAPBOX_ACCESS_TOKEN\` | $(mark "$MAPBOX_ACCESS_TOKEN") | Mapbox map in the WebView | for release build |"
+            echo "| \`R2_UPLOAD_URL\` | $(mark "$R2_UPLOAD_URL") | Listing photo upload + push (Cloudflare Worker) | recommended |"
+            echo "| \`FIREBASE_SERVICE_ACCOUNT\` | $(mark "$FIREBASE_SERVICE_ACCOUNT") | Firestore rules deploy (GitHub Actions) | recommended |"
+            echo "| \`KEYSTORE_BASE64\` | $(mark "$KEYSTORE_BASE64") | Signed release APK/AAB | optional |"
+            echo "| \`KEYSTORE_PASSWORD\` | $(mark "$KEYSTORE_PASSWORD") | Signing | optional |"
+            echo "| \`KEY_ALIAS\` | $(mark "$KEY_ALIAS") | Signing | optional |"
+            echo "| \`KEY_PASSWORD\` | $(mark "$KEY_PASSWORD") | Signing | optional |"
+            echo ""
+            echo "**Debug APK:** always built and installable — no secret required."
             echo ""
             if [ "$available" = "true" ]; then
               if [ "$signing" = "true" ]; then
-                echo "Ang release build modagan niini nga run (signed)."
+                echo "**Release build:** running (signed)."
               else
-                echo "Ang release build modagan niini nga run (unsigned)."
+                echo "**Release build:** running (unsigned — add the keystore secrets to sign it)."
               fi
               echo ""
-              echo "I-upload usab ang **AAB** (\`CamiguinMarket-release-aab\`) alang sa Google Play Console."
+              echo "The **AAB** (\`CamiguinMarket-release-aab\`) is uploaded too, for Google Play Console."
             else
-              echo "⚠️ **Gilaktawan ang release build** kay kulang ang \`MAPS_API_KEY\` o \`MAPBOX_ACCESS_TOKEN\`. Idugang kini sa Settings → Secrets and variables → Actions, dayon i-run pag-usab ang workflow."
+              echo "**Release build:** skipped because \`MAPS_API_KEY\` or \`MAPBOX_ACCESS_TOKEN\` is missing."
+              echo "Add them in Settings → Secrets and variables → Actions, then run this workflow again."
               echo ""
-              echo "Ang debug APK niini nga run **walay Maps API key**, busa dili mo-render ang sulod-app nga Google map niini."
+              echo "The debug APK from this run has **no Maps API key**, so the in-app Google map will not render."
             fi
-            if [ "$signing" != "true" ]; then
+            if [ "$missing" -gt 0 ]; then
               echo ""
-              echo "Wala \`KEYSTORE_BASE64\`: kon modagan ang release build, **unsigned** ang APK ug dili kini ma-install."
+              echo "$missing of $total secrets are not set. Optional ones stay ⬜ until you add them; nothing else breaks."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # I-decode ang keystore gikan sa secret (base64) ngadto sa runner temp.
       - name: Decode keystore
         if: steps.secrets.outputs.available == 'true' && steps.secrets.outputs.signing == 'true'
         env:
@@ -103,8 +121,6 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
           test -s "$RUNNER_TEMP/release.keystore"
 
-      # Kon naa ang KEYSTORE_BASE64, signed ang APK; kon wala, unsigned.
-      # Apil usab ang AAB (App Bundle) alang sa Play Store.
       - name: Build release APK + AAB
         if: steps.secrets.outputs.available == 'true'
         env:
@@ -126,7 +142,6 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
 
-      # Ang .aab mao ang format nga gidawat sa Google Play Console.
       - name: Upload release AAB
         if: steps.secrets.outputs.available == 'true'
         uses: actions/upload-artifact@v7

@@ -31,7 +31,7 @@ import java.util.Locale
 
 // ---------------------------------------------------------------------------
 // Orders (Firestore: orders/{autoId})
-// Usa ka order kada cart item, busa ang matag seller dunay kaugalingong order.
+// One order per cart item, so each seller gets their own order.
 // ---------------------------------------------------------------------------
 
 data class Order(
@@ -52,7 +52,7 @@ data class Order(
     val createdAt: Long = 0L
 )
 
-/** I-convert ang cart ngadto sa mga order, dayon i-empty ang cart. */
+/** Convert the cart into orders, then empty the cart. */
 fun checkoutCart(
     db: FirebaseFirestore,
     uid: String,
@@ -61,7 +61,7 @@ fun checkoutCart(
     onResult: (String?) -> Unit
 ) {
     if (items.isEmpty()) {
-        onResult("Walay sulod ang cart.")
+        onResult("Your cart is empty.")
         return
     }
     val batch = db.batch()
@@ -97,12 +97,12 @@ fun checkoutCart(
                     fromName = buyerName,
                     message = "$buyerName mi-order: ${item.title} ×${item.quantity}"
                 )
-                // Push sa seller pinaagi sa Worker.
+                // Push to the seller through the Worker.
                 sendPush("order", orderId = order.id)
             }
             onResult(null)
         }
-        .addOnFailureListener { onResult(it.localizedMessage ?: "Napakyas ang order.") }
+        .addOnFailureListener { onResult(it.localizedMessage ?: "Order failed.") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,14 +112,14 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
     var asBuyer by remember { mutableStateOf(true) }
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    // Filter sa lista ug sa CSV: 0 = tanan ka adlaw, "" = tanang status.
+    // Filter for the list and the CSV: 0 = all days, "" = every status.
     var rangeDays by remember { mutableStateOf(0) }
     var statusFilter by remember { mutableStateOf("") }
 
     DisposableEffect(asBuyer) {
         loading = true
         val field = if (asBuyer) "buyerId" else "sellerId"
-        // Dili kinahanglan og composite index: i-sort sa app.
+        // No composite index needed: sorted in the app.
         val reg = db.collection("orders").whereEqualTo(field, uid)
             .addSnapshotListener { snap, _ ->
                 orders = snap?.documents.orEmpty()
@@ -155,18 +155,18 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
             FilterChip(
                 selected = asBuyer,
                 onClick = { asBuyer = true },
-                label = { Text("Ako ang mipalit") }
+                label = { Text("I'm the buyer") }
             )
             FilterChip(
                 selected = !asBuyer,
                 onClick = { asBuyer = false },
-                label = { Text("Ako ang gibaligya") }
+                label = { Text("I'm the seller") }
             )
         }
         Spacer(Modifier.height(4.dp))
-        // Filter sa petsa (gina-apply sa lista ug sa CSV export).
+        // Date filter (applied to the list and the CSV export).
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(listOf(0 to "Tanan", 7 to "7 ka adlaw", 30 to "30 ka adlaw")) { (days, label) ->
+            items(listOf(0 to "All", 7 to "Last 7 days", 30 to "Last 30 days")) { (days, label) ->
                 FilterChip(
                     selected = rangeDays == days,
                     onClick = { rangeDays = days },
@@ -174,10 +174,10 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                 )
             }
         }
-        // Filter sa status.
+        // Status filter.
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val statuses = listOf(
-                "" to "Tanan status",
+                "" to "All statuses",
                 "pending" to "Pending",
                 "confirmed" to "Gikumpirma",
                 "done" to "Tapos",
@@ -199,9 +199,9 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
 
             visible.isEmpty() -> Text(
                 if (orders.isEmpty()) {
-                    if (asBuyer) "Wala pa kay order." else "Wala pay order nga nadawat."
+                    if (asBuyer) "No orders yet." else "No orders received yet."
                 } else {
-                    "Walay order nga nahisubo sa filter."
+                    "No orders match the filter."
                 },
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -262,12 +262,12 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                             TextButton(
                                 onClick = { cancelOrder(db, order, uid) },
                                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-                            ) { Text("I-cancel ang order", color = Color(0xFFE53935)) }
+                            ) { Text("Cancel order", color = Color(0xFFE53935)) }
                         } else if (asBuyer && order.status == "done") {
                             TextButton(
                                 onClick = { onRate(order) },
                                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-                            ) { Text("I-rate ang seller") }
+                            ) { Text("Rate the seller") }
                         }
                       }
                     }
@@ -278,7 +278,7 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
     }
 }
 
-/** I-export ang mga order ngadto sa CSV ug i-share pinaagi sa Android share sheet. */
+/** Export the orders to CSV and share through the Android share sheet. */
 fun shareOrdersCsv(context: Context, orders: List<Order>) {
     if (orders.isEmpty()) return
     val header = "order_id,listing,price,quantity,total,buyer,seller,contact,town,status,created_at"
@@ -303,10 +303,10 @@ fun shareOrdersCsv(context: Context, orders: List<Order>) {
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "I-export ang orders"))
+    context.startActivity(Intent.createChooser(intent, "Export orders"))
 }
 
-/** I-export ang kita kada adlaw sa CSV (gitipigan sa cache, gi-share). */
+/** Export daily revenue to CSV (written to the cache, then shared). */
 fun shareSalesCsv(context: Context, orders: List<Order>) {
     val paid = orders.filter { it.status != "cancelled" }
     if (paid.isEmpty()) return
@@ -334,7 +334,7 @@ fun shareSalesCsv(context: Context, orders: List<Order>) {
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "I-export ang sales"))
+    context.startActivity(Intent.createChooser(intent, "Export sales"))
 }
 
 @Composable
@@ -356,7 +356,7 @@ fun StatusChip(status: String) {
     }
 }
 
-/** Ang seller ra ang makagamit niini (gitugotan sa Firestore rules). */
+/** Only the seller may do this (the Firestore rules allow it). */
 fun updateOrderStatus(db: FirebaseFirestore, order: Order, status: String) {
     db.collection("orders").document(order.id).update("status", status)
         .addOnSuccessListener { sendPush("status", orderId = order.id) }
@@ -365,17 +365,17 @@ fun updateOrderStatus(db: FirebaseFirestore, order: Order, status: String) {
         "done" -> "natapos"
         else -> "gi-update"
     }
-    // Pahibaloon dayon ang buyer.
+    // Notify the buyer right away.
     notifyUser(
         db = db,
         toUid = order.buyerId,
         fromUid = order.sellerId,
         fromName = order.sellerName,
-        message = "${order.sellerName} $action ang imong order: ${order.listingTitle}".take(190)
+        message = "${order.sellerName} $action your order: ${order.listingTitle}".take(190)
     )
 }
 
-/** Sales summary sa seller: kita, bag-o, gikumpirma, tapos. */
+/** Seller sales summary: revenue, new, confirmed, done. */
 @Composable
 fun SellerStats(uid: String, myListings: List<Listing>) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -434,22 +434,22 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
                 FilterChip(
                     selected = range == "today",
                     onClick = { range = "today" },
-                    label = { Text("Karon", style = MaterialTheme.typography.labelSmall) }
+                    label = { Text("Today", style = MaterialTheme.typography.labelSmall) }
                 )
                 FilterChip(
                     selected = range == "month",
                     onClick = { range = "month" },
-                    label = { Text("Kini nga bulan", style = MaterialTheme.typography.labelSmall) }
+                    label = { Text("This month", style = MaterialTheme.typography.labelSmall) }
                 )
                 FilterChip(
                     selected = range == "all",
                     onClick = { range = "all" },
-                    label = { Text("Tanan", style = MaterialTheme.typography.labelSmall) }
+                    label = { Text("All", style = MaterialTheme.typography.labelSmall) }
                 )
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("₱%.0f".format(income), "Kita (tapos)", Modifier.weight(1f))
+                StatCard("₱%.0f".format(income), "Revenue (done)", Modifier.weight(1f))
                 StatCard(
                     "${visible.count { it.status == "pending" }}",
                     "Bag-o",
@@ -468,7 +468,7 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
             Spacer(Modifier.height(8.dp))
             StatCard(
                 "${myListings.sumOf { it.views }}",
-                "Views sa akong listing",
+                "Views on my listings",
                 Modifier.fillMaxWidth()
             )
         }
@@ -493,7 +493,7 @@ fun SellerActions(
             onClick = onDone,
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
-        ) { Text("Tapos na") }
+        ) { Text("Done") }
         OutlinedButton(
             onClick = onCancel,
             shape = RoundedCornerShape(14.dp),
@@ -502,7 +502,7 @@ fun SellerActions(
     }
 }
 
-/** Ang buyer makakanselar sa `pending`; ang seller bisan kanus-a nga wala pa `done`. */
+/** The buyer can cancel while `pending`; the seller any time before `done`. */
 fun cancelOrder(db: FirebaseFirestore, order: Order, byUid: String) {
     db.collection("orders").document(order.id).update("status", "cancelled")
     val byBuyer = byUid == order.buyerId
@@ -513,7 +513,7 @@ fun cancelOrder(db: FirebaseFirestore, order: Order, byUid: String) {
         toUid = toUid,
         fromUid = byUid,
         fromName = fromName,
-        message = "$fromName gi-cancel ang order: ${order.listingTitle}".take(190)
+        message = "$fromName cancelled the order: ${order.listingTitle}".take(190)
     )
 }
 
@@ -577,11 +577,11 @@ fun OrderDetailScreen(
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Status", fontWeight = FontWeight.Bold)
                 OrderStep("Na-order", "pending", order.status)
-                OrderStep("Gikumpirma sa seller", "confirmed", order.status)
-                OrderStep("Tapos na", "done", order.status)
+                OrderStep("Confirmed by the seller", "confirmed", order.status)
+                OrderStep("Done", "done", order.status)
                 if (order.status == "cancelled") {
                     Text(
-                        "Gi-cancel ang order",
+                        "Order cancelled",
                         color = Color(0xFFE53935),
                         fontWeight = FontWeight.Bold
                     )
@@ -601,7 +601,7 @@ fun OrderDetailScreen(
                 onClick = { cancelOrder(db, order, uid) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
-            ) { Text("I-cancel ang order") }
+            ) { Text("Cancel order") }
         }
 
         if (!isSeller && order.status == "done") {
@@ -609,7 +609,7 @@ fun OrderDetailScreen(
                 onClick = { onRate(order) },
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("I-rate ang seller") }
+            ) { Text("Rate the seller") }
         }
 
         OutlinedButton(
@@ -619,7 +619,7 @@ fun OrderDetailScreen(
         ) {
             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (isSeller) "Chat sa buyer" else "Chat sa seller")
+            Text(if (isSeller) "Chat with buyer" else "Chat with seller")
         }
     }
 }
@@ -646,7 +646,7 @@ fun OrderStep(label: String, step: String, current: String) {
 }
 
 // ---------------------------------------------------------------------------
-// Chat inbox: tanan nga thread nga apil ang user.
+// Chat inbox: every thread the user is part of.
 // ---------------------------------------------------------------------------
 
 data class ChatThread(
@@ -656,7 +656,7 @@ data class ChatThread(
     val listingTitle: String = "",
     val lastMessage: String = "",
     val updatedAt: Long = 0L,
-    // Akong unread niini nga thread (gikan sa `unread.<uid>` map).
+    // My unread in this thread (from the `unread.<uid>` map).
     val unread: Int = 0
 )
 
@@ -696,7 +696,7 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
         }
         Spacer(Modifier.height(8.dp))
         if (threads.isEmpty()) {
-            Text("Wala pa kay chat. Ablihi ang usa ka listing ug pindota ang \"Chat sa seller\".")
+            Text("No chats yet. Open a listing and press \"Chat with seller\".")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(threads, key = { it.id }) { thread ->
@@ -728,7 +728,7 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            // Badge sa wala pa mabasa nga mensahe niining thread.
+                            // Badge for unread messages in this thread.
                             if (thread.unread > 0) {
                                 Spacer(Modifier.width(8.dp))
                                 Badge(containerColor = BrandBlue) {

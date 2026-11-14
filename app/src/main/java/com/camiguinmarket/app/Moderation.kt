@@ -22,9 +22,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
 /**
- * Moderation screen: makita sa mga user nga dunay `admins/{uid}` document.
- * Gitugotan sa rules ang admin sa pagpapas sa bisan unsang listing
- * (`isAdmin()`), ug pahibaloon ang seller kon unsay nahitabo.
+ * Moderation screen: visible to users with an `admins/{uid}` document.
+ * The rules let an admin delete any listing
+ * (`isAdmin()`), and the seller is told what happened.
  */
 @Composable
 fun ModerationScreen(uid: String, isAdmin: Boolean) {
@@ -32,7 +32,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Text("Moderation", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            Text("Wala kay access niini nga screen. Ang moderator ra ang makakita niini.")
+            Text("You don't have access to this screen. Only moderators can see it.")
         }
         return
     }
@@ -64,7 +64,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
             )
         }
         Text(
-            "${listings.size} ka listing sa tanan. Pilia ang angay papason.",
+            "${listings.size} listings in total. Pick the one to delete.",
             style = MaterialTheme.typography.labelSmall
         )
         Spacer(Modifier.height(6.dp))
@@ -133,11 +133,11 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
     toDelete?.let { l ->
         AlertDialog(
             onDismissRequest = { toDelete = null },
-            title = { Text("Papason ang listing?") },
+            title = { Text("Delete listing?") },
             text = {
                 Text(
                     "\"${l.title}\" ni ${l.sellerName} (₱%.2f).\n\n".format(l.price) +
-                        "Makadawat ang seller og notification nga gi-remove kini sa moderator."
+                        "The seller gets a notification that a moderator removed it."
                 )
             },
             confirmButton = {
@@ -148,7 +148,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                         toUid = l.sellerId,
                         fromUid = uid,
                         fromName = "Moderator",
-                        message = "Gi-remove sa moderator ang listing: ${l.title}".take(190)
+                        message = "A moderator removed the listing: ${l.title}".take(190)
                     )
                     toDelete = null
                 }) { Text("Papas", color = Color(0xFFE53935)) }
@@ -160,7 +160,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
     }
 }
 
-/** Lista sa mga report; admin ra ang makakita (rules: `allow read: if isAdmin()`). */
+/** Report list; only an admin can see it (rules: `allow read: if isAdmin()`). */
 @Composable
 fun ReportsList(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -179,7 +179,7 @@ fun ReportsList(uid: String) {
     }
 
     if (reports.isEmpty()) {
-        Text("Walay report nga nadawat.")
+        Text("No reports received.")
         return
     }
 
@@ -212,10 +212,10 @@ fun ReportsList(uid: String) {
                                     toUid = r.sellerId,
                                     fromUid = uid,
                                     fromName = "Moderator",
-                                    message = "Gi-remove sa moderator ang listing: ${r.listingTitle}"
+                                    message = "A moderator removed the listing: ${r.listingTitle}"
                                         .take(190)
                                 )
-                            }) { Text("Papas ang listing", color = Color(0xFFE53935)) }
+                            }) { Text("Delete listing", color = Color(0xFFE53935)) }
                             TextButton(onClick = {
                                 db.collection("reports").document(r.id)
                                     .update("status", "dismissed")

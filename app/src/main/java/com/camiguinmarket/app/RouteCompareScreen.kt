@@ -20,9 +20,9 @@ import kotlin.math.abs
 private enum class CompareTap { NONE, A, B }
 
 /**
- * Itandi ang ruta A→B sa duha ka mapa: Google Map (native) ug Mapbox (WebView).
- * Pareho ang A ug B nga ginagamit, ug ipakita ang gilay-on/oras sa duha
- * aron makita kon managsama ang ilang gihatag nga ruta.
+ * Compare the A→B route on both maps: Google Map (native) and Mapbox (WebView).
+ * The same A and B are used, and the distance/time from both is shown
+ * so you can see whether they agree on the route.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +39,7 @@ fun RouteCompareScreen(
     var pointB by remember { mutableStateOf(initialB) }
     var tapTarget by remember { mutableStateOf(CompareTap.NONE) }
     var status by remember {
-        mutableStateOf("I-set ang Point A ug Point B: pindota ang 🅰️/🅱️ dayon tap sa Google map.")
+        mutableStateOf("Set Point A and Point B: press 🅰️/🅱️, then tap the Google map.")
     }
 
     var googleRoute by remember { mutableStateOf<MapRoute?>(null) }
@@ -52,16 +52,16 @@ fun RouteCompareScreen(
         val a = pointA
         val b = pointB
         if (a == null || b == null) {
-            status = "Kinahanglan ang Point A (start) ug Point B (destination)."
+            status = "Point A (start) and Point B (destination) are required."
             return
         }
         googleRoute = null
         googleError = null
         mapboxStats = null
-        status = "Gikuha ang ruta sa duha ka mapa…"
+        status = "Fetching the route for both maps…"
 
         if (apiKey.isBlank()) {
-            googleError = "Walay MAPS_API_KEY (Google)."
+            googleError = "No MAPS_API_KEY (Google)."
         } else {
             googleLoading = true
             scope.launch {
@@ -71,7 +71,7 @@ fun RouteCompareScreen(
                 googleLoading = false
             }
         }
-        // Gipugos ang Mapbox map nga kompyuton pag-usab ang ruta.
+        // Force the Mapbox map to recompute the route.
         mapboxNonce = mapboxNonce + 1
     }
 
@@ -87,7 +87,7 @@ fun RouteCompareScreen(
         val dKm = abs(gKm - mKm)
         val dMin = abs(gMin - mMin)
         String.format(Locale.US, "📍 Pagkalahi: %.2f km • %.0f min", dKm, dMin) +
-            if (dKm <= 0.5) "  ✅ Duol ra kaayo" else "  ⚠️ Dili pareho"
+            if (dKm <= 0.5) "  ✅ Very close" else "  ⚠️ Dili pareho"
     } else null
 
     Scaffold(
@@ -113,8 +113,8 @@ fun RouteCompareScreen(
                 Text(status, style = MaterialTheme.typography.bodySmall)
                 if (apiKey.isBlank()) {
                     Text(
-                        "⚠️ Walay MAPS_API_KEY: dili maka-compute ang Google side. " +
-                            "Idugang kini sa local.properties o GitHub secrets.",
+                        "⚠️ No MAPS_API_KEY: the Google side cannot compute. " +
+                            "Add it to local.properties or GitHub secrets.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -127,11 +127,11 @@ fun RouteCompareScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedButton(onClick = {
                         tapTarget = CompareTap.A
-                        status = "Pindota ang Google map aron ibutang ang Point A."
+                        status = "Tap the Google map to place Point A."
                     }) { Text("🅰️ Set A") }
                     OutlinedButton(onClick = {
                         tapTarget = CompareTap.B
-                        status = "Pindota ang Google map aron ibutang ang Point B."
+                        status = "Tap the Google map to place Point B."
                     }) { Text("🅱️ Set B") }
                     Button(
                         enabled = pointA != null && pointB != null,
@@ -180,7 +180,7 @@ fun RouteCompareScreen(
                             status = "Point B (Google): ${formatCoordinates(point)}"
                         }
                         CompareTap.NONE -> {
-                            status = "Pindota ang 🅰️ Set A o 🅱️ Set B una, dayon tap sa mapa."
+                            status = "Press 🅰️ Set A or 🅱️ Set B first, then tap the map."
                         }
                     }
                     tapTarget = CompareTap.NONE
@@ -188,7 +188,7 @@ fun RouteCompareScreen(
             )
 
             Text(
-                "Mapbox (pareho nga A ug B)",
+                "Mapbox (same A and B)",
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp)
             )
@@ -209,7 +209,7 @@ fun RouteCompareScreen(
     }
 }
 
-/** Gamay nga Google Map nga nagdrowing sa ruta A→B (walay laing buttons). */
+/** Small Google Map that draws the A→B route (no other buttons). */
 @Composable
 private fun CompareGoogleMap(
     pointA: LatLng?,

@@ -19,14 +19,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Option B: Mapbox GL JS nga naa sa WebView (hybrid).
+ * Option B: Mapbox GL JS inside a WebView (hybrid).
  *
- * Ang token gikuha gikan sa BuildConfig.MAPBOX_ACCESS_TOKEN (local.properties),
- * dili ibutang sa HTML aron dili ma-commit sa public repo.
+ * The token comes from BuildConfig.MAPBOX_ACCESS_TOKEN (local.properties),
+ * not in the HTML, so it is never committed to a public repo.
  */
 @OptIn(ExperimentalMaterial3Api::class)
-// False positive sa lint: tanan nga method sa MapboxBridge may @JavascriptInterface
-// (gipamatud-an sa bytecode), ug lokal nga asset ra ang gi-load sa WebView.
+// Lint false positive: every MapboxBridge method has @JavascriptInterface
+// (confirmed in the bytecode), and only a local asset is loaded in the WebView.
 @SuppressLint("JavascriptInterface", "SetJavaScriptEnabled")
 @Composable
 fun MapboxMapScreen(
@@ -46,11 +46,11 @@ fun MapboxMapScreen(
 ) {
     val context = LocalContext.current
     val token = BuildConfig.MAPBOX_ACCESS_TOKEN
-    var status by remember { mutableStateOf("Nagkarga sa Mapbox…") }
+    var status by remember { mutableStateOf("Loading Mapbox…") }
 
     val bridge = remember {
         MapboxBridge(
-            readyHandler = { status = "Andam na ang Mapbox map." },
+            readyHandler = { status = "The Mapbox map is ready." },
             pickHandler = { lat, lng ->
                 status = "Napili: $lat, $lng"
                 onPicked?.invoke(lat, lng)
@@ -105,7 +105,7 @@ fun MapboxMapScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (pickMode) "Pili og Pin (Mapbox)" else "Mapbox Map") },
+                title = { Text(if (pickMode) "Pick a pin (Mapbox)" else "Mapbox Map") },
                 navigationIcon = {
                     onBack?.let { TextButton(onClick = it) { Text("⬅ Balik") } }
                 }
@@ -127,8 +127,8 @@ fun MapboxMapScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         "Walay Mapbox access token.\n" +
-                            "Idugang ang MAPBOX_ACCESS_TOKEN sa local.properties " +
-                            "ug i-rebuild ang app.",
+                            "Add MAPBOX_ACCESS_TOKEN to local.properties " +
+                            "and rebuild the app.",
                         modifier = Modifier.padding(24.dp)
                     )
                 }
@@ -146,12 +146,12 @@ fun MapboxMapScreen(
                         }.also { webView = it }
                     },
                     update = { web ->
-                        // Kung nahuman na og load ang HTML, ipasa ang config.
+                        // Once the HTML has loaded, pass the config.
                         web.evaluateJavascript("window.initMap($config);", null)
                     }
                 )
 
-                // Ipasa ang A ug B ngadto sa Mapbox map (compare mode).
+                // Pass A and B to the Mapbox map (compare mode).
                 val routeRequest = if (routeA != null && routeB != null) routeA to routeB else null
                 LaunchedEffect(webView, routeRequest, config) {
                     if (routeRequest != null) {
@@ -169,10 +169,10 @@ fun MapboxMapScreen(
 }
 
 /**
- * Lean nga Mapbox view (walay top bar) alang sa compare screen:
- * nagpakita sa ruta A→B ug nagbalik sa distance/duration ngadto sa Android.
+ * Lean Mapbox view (no top bar) for the compare screen:
+ * it draws the A→B route and returns the distance/duration to Android.
  */
-// Pareho nga rason sa MapboxMapScreen: annotated ang bridge, lokal nga asset.
+// Same reason as MapboxMapScreen: the bridge is annotated, the asset is local.
 @SuppressLint("JavascriptInterface", "SetJavaScriptEnabled")
 @Composable
 fun MapboxRouteView(
@@ -187,11 +187,11 @@ fun MapboxRouteView(
 ) {
     val context = LocalContext.current
     val token = BuildConfig.MAPBOX_ACCESS_TOKEN
-    var status by remember { mutableStateOf("Nagkarga sa Mapbox…") }
+    var status by remember { mutableStateOf("Loading Mapbox…") }
 
     val bridge = remember {
         MapboxBridge(
-            readyHandler = { status = "Andam na ang Mapbox map." },
+            readyHandler = { status = "The Mapbox map is ready." },
             pickHandler = { _, _ -> },
             directionsHandler = { lat, lng ->
                 openDirections(context, LatLng(lat, lng), "Seller Pickup Location")
@@ -230,7 +230,7 @@ fun MapboxRouteView(
     if (token.isBlank()) {
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(
-                "Walay Mapbox access token.\nIdugang ang MAPBOX_ACCESS_TOKEN sa local.properties.",
+                "No Mapbox access token.\nAdd MAPBOX_ACCESS_TOKEN to local.properties.",
                 modifier = Modifier.padding(24.dp),
                 style = MaterialTheme.typography.bodySmall
             )
@@ -268,7 +268,7 @@ fun MapboxRouteView(
     }
 }
 
-/** Tawag gikan sa JavaScript sa mapbox_map.html. */
+/** Called from the JavaScript in mapbox_map.html. */
 class MapboxBridge(
     private val readyHandler: () -> Unit,
     private val pickHandler: (Double, Double) -> Unit,
@@ -290,7 +290,7 @@ class MapboxBridge(
         directionsHandler(lat, lng)
     }
 
-    /** Gisugo niini ang JavaScript: onRoute(distanceMeters, durationSeconds). */
+    /** Tells the JavaScript: onRoute(distanceMeters, durationSeconds). */
     @JavascriptInterface
     fun onRoute(distanceMeters: Double, durationSeconds: Double) {
         routeHandler(distanceMeters, durationSeconds)

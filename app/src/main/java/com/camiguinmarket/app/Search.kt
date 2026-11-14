@@ -15,8 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Global search: tanan nga filter (query, category, lungsod, presyo, sort) sa
- * usa ka screen, kauban ang search history.
+ * Global search: every filter (query, category, town, price, sort) on
+ * one screen, together with the search history.
  */
 @Composable
 fun GlobalSearchScreen(
@@ -30,14 +30,14 @@ fun GlobalSearchScreen(
     val ctx = LocalContext.current
     var q by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(categories[0]) }
-    var town by remember { mutableStateOf("Tanan") }
-    var priceFilter by remember { mutableStateOf("Tanan") }
+    var town by remember { mutableStateOf("All") }
+    var priceFilter by remember { mutableStateOf("All") }
     var sort by remember { mutableStateOf("Bag-o") }
     var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }
 
     val results = listings.filter {
-        (category == "Tanan" || it.category == category) &&
-            (town == "Tanan" || it.town == town) &&
+        (category == "All" || it.category == category) &&
+            (town == "All" || it.town == town) &&
             matchesPrice(it.price, priceFilter) &&
             (q.isBlank() || it.title.contains(q, true) || it.description.contains(q, true))
     }.let { list -> sortListings(list, sort) }
@@ -80,7 +80,7 @@ fun GlobalSearchScreen(
                 TextButton(onClick = {
                     clearRecentSearches(ctx)
                     recent = emptyList()
-                }) { Text("Klarohon") }
+                }) { Text("Clear") }
             }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(recent) { r ->
@@ -94,11 +94,11 @@ fun GlobalSearchScreen(
         }
 
         Spacer(Modifier.height(4.dp))
-        Text("${results.size} ka resulta", style = MaterialTheme.typography.labelMedium)
+        Text("${results.size} results", style = MaterialTheme.typography.labelMedium)
 
         if (results.isEmpty()) {
             Spacer(Modifier.height(12.dp))
-            Text("Walay listing nga mohaom. Sulayi og usab ang filter.")
+            Text("No listings match. Try changing the filters.")
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Behavioral test sa firestore.rules gamit ang Firestore emulator.
+"""Behavioral tests for firestore.rules using the Firestore emulator.
 
-Gi-run ni sa CI sulod sa `firebase emulators:exec`, busa anaa na ang emulator
-sa 127.0.0.1:8080. Kon adunay ni-fail nga check, mo-exit kini og 1 ug
-ipasundayag ang tanan nga resulta.
+CI runs this inside `firebase emulators:exec`, so the emulator is already
+at 127.0.0.1:8080. If any check fails it exits with 1 and
+prints every result.
 
-Wala kini magkinahanglan og tinuod nga Firebase credentials: ang emulator
-nagadawat sa unsigned JWT isip user token.
+No real Firebase credentials are needed: the emulator
+accepts an unsigned JWT as the user token.
 
-Duha ka matang sa check ang anaa:
-  1. Kadtong nagsulay sa mga rules mismo (anon, tag-iya, laing user, tipo sa data).
-  2. Kadtong nagsundog sa **eksaktong dokumento nga isulat sa app** (`Listing`
-     data class) — apil ang `id = ""`, `price` nga double, `createdAt` nga long,
-     ug `latitude`/`longitude` nga `null` kon walay pickup pin. Kini ang
-     mopugong sa regression nga makababag sa pag-post, pagbasa, ug pagpapas.
+There are two kinds of checks:
+  1. Those that exercise the rules themselves (anon, owner, other user, data types).
+  2. Those that mimic the **exact documents the app writes** (`Listing`
+     data class) — including `id = ""`, `price` as double, `createdAt` as long,
+     and `latitude`/`longitude` as `null` when there is no pickup pin. These
+     catch regressions that would break posting, reading, and deleting.
 """
 
 import base64
@@ -34,7 +34,7 @@ def b64(obj):
 
 
 def token(uid):
-    """Unsigned JWT nga giila sa emulator isip naka-log in nga user."""
+    """Unsigned JWT that the emulator accepts as a signed-in user."""
     header = b64({"alg": "none", "typ": "JWT"})
     payload = b64(
         {
@@ -74,7 +74,7 @@ def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=
 
 
 def app_listing(seller, pickup=False):
-    """Eksaktong fields nga isulat sa `Listing` data class sa app."""
+    """Exact fields written by the app's `Listing` data class."""
     fields = {
         "id": {"stringValue": ""},  # ang doc id gikan sa Firestore, walay sulod dinhi
         "title": {"stringValue": "Saging nga hinog"},
@@ -116,16 +116,16 @@ def check(name, method, path, expected, **kwargs):
 
 
 # --- anonymous ---------------------------------------------------------------
-check("anon: read sa listing list", "GET", "/listings", 403)
-check("anon: himo og listing", "POST", "/listings", 403, body=listing("u1"), doc_id="anon")
+check("anon: read the listing list", "GET", "/listings", 403)
+check("anon: create a listing", "POST", "/listings", 403, body=listing("u1"), doc_id="anon")
 
 # --- authenticated user ------------------------------------------------------
-check("user: read sa listing list", "GET", "/listings", 200, uid="u1")
-check("user: himo sa kaugalingong listing", "POST", "/listings", 200,
+check("user: read the listing list", "GET", "/listings", 200, uid="u1")
+check("user: create their own listing", "POST", "/listings", 200,
       uid="u1", body=listing("u1"), doc_id="doc1")
-check("user: himo og listing sa ngalan sa uban", "POST", "/listings", 403,
+check("user: create a listing in someone else's name", "POST", "/listings", 403,
       uid="u1", body=listing("u2"), doc_id="doc2")
-check("user: sayop nga tipo sa price", "POST", "/listings", 403, uid="u1",
+check("user: wrong type for price", "POST", "/listings", 403, uid="u1",
       body={"fields": {"sellerId": {"stringValue": "u1"},
                        "title": {"stringValue": "x"},
                        "price": {"stringValue": "barato"},
@@ -133,38 +133,38 @@ check("user: sayop nga tipo sa price", "POST", "/listings", 403, uid="u1",
       doc_id="doc3")
 
 # --- update ------------------------------------------------------------------
-check("user: usbon ang kaugalingong listing", "PATCH", "/listings/doc1", 200,
+check("user: update their own listing", "PATCH", "/listings/doc1", 200,
       uid="u1", body=listing("u1", title="Saging nga hinog"))
-check("owner: i-transfer ang listing sa laing seller", "PATCH", "/listings/doc1", 403,
+check("owner: transfer the listing to another seller", "PATCH", "/listings/doc1", 403,
       uid="u1", body=listing("u2"))
 
 # --- delete ------------------------------------------------------------------
-check("uban: papason ang listing sa laing seller", "DELETE", "/listings/doc1", 403, uid="u2")
-check("tag-iya: papason ang kaugalingong listing", "DELETE", "/listings/doc1", 200, uid="u1")
+check("other: delete another seller's listing", "DELETE", "/listings/doc1", 403, uid="u2")
+check("owner: delete their own listing", "DELETE", "/listings/doc1", 200, uid="u1")
 
 # --- eksaktong data sa app (regression guard) --------------------------------
 # Ang app: db.collection("listings").add(Listing(...)) nga walay pickup pin.
-check("app: post og listing (latitude/longitude = null)", "POST", "/listings", 200,
+check("app: post a listing (latitude/longitude = null)", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="appdoc1")
 # Ang app: pareho, apan dunay napiling pickup point sa mapa.
-check("app: post og listing nga dunay pickup pin", "POST", "/listings", 200,
+check("app: post a listing with a pickup pin", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1", pickup=True), doc_id="appdoc2")
 # Ang app: market list -> orderBy("createdAt", DESCENDING).
 check("app: market list (orderBy createdAt desc)", "GET", "/listings", 200,
       uid="u1", order_by="createdAt desc")
-# Ang app: ablihan ang usa ka listing.
-check("app: ablihan ang usa ka listing", "GET", "/listings/appdoc2", 200, uid="u2")
+# Ang app: open a listing.
+check("app: open a listing", "GET", "/listings/appdoc2", 200, uid="u2")
 # Ang app: laing account makakita sa listing sa uban.
-check("app: laing user makabasa", "GET", "/listings/appdoc1", 200, uid="u2")
+check("app: another user can read", "GET", "/listings/appdoc1", 200, uid="u2")
 # Ang app: laing account dili makapapas.
-check("app: laing user dili makapapas", "DELETE", "/listings/appdoc2", 403, uid="u2")
+check("app: another user cannot delete", "DELETE", "/listings/appdoc2", 403, uid="u2")
 # Ang app: laing account dili makahimo og listing sa ngalan sa tag-iya.
-check("app: laing user dili makahimo sa ngalan sa uban", "POST", "/listings", 403,
+check("app: another user cannot create in someone else's name", "POST", "/listings", 403,
       uid="u2", body=app_listing("u1"), doc_id="appdoc3")
 # Ang app (account deletion): whereEqualTo("sellerId", uid).get().
-check("app: query sa account deletion", "GET", "/listings", 200, uid="u1")
+check("app: account deletion query", "GET", "/listings", 200, uid="u1")
 # Ang app: document(id).delete() sa tag-iya.
-check("app: tag-iya makapapas sa listing", "DELETE", "/listings/appdoc1", 200, uid="u1")
+check("app: owner can delete the listing", "DELETE", "/listings/appdoc1", 200, uid="u1")
 
 
 # --- cart --------------------------------------------------------------------
@@ -175,11 +175,11 @@ cart_doc = {"fields": {
     "sellerId": {"stringValue": "u2"},
     "quantity": {"integerValue": "1"},
 }}
-check("cart: tag-iya makasulat", "POST", "/carts/u1/items", 200,
+check("cart: owner can write", "POST", "/carts/u1/items", 200,
       uid="u1", body=cart_doc, doc_id="appdoc1")
-check("cart: tag-iya makabasa", "GET", "/carts/u1/items", 200, uid="u1")
-check("cart: uban dili makabasa", "GET", "/carts/u1/items", 403, uid="u2")
-check("cart: uban dili makasulat", "POST", "/carts/u1/items", 403,
+check("cart: owner can read", "GET", "/carts/u1/items", 200, uid="u1")
+check("cart: others cannot read", "GET", "/carts/u1/items", 403, uid="u2")
+check("cart: others cannot write", "POST", "/carts/u1/items", 403,
       uid="u2", body=cart_doc, doc_id="x")
 
 # --- paborito ----------------------------------------------------------------
@@ -189,9 +189,9 @@ fav_doc = {"fields": {
     "price": {"doubleValue": 25.5},
     "createdAt": {"integerValue": "1"},
 }}
-check("paborito: tag-iya makasulat", "POST", "/favorites/u1/items", 200,
+check("favorites: owner can write", "POST", "/favorites/u1/items", 200,
       uid="u1", body=fav_doc, doc_id="appdoc1")
-check("paborito: uban dili makabasa", "GET", "/favorites/u1/items", 403, uid="u2")
+check("favorites: others cannot read", "GET", "/favorites/u1/items", 403, uid="u2")
 
 # --- notifications -----------------------------------------------------------
 notif_doc = lambda sender: {"fields": {
@@ -201,12 +201,12 @@ notif_doc = lambda sender: {"fields": {
     "createdAt": {"integerValue": "1"},
     "read": {"booleanValue": False},
 }}
-check("notif: makahimo para sa uban", "POST", "/notifications/u2/items", 200,
+check("notification: can create for someone else", "POST", "/notifications/u2/items", 200,
       uid="u1", body=notif_doc("u1"), doc_id="n1")
-check("notif: dili makahimo sa ngalan sa uban", "POST", "/notifications/u2/items", 403,
+check("notification: cannot create in someone else's name", "POST", "/notifications/u2/items", 403,
       uid="u1", body=notif_doc("u9"), doc_id="n2")
-check("notif: tag-iya makabasa", "GET", "/notifications/u2/items", 200, uid="u2")
-check("notif: uban dili makabasa", "GET", "/notifications/u2/items", 403, uid="u1")
+check("notification: owner can read", "GET", "/notifications/u2/items", 200, uid="u2")
+check("notification: others cannot read", "GET", "/notifications/u2/items", 403, uid="u1")
 
 # --- chat --------------------------------------------------------------------
 chat_doc = {"fields": {
@@ -220,15 +220,15 @@ msg_doc = lambda sender: {"fields": {
     "text": {"stringValue": "Pila ang saging?"},
     "createdAt": {"integerValue": "1"},
 }}
-check("chat: makahimo sa kaugalingong thread", "POST", "/chats", 200,
+check("chat: can create their own thread", "POST", "/chats", 200,
       uid="u1", body=chat_doc, doc_id="u1_u2")
-check("chat: participant makabasa", "GET", "/chats/u1_u2", 200, uid="u2")
-check("chat: taga-gawas dili makabasa", "GET", "/chats/u1_u2", 403, uid="u3")
-check("chat: participant makasulat og mensahe", "POST", "/chats/u1_u2/messages", 200,
+check("chat: participant can read", "GET", "/chats/u1_u2", 200, uid="u2")
+check("chat: outsider cannot read", "GET", "/chats/u1_u2", 403, uid="u3")
+check("chat: participant can write a message", "POST", "/chats/u1_u2/messages", 200,
       uid="u2", body=msg_doc("u2"), doc_id="m1")
-check("chat: taga-gawas dili makasulat og mensahe", "POST", "/chats/u1_u2/messages", 403,
+check("chat: outsider cannot write a message", "POST", "/chats/u1_u2/messages", 403,
       uid="u3", body=msg_doc("u3"), doc_id="m2")
-check("chat: makabasa sa mga mensahe", "GET", "/chats/u1_u2/messages", 200, uid="u1")
+check("chat: can read the messages", "GET", "/chats/u1_u2/messages", 200, uid="u1")
 
 
 # --- orders ------------------------------------------------------------------
@@ -246,28 +246,28 @@ def order_doc(buyer, seller, status="pending"):
     }}
 
 
-check("order: buyer makahimo", "POST", "/orders", 200,
+check("order: buyer can create", "POST", "/orders", 200,
       uid="u1", body=order_doc("u1", "u2"), doc_id="o1")
-check("order: dili makahimo sa ngalan sa uban", "POST", "/orders", 403,
+check("order: cannot create in someone else's name", "POST", "/orders", 403,
       uid="u1", body=order_doc("u3", "u2"), doc_id="o2")
-check("order: buyer makabasa", "GET", "/orders/o1", 200, uid="u1")
-check("order: seller makabasa", "GET", "/orders/o1", 200, uid="u2")
-check("order: taga-gawas dili makabasa", "GET", "/orders/o1", 403, uid="u3")
-check("order: seller maka-update sa status", "PATCH", "/orders/o1", 200,
+check("order: buyer can read", "GET", "/orders/o1", 200, uid="u1")
+check("order: seller can read", "GET", "/orders/o1", 200, uid="u2")
+check("order: outsider cannot read", "GET", "/orders/o1", 403, uid="u3")
+check("order: seller can update the status", "PATCH", "/orders/o1", 200,
       uid="u2", body=order_doc("u1", "u2", status="confirmed"))
-check("order: buyer dili maka-update", "PATCH", "/orders/o1", 403,
+check("order: buyer cannot update", "PATCH", "/orders/o1", 403,
       uid="u1", body=order_doc("u1", "u2", status="done"))
 
 # o3: pending, para makita ang cancel sa buyer.
-check("order: ikaduha nga order", "POST", "/orders", 200,
+check("order: second order", "POST", "/orders", 200,
       uid="u1", body=order_doc("u1", "u2"), doc_id="o3")
-check("order: buyer makakanselar sa pending", "PATCH", "/orders/o3", 200,
+check("order: buyer can cancel while pending", "PATCH", "/orders/o3", 200,
       uid="u1", body=order_doc("u1", "u2", status="cancelled"))
-check("order: buyer dili makakanselar og confirmed", "PATCH", "/orders/o1", 403,
+check("order: buyer cannot cancel a confirmed order", "PATCH", "/orders/o1", 403,
       uid="u1", body=order_doc("u1", "u2", status="cancelled"))
-check("order: seller makakanselar", "PATCH", "/orders/o1", 200,
+check("order: seller can cancel", "PATCH", "/orders/o1", 200,
       uid="u2", body=order_doc("u1", "u2", status="cancelled"))
-check("order: taga-gawas dili maka-cancel", "PATCH", "/orders/o3", 403,
+check("order: outsider cannot cancel", "PATCH", "/orders/o3", 403,
       uid="u3", body=order_doc("u1", "u2", status="cancelled"))
 
 
@@ -284,21 +284,21 @@ def seed(path, doc_id, body):
 
 seed("/admins", "admin1", {"fields": {"active": {"booleanValue": True}}})
 
-check("mod: ang admins mabasa sa naka-log in", "GET", "/admins/admin1", 200, uid="u1")
-check("mod: dili makasulat sa admins gikan sa app", "POST", "/admins", 403,
+check("mod: admins are readable by signed-in users", "GET", "/admins/admin1", 200, uid="u1")
+check("mod: cannot write admins from the app", "POST", "/admins", 403,
       uid="u1", body={"fields": {"active": {"booleanValue": True}}}, doc_id="fake")
 
-check("mod: listing sa u2 alang sa moderation", "POST", "/listings", 200,
+check("mod: u2 listing for moderation", "POST", "/listings", 200,
       uid="u2", body=app_listing("u2"), doc_id="mod1")
-check("mod: dili-admin dili makapapas og listing sa uban", "DELETE", "/listings/mod1", 403,
+check("mod: non-admin cannot delete someone else's listing", "DELETE", "/listings/mod1", 403,
       uid="u3")
-check("mod: admin makapapas sa listing sa uban", "DELETE", "/listings/mod1", 200,
+check("mod: admin can delete someone else's listing", "DELETE", "/listings/mod1", 200,
       uid="admin1")
 
 
-check("mod: listing para sa non-admin delete", "POST", "/listings", 200,
+check("mod: listing for non-admin delete", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="mod2")
-check("mod: dili-admin dili makapapas (2)", "DELETE", "/listings/mod2", 403, uid="u3")
+check("mod: non-admin cannot delete (2)", "DELETE", "/listings/mod2", 403, uid="u3")
 
 # --- reports -----------------------------------------------------------------
 def report_doc(listing_id, reporter, reason="Scam o pangilad"):
@@ -316,17 +316,17 @@ def report_doc(listing_id, reporter, reason="Scam o pangilad"):
     }}
 
 
-check("report: naka-log in makahimo", "POST", "/reports", 200,
+check("report: signed-in user can create", "POST", "/reports", 200,
       uid="u1", body=report_doc("appdoc1", "u1"), doc_id="rep1")
-check("report: dili makahimo sa ngalan sa uban", "POST", "/reports", 403,
+check("report: cannot create in someone else's name", "POST", "/reports", 403,
       uid="u1", body=report_doc("appdoc1", "u3"), doc_id="rep2")
-check("report: duha ka report alang sa listahan", "POST", "/reports", 200,
+check("report: two reports for the list", "POST", "/reports", 200,
       uid="u2", body=report_doc("appdoc1", "u2"), doc_id="rep3")
-check("report: reporter makabasa sa kaugalingon", "GET", "/reports/rep1", 200, uid="u1")
-check("report: laing user dili makabasa", "GET", "/reports/rep1", 403, uid="u2")
-check("report: admin makabasa", "GET", "/reports/rep1", 200, uid="admin1")
-check("report: admin makalista", "GET", "/reports", 200, uid="admin1")
-check("report: dili-admin dili maka-update", "PATCH", "/reports/rep1", 403,
+check("report: reporter can read their own", "GET", "/reports/rep1", 200, uid="u1")
+check("report: another user cannot read", "GET", "/reports/rep1", 403, uid="u2")
+check("report: admin can read", "GET", "/reports/rep1", 200, uid="admin1")
+check("report: admin can list", "GET", "/reports", 200, uid="admin1")
+check("report: non-admin cannot update", "PATCH", "/reports/rep1", 403,
       uid="u1", body=report_doc("appdoc1", "u1"))
 
 
@@ -336,7 +336,7 @@ def _resolved(doc):
     return doc
 
 
-check("report: admin maka-resolve", "PATCH", "/reports/rep1", 200,
+check("report: admin can resolve", "PATCH", "/reports/rep1", 200,
       uid="admin1", body=_resolved(report_doc("appdoc1", "u1")))
 
 
@@ -353,19 +353,19 @@ def rating_doc(order_id, buyer, seller, stars=5):
     }}
 
 
-check("rating: order alang sa rating", "POST", "/orders", 200,
+check("rating: order for rating", "POST", "/orders", 200,
       uid="u1", body=order_doc("u1", "u2"), doc_id="o4")
-check("rating: dili pa done, dili makahatag", "POST", "/ratings", 403,
+check("rating: not done yet, cannot rate", "POST", "/ratings", 403,
       uid="u1", body=rating_doc("o4", "u1", "u2"), doc_id="o4")
-check("rating: seller mag-mark done", "PATCH", "/orders/o4", 200,
+check("rating: seller marks done", "PATCH", "/orders/o4", 200,
       uid="u2", body=order_doc("u1", "u2", status="done"))
-check("rating: buyer makahatag human sa done", "POST", "/ratings", 200,
+check("rating: buyer can rate after done", "POST", "/ratings", 200,
       uid="u1", body=rating_doc("o4", "u1", "u2"), doc_id="o4")
-check("rating: dili ma-usab", "PATCH", "/ratings/o4", 403,
+check("rating: cannot be edited", "PATCH", "/ratings/o4", 403,
       uid="u1", body=rating_doc("o4", "u1", "u2", stars=1))
-check("rating: laing user dili makahatag", "POST", "/ratings", 403,
+check("rating: another user cannot rate", "POST", "/ratings", 403,
       uid="u3", body=rating_doc("o4", "u3", "u2"), doc_id="o5")
-check("rating: mabasa sa naka-log in", "GET", "/ratings/o4", 200, uid="u3")
+check("rating: readable by signed-in users", "GET", "/ratings/o4", 200, uid="u3")
 
 
 # --- cartAdds ----------------------------------------------------------------
@@ -377,11 +377,11 @@ def listing_cart_patch(base, cart_adds, views=1):
     return doc
 
 
-check("cartAdds: listing alang sa cart stats", "POST", "/listings", 200,
+check("cartAdds: listing for cart stats", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="cartdoc1")
-check("cartAdds: laing user makadugang +1", "PATCH", "/listings/cartdoc1", 200,
+check("cartAdds: another user can add +1", "PATCH", "/listings/cartdoc1", 200,
       uid="u2", mask="cartAdds", body=listing_cart_patch(app_listing("u1"), 1))
-check("cartAdds: dili makadugang og sobra sa +1", "PATCH", "/listings/cartdoc1", 403,
+check("cartAdds: cannot add more than +1", "PATCH", "/listings/cartdoc1", 403,
       uid="u2", mask="cartAdds", body=listing_cart_patch(app_listing("u1"), 7))
 
 
@@ -395,9 +395,9 @@ def listing_daily_patch(base, views, day_count, day="2026-11-14"):
     return doc
 
 
-check("viewsByDay: listing alang sa chart", "POST", "/listings", 200,
+check("viewsByDay: listing for the chart", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="daydoc1")
-check("viewsByDay: makadugang sa adlaw ug total", "PATCH", "/listings/daydoc1", 200,
+check("viewsByDay: can add to the day and total", "PATCH", "/listings/daydoc1", 200,
       uid="u2", mask="views&updateMask.fieldPaths=viewsByDay",
       body=listing_daily_patch(app_listing("u1"), 1, 1))
 
@@ -407,10 +407,10 @@ token_doc = {"fields": {
     "token": {"stringValue": "abc123"},
     "updatedAt": {"integerValue": "1"},
 }}
-check("fcm: tag-iya makasulat sa token", "POST", "/users/u1/tokens", 200,
+check("fcm: owner can write the token", "POST", "/users/u1/tokens", 200,
       uid="u1", body=token_doc, doc_id="tok1")
-check("fcm: tag-iya makabasa sa token", "GET", "/users/u1/tokens", 200, uid="u1")
-check("fcm: uban dili makabasa sa token", "GET", "/users/u1/tokens", 403, uid="u2")
+check("fcm: owner can read the token", "GET", "/users/u1/tokens", 200, uid="u1")
+check("fcm: others cannot read the token", "GET", "/users/u1/tokens", 403, uid="u2")
 
 
 # --- saved searches ----------------------------------------------------------
@@ -421,11 +421,11 @@ saved_doc = {"fields": {
     "createdAt": {"integerValue": "1"},
     "lastCheckedAt": {"integerValue": "1"},
 }}
-check("saved: tag-iya makasulat", "POST", "/savedSearches/u1/items", 200,
+check("saved: owner can write", "POST", "/savedSearches/u1/items", 200,
       uid="u1", body=saved_doc, doc_id="s1")
-check("saved: tag-iya makabasa", "GET", "/savedSearches/u1/items", 200, uid="u1")
-check("saved: uban dili makabasa", "GET", "/savedSearches/u1/items", 403, uid="u2")
-check("saved: uban dili makasulat", "POST", "/savedSearches/u1/items", 403,
+check("saved: owner can read", "GET", "/savedSearches/u1/items", 200, uid="u1")
+check("saved: others cannot read", "GET", "/savedSearches/u1/items", 403, uid="u2")
+check("saved: others cannot write", "POST", "/savedSearches/u1/items", 403,
       uid="u2", body=saved_doc, doc_id="s2")
 
 
@@ -448,13 +448,13 @@ def listing_views_patch(base, views, title=None):
 
 
 # Bag-ong listing kay ang appdoc1 napapas na sa miaging test.
-check("views: listing alang sa views", "POST", "/listings", 200,
+check("views: listing for views", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="viewdoc1")
-check("views: laing user makadugang +1", "PATCH", "/listings/viewdoc1", 200,
+check("views: another user can add +1", "PATCH", "/listings/viewdoc1", 200,
       uid="u2", mask="views", body=listing_views_patch(app_listing("u1"), 1))
-check("views: dili makadugang og sobra sa +1", "PATCH", "/listings/viewdoc1", 403,
+check("views: cannot add more than +1", "PATCH", "/listings/viewdoc1", 403,
       uid="u2", body=listing_views_patch(app_listing("u1"), 3))
-check("views: dili makailis sa titulo", "PATCH", "/listings/viewdoc1", 403,
+check("views: cannot change the title", "PATCH", "/listings/viewdoc1", 403,
       uid="u2", body=listing_views_patch(app_listing("u1"), 2, title="Gi-hack"))
 
 
@@ -469,9 +469,9 @@ def main():
         print(f"{'PASS' if ok else 'FAIL'}  [{actual}] {name} (gipaabot: {expected})")
 
     total = len(CHECKS)
-    print(f"\n{total - failures}/{total} ka check ang milusot")
+    print(f"\n{total - failures}/{total} checks passed")
     if failures:
-        print(f"❌ {failures} ka check ang ni-fail — sayop ang firestore.rules.")
+        print(f"❌ {failures} checks failed — firestore.rules is wrong.")
         return 1
     print("✅ Husto ang firestore.rules.")
     return 0

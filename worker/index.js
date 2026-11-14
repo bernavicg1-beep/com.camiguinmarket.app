@@ -1,18 +1,18 @@
 /**
- * Camiguin Market — image upload Worker alang sa Cloudflare R2.
+ * Camiguin Market — image upload + push Worker (Cloudflare R2 + FCM).
  *
  * POST /upload
  *   Header: Authorization: Bearer <Firebase ID token>
  *   Header: Content-Type: image/jpeg | image/png | image/webp
- *   Body:   ang bytes sa litrato (max 5 MB)
- *   Tubag:  { "url": "https://<worker>/i/listing_images/<uid>/<file>.jpg" }
+ *   Body:   photo bytes (max 5 MB)
+ *   Response: { "url": "https://<worker>/i/listing_images/<uid>/<file>.jpg" }
  *
  * GET /i/<key>
- *   Ibalik ang litrato gikan sa R2 (public read, long cache).
+ *   Return the photo from R2 (public read, long cache).
  *
- * Ngano dinhi ang verification: ang R2 credentials wala gayud moadto sa app.
- * Ang Worker maoy mo-verify sa Firebase ID token ug mohimo sa R2 key gikan sa
- * `uid` sa token, busa ang usa ka user makasulat ra sa iyang kaugalingong folder.
+ * Why verification lives here: R2 credentials never reach the app.
+ * The Worker verifies the Firebase ID token and builds the R2 key from the
+ * token's `uid`, so a user can only write inside their own folder.
  */
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -36,7 +36,7 @@ function json(body, status = 200) {
   });
 }
 
-/** I-verify ang Firebase ID token ug ibalik ang uid (o null kon dili balido). */
+/** Verify the Firebase ID token and return the uid (or null when invalid). */
 async function verifyIdToken(idToken, env) {
   const apiKey = env.FIREBASE_WEB_API_KEY;
   if (!apiKey) return null;
@@ -56,7 +56,7 @@ async function verifyIdToken(idToken, env) {
   return user && user.localId ? user.localId : null;
 }
 
-/** Ang base URL sa Worker, para sa mga link sa litrato. */
+/** The Worker base URL, used for photo links. */
 function publicBase(request, env) {
   const configured = (env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
   if (configured) return configured;
@@ -99,7 +99,7 @@ async function handleImage(key, env) {
   return new Response(object.body, {
     headers: {
       "Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
-      // Ang key dunay timestamp ug random suffix, busa dili na kini mausab.
+      // The key has a timestamp and random suffix, so it never changes.
       "Cache-Control": "public, max-age=31536000, immutable",
       ETag: object.httpEtag,
       ...CORS,
@@ -109,9 +109,9 @@ async function handleImage(key, env) {
 
 
 // ---------------------------------------------------------------------------
-// Push notifications (FCM HTTP v1) — pareho sa R2: ang service account wala
-// gayud moabot sa app. Ang Worker maoy mo-verify sa Firebase ID token, mopili
-// sa recipient gikan sa Firestore (dili gikan sa client), ug magpadala sa FCM.
+// Push notifications (FCM HTTP v1) — same as R2: the service account never
+// reaches the app. The Worker verifies the Firebase ID token, picks the
+// recipient from Firestore (never from the client), and sends through FCM.
 // ---------------------------------------------------------------------------
 
 function b64url(bytesOrString) {
@@ -145,7 +145,7 @@ function serviceAccount(env) {
   }
 }
 
-// Ang access token gina-cache sulod sa isolate (1 ka oras ang lifespan).
+// The access token is cached inside the isolate (1 hour lifespan).
 let tokenCache = { value: null, expiresAt: 0 };
 
 async function accessToken(env) {
@@ -205,7 +205,7 @@ function docUrl(sa, path) {
     `/databases/(default)/documents/${path}`;
 }
 
-/** Bili sa usa ka Firestore REST field (string/integer/double/map/array). */
+/** Value of a Firestore REST field (string/integer/double/map/array). */
 function fieldValue(field) {
   if (!field) return undefined;
   if (field.stringValue !== undefined) return field.stringValue;
@@ -256,7 +256,7 @@ async function deleteToken(sa, token, uid, fcmToken) {
   });
 }
 
-/** Magpadala sa tanang device sa usa ka user; maglimpyo sa mga patay nga token. */
+/** Send to every device of one user; clean up dead tokens. */
 async function sendToUser(env, sa, token, uid, title, body, data = {}) {
   if (!uid) return 0;
   const tokens = await readTokens(sa, token, uid);
@@ -304,8 +304,8 @@ async function sendToUser(env, sa, token, uid, title, body, data = {}) {
  *   Header: Authorization: Bearer <Firebase ID token>
  *   Body:   { "kind": "order" | "status" | "chat", "orderId"?, "chatId"?, "text"? }
  *
- * Ang recipient gina-derive sa Worker gikan sa Firestore — dili gayud gikan sa
- * client — aron dili makapadala og spam ang usa ka user ngadto sa laing user.
+ * The recipient is derived by the Worker from Firestore — never from the
+ * client — so a user cannot spam another user.
  */
 async function handlePush(request, env) {
   const auth = request.headers.get("Authorization") || "";
@@ -361,7 +361,7 @@ async function handlePush(request, env) {
   if (!order) return json({ error: "not_found" }, 404);
 
   if (kind === "order") {
-    // Ang buyer ra ang makapahibalo sa seller bahin sa iyang bag-ong order.
+    // Only the buyer can notify the seller about their new order.
     if (order.buyerId !== uid) return json({ error: "forbidden" }, 403);
     const qty = order.quantity || 1;
     const sent = await sendToUser(
@@ -374,7 +374,7 @@ async function handlePush(request, env) {
   }
 
   if (kind === "status") {
-    // Ang seller ra ang makapahibalo sa buyer bahin sa status.
+    // Only the seller can notify the buyer about the status.
     if (order.sellerId !== uid) return json({ error: "forbidden" }, 403);
     const action = {
       confirmed: "gikumpirma",

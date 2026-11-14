@@ -15,12 +15,12 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
 /**
- * Push notifications gikan sa FCM.
+ * Push notifications from FCM.
  *
- * Ang token gina-save sa `users/{uid}/tokens/{token}` aron makapadala ang server
- * (Cloud Function o bisan unsang backend nga dunay service account) ngadto sa
- * sakto nga device. Walay server sa repo, busa ang pagpadala niini gikinahanglan
- * pa og backend — ang app andam na sa pagdawat.
+ * The token is saved to `users/{uid}/tokens/{token}` so the server can send
+ * (the Cloudflare Worker) to the
+ * right device. Delivery happens in the Worker (`worker/index.js`, `POST /push`),
+ * which uses a service account — the app only receives.
  */
 class MarketMessagingService : FirebaseMessagingService() {
 
@@ -60,7 +60,7 @@ class MarketMessagingService : FirebaseMessagingService() {
         ) {
             return
         }
-        // Tap: ablihan ang app dayon ang order o chat nga kalabotan niini.
+        // Tap: open the app and then the related order or chat.
         val tapIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             data.forEach { (k, v) -> putExtra(k, v) }

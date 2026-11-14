@@ -46,18 +46,18 @@ import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.util.Locale
 
-/** Sentro sa Camiguin Island (Mambajao area). */
+/** Center of Camiguin Island (Mambajao area). */
 val CamiguinCenter = LatLng(9.1732, 124.7290)
 
 const val ISLAND_ZOOM = 11f
 const val FOCUS_ZOOM = 16f
 const val ROUTE_ZOOM = 12f
 
-/** Google Maps API key gikan sa local.properties / CI secrets (BuildConfig). */
+/** Google Maps API key from local.properties / CI secrets (BuildConfig). */
 val mapsApiKey: String
     get() = BuildConfig.MAPS_API_KEY
 
-/** Ruta gikan sa Google Directions API. */
+/** Route from the Google Directions API. */
 data class MapRoute(
     val points: List<LatLng>,
     val distanceText: String,
@@ -66,7 +66,7 @@ data class MapRoute(
     val durationSeconds: Int
 )
 
-/** "12.40 km • 21 min" gikan sa meters/seconds (pareho ang format sa Mapbox). */
+/** "12.40 km • 21 min" from meters/seconds (same format as Mapbox). */
 fun formatRouteStats(distanceMeters: Double, durationSeconds: Double): String =
     String.format(
         Locale.US,
@@ -75,10 +75,10 @@ fun formatRouteStats(distanceMeters: Double, durationSeconds: Double): String =
         maxOf(1, Math.round(durationSeconds / 60.0))
     )
 
-/** Kinsa ang mosunod nga tap sa mapa. */
+/** Who the next map tap belongs to. */
 private enum class TapTarget { NONE, ROUTE_A, ROUTE_B }
 
-/** Usa ka resulta sa search bar (seller pin o lugar). */
+/** One search bar result (a seller pin or a place). */
 data class MapSearchResult(
     val label: String,
     val detail: String,
@@ -86,7 +86,7 @@ data class MapSearchResult(
     val seller: Listing? = null
 )
 
-/** Decode sa "encoded polyline" sa Directions API. */
+/** Decode the Directions API "encoded polyline". */
 fun decodePolyline(encoded: String): List<LatLng> {
     val points = mutableListOf<LatLng>()
     var index = 0
@@ -117,28 +117,28 @@ fun decodePolyline(encoded: String): List<LatLng> {
 }
 
 /**
- * Mahigalaon nga mensahe alang sa user: offline, gisalikway ang key, o limit.
- * Ang hilaw nga mensahe sa exception dili maayo ipakita sa user.
+ * User-friendly message: offline, key rejected, or quota limit.
+ * The raw exception message should not be shown to the user.
  */
 fun friendlyMapError(e: Throwable?): String {
     val raw = e?.message.orEmpty()
     return when {
         e is UnknownHostException ->
-            "Walay internet connection. I-check ang data o WiFi, dayon sulayi pag-usab."
+            "No internet connection. Check your data or WiFi, then try again."
         e is SocketTimeoutException ->
-            "Hinay ang connection. Sulayi pag-usab."
+            "Slow connection. Try again."
         e is ConnectException ->
-            "Dili maka-connect sa map service. Sulayi pag-usab."
+            "Can't connect to the map service. Try again."
         raw.contains("REQUEST_DENIED", true) ->
-            "Gisalikway ang Google Maps API key. I-check kon naka-enable ang " +
-                "Directions API ug Geocoding API ug husto ang key restrictions."
+            "Google Maps API key rejected. Check whether this is enabled: " +
+                "Directions API and Geocoding API, and that the key restrictions are correct."
         raw.contains("OVER_QUERY_LIMIT", true) || raw.contains("OVER_DAILY_LIMIT", true) ->
-            "Nakaabot na sa limit sa Google Maps API. Sulayi ugma o i-check ang billing."
+            "Google Maps API limit reached. Try again tomorrow or check billing."
         raw.contains("ZERO_RESULTS", true) ->
-            "Walay ruta o lugar nga nakit-an niini nga pangita."
+            "No route or place found for this search."
         raw.contains("Not Authorized", true) || raw.contains("Invalid Token", true) ->
-            "Gisalikway ang Mapbox token. I-check ang MAPBOX_ACCESS_TOKEN."
-        raw.isBlank() -> "Napakyas ang pagkuha sa datos. Sulayi pag-usab."
+            "Mapbox token rejected. Check MAPBOX_ACCESS_TOKEN."
+        raw.isBlank() -> "Failed to load data. Try again."
         else -> raw
     }
 }
@@ -155,7 +155,7 @@ private fun httpGetJson(url: String): JSONObject {
             val text = connection.inputStream.bufferedReader().use { it.readText() }
             return JSONObject(text)
         }
-        // Ang Google API mobalik og JSON error; basahon nato ang error_message.
+        // The Google API returns a JSON error; read `error_message` from it.
         val body = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
         val message = try {
             JSONObject(body).optString("error_message")
@@ -163,14 +163,14 @@ private fun httpGetJson(url: String): JSONObject {
             ""
         }
         throw IllegalStateException(
-            if (message.isNotBlank()) message else "HTTP $code gikan sa map service."
+            if (message.isNotBlank()) message else "HTTP $code from the map service."
         )
     } finally {
         connection.disconnect()
     }
 }
 
-/** Ruta A→B (driving, walking, o bicycling) pinaagi sa Google Directions API. */
+/** A→B route (driving, walking, or bicycling) through the Google Directions API. */
 suspend fun fetchRoute(
     origin: LatLng,
     destination: LatLng,
@@ -178,7 +178,7 @@ suspend fun fetchRoute(
     travelMode: String = "driving"
 ): Result<MapRoute> = withContext(Dispatchers.IO) {
     if (key.isBlank()) {
-        return@withContext Result.failure(IllegalStateException("Walay Google Maps API key."))
+        return@withContext Result.failure(IllegalStateException("No Google Maps API key."))
     }
     try {
         val url = "https://maps.googleapis.com/maps/api/directions/json" +
@@ -197,7 +197,7 @@ suspend fun fetchRoute(
             route.getJSONObject("overview_polyline").optString("points")
         )
         if (points.isEmpty()) {
-            return@withContext Result.failure(IllegalStateException("Walay ruta nga nakit-an."))
+            return@withContext Result.failure(IllegalStateException("No route found."))
         }
         val distance = leg.getJSONObject("distance")
         val duration = leg.getJSONObject("duration")
@@ -215,11 +215,11 @@ suspend fun fetchRoute(
     }
 }
 
-/** Pangita og lugar sa Camiguin pinaagi sa Google Geocoding API. */
+/** Search a place in Camiguin through the Google Geocoding API. */
 suspend fun geocodePlace(query: String, key: String): Result<MapSearchResult> =
     withContext(Dispatchers.IO) {
         if (key.isBlank()) {
-            return@withContext Result.failure(IllegalStateException("Walay Google Maps API key."))
+            return@withContext Result.failure(IllegalStateException("No Google Maps API key."))
         }
         try {
             val q = URLEncoder.encode("$query, Camiguin, Philippines", "UTF-8")
@@ -236,7 +236,7 @@ suspend fun geocodePlace(query: String, key: String): Result<MapSearchResult> =
             Result.success(
                 MapSearchResult(
                     label = first.optString("formatted_address"),
-                    detail = "Lugar sa Camiguin",
+                    detail = "Location in Camiguin",
                     point = LatLng(location.getDouble("lat"), location.getDouble("lng"))
                 )
             )
@@ -245,14 +245,14 @@ suspend fun geocodePlace(query: String, key: String): Result<MapSearchResult> =
         }
     }
 
-/** Mga seller nga may coordinates (pang-search ug pins). */
+/** Sellers that have coordinates (search and pins). */
 fun sellersWithLocation(listings: List<Listing>): List<Listing> =
     listings.filter { it.latitude != null && it.longitude != null }
 
 fun formatCoordinates(point: LatLng): String =
     String.format(Locale.US, "%.5f, %.5f", point.latitude, point.longitude)
 
-/** Tunog sa pin: "9.17320, 124.72900" nga andam i-save sa Firestore. */
+/** Pin coordinates: "9.17320, 124.72900", ready to save in Firestore. */
 fun coordinatesLabel(listing: Listing): String? =
     if (listing.latitude != null && listing.longitude != null)
         String.format(Locale.US, "%.5f, %.5f", listing.latitude, listing.longitude)
@@ -267,7 +267,7 @@ fun openDirections(context: Context, point: LatLng, label: String? = null) {
     openUri(
         context,
         "https://www.google.com/maps/dir/?api=1&destination=$destination&travelmode=driving".toUri(),
-        "Walay app nga makaabli sa Google Maps."
+        "No app can open Google Maps."
     )
 }
 
@@ -276,7 +276,7 @@ fun openMapPreview(context: Context, point: LatLng, label: String?) {
     openUri(
         context,
         "geo:${point.latitude},${point.longitude}?q=${point.latitude},${point.longitude}($name)".toUri(),
-        "Walay app nga makaabli sa mapa."
+        "No app can open the map."
     )
 }
 
@@ -295,12 +295,12 @@ fun hasLocationPermission(context: Context): Boolean =
         PackageManager.PERMISSION_GRANTED
 
 /**
- * Option A: Google Map sulod mismo sa app.
+ * Option A: Google Map inside the app itself.
  *
- * @param sellerLocation ang pin sa seller / pickup point.
- * @param pickMode kon true, ang pag-tap sa mapa nagbalhin sa pickup pin
- *   ug makita ang "Save Pickup Location" button.
- * @param onPickLocation gitawag kung gi-save ang bag-ong pickup coordinates.
+ * @param sellerLocation the seller's pin / pickup point.
+ * @param pickMode when true, tapping the map moves the pickup pin
+ *   and the "Save Pickup Location" button appears.
+ * @param onPickLocation called when the new pickup coordinates are saved.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -331,8 +331,8 @@ fun CamiguinMarketMapScreen(
     var focusTarget by remember { mutableStateOf<LatLng?>(null) }
     var status by remember {
         mutableStateOf(
-            if (pickMode) "Pindota ang mapa aron ibutang ang pickup pin."
-            else "Pindota ang 📍 Use My Current Location aron makita asa ka karon."
+            if (pickMode) "Tap the map to place the pickup pin."
+            else "Press 📍 Use My Current Location to see where you are."
         )
     }
 
@@ -343,7 +343,7 @@ fun CamiguinMarketMapScreen(
     var route by remember { mutableStateOf<MapRoute?>(null) }
     var routeLoading by remember { mutableStateOf(false) }
 
-    // Search bar sa ibabaw sa mapa.
+    // Search bar above the map.
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
     var searchNote by remember { mutableStateOf<String?>(null) }
@@ -366,13 +366,13 @@ fun CamiguinMarketMapScreen(
     ) { result ->
         hasPermission = result.values.any { it } || hasLocationPermission(context)
         status = if (hasPermission) {
-            "Location permission granted. Pindota pag-usab ang 📍 Use My Current Location."
+            "Location permission granted. Press 📍 Use My Current Location again."
         } else {
-            "Location permission denied. Pwede gihapon ka mopili og pin sa mapa."
+            "Location permission denied. You can still pick a pin on the map."
         }
     }
 
-    // Iliso ang camera sa pin nga bag-o natong napilian / na-locate.
+    // Move the camera to the pin we just picked / located.
     LaunchedEffect(focusTarget) {
         focusTarget?.let { point ->
             cameraPositionState.animate(
@@ -385,7 +385,7 @@ fun CamiguinMarketMapScreen(
         customerLocation = point
         focusTarget = point
         if (showRoute && pointA == null) pointA = point
-        status = "Nakita na ang imong current location."
+        status = "Your current location was found."
     }
 
     fun getCurrentLocation() {
@@ -404,7 +404,7 @@ fun CamiguinMarketMapScreen(
                     if (location != null) {
                         onPointFound(LatLng(location.latitude, location.longitude))
                     } else {
-                        // Walay cached fix: pangayoa ang bag-ong GPS reading.
+                        // No cached fix: request a new GPS reading.
                         fusedLocationClient.getCurrentLocation(
                             Priority.PRIORITY_HIGH_ACCURACY,
                             null
@@ -412,16 +412,16 @@ fun CamiguinMarketMapScreen(
                             if (fresh != null) {
                                 onPointFound(LatLng(fresh.latitude, fresh.longitude))
                             } else {
-                                status = "Walay GPS signal. Sulayi pag-usab sa gawas."
+                                status = "No GPS signal. Try again outdoors."
                             }
                         }.addOnFailureListener {
-                            status = "Walay GPS signal. Sulayi pag-usab sa gawas."
+                            status = "No GPS signal. Try again outdoors."
                         }
                     }
                 }
-                .addOnFailureListener { status = "Napakyas ang pagkuha sa GPS location." }
+                .addOnFailureListener { status = "Failed to get the GPS location." }
         } catch (e: SecurityException) {
-            status = "Kinahanglan ang location permission."
+            status = "Location permission is required."
         }
     }
 
@@ -447,13 +447,13 @@ fun CamiguinMarketMapScreen(
                     seller = listing
                 )
             }
-            status = "Nakita ang ${local.size} ka seller pin."
+            status = "Found ${local.size} seller pins."
             return
         }
         if (apiKey.isBlank()) {
             searchResults = emptyList()
-            searchNote = "Walay seller nga nakit-an. Wala pa ma-set ang MAPS_API_KEY, " +
-                "busa dili maka-search og lugar."
+            searchNote = "No sellers found. MAPS_API_KEY is not set, " +
+                "so place search is unavailable."
             return
         }
         searching = true
@@ -464,7 +464,7 @@ fun CamiguinMarketMapScreen(
                 searchResults = listOf(place)
                 searchedPlace = place.point
                 focusTarget = place.point
-                status = "Nakita ang lugar: ${place.label}"
+                status = "Found place: ${place.label}"
             }.onFailure { e ->
                 searchResults = emptyList()
                 searchNote = friendlyMapError(e)
@@ -485,16 +485,16 @@ fun CamiguinMarketMapScreen(
         val start = pointA
         val end = pointB
         if (start == null || end == null) {
-            status = "Kinahanglan ang Point A (start) ug Point B (destination)."
+            status = "Point A (start) and Point B (destination) are required."
             return
         }
         if (apiKey.isBlank()) {
-            status = "Walay MAPS_API_KEY. Idugang sa local.properties o GitHub secrets."
+            status = "MAPS_API_KEY is missing. Add it to local.properties or GitHub secrets."
             return
         }
-        if (status.contains("Walay internet", true)) status = "Gikuha pag-usab ang ruta…"
+        if (status.contains("No internet", true)) status = "Fetching the route again…"
         routeLoading = true
-        status = "Ginakuha ang ruta A→B…"
+        status = "Fetching the A→B route…"
         scope.launch {
             val result = fetchRoute(start, end, apiKey)
             routeLoading = false
@@ -508,7 +508,7 @@ fun CamiguinMarketMapScreen(
                     CameraUpdateFactory.newLatLngBounds(builder.build(), 120)
                 )
             }.onFailure { e ->
-                status = "Napakyas ang ruta: ${friendlyMapError(e)}"
+                status = "Route failed: ${friendlyMapError(e)}"
             }
         }
     }
@@ -517,7 +517,7 @@ fun CamiguinMarketMapScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text(if (pickMode) "Pili og Pickup Location" else "Camiguin Market Map") },
+                title = { Text(if (pickMode) "Pick a pickup location" else "Camiguin Market Map") },
                 navigationIcon = {
                     onBack?.let {
                         TextButton(onClick = it) { Text("⬅ Balik") }
@@ -539,8 +539,8 @@ fun CamiguinMarketMapScreen(
 
             if (apiKey.isBlank() && (showRoute || showSearch)) {
                 Text(
-                    text = "⚠️ Walay MAPS_API_KEY: dili moandar ang ruta ug ang place search. " +
-                        "Idugang kini sa local.properties o GitHub secrets.",
+                    text = "⚠️ No MAPS_API_KEY: routing and place search won't work. " +
+                        "Add it to local.properties or GitHub secrets.",
                     modifier = Modifier.padding(horizontal = 12.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
@@ -562,16 +562,16 @@ fun CamiguinMarketMapScreen(
                             tapTarget == TapTarget.ROUTE_A -> {
                                 pointA = point
                                 tapTarget = TapTarget.NONE
-                                status = "Point A na-set: ${formatCoordinates(point)}"
+                                status = "Point A set: ${formatCoordinates(point)}"
                             }
                             tapTarget == TapTarget.ROUTE_B -> {
                                 pointB = point
                                 tapTarget = TapTarget.NONE
-                                status = "Point B na-set: ${formatCoordinates(point)}"
+                                status = "Point B set: ${formatCoordinates(point)}"
                             }
                             pickMode || isSelecting -> {
                                 pickupLocation = point
-                                status = "Napili ang pickup location. Pindota ang 💾 Save Pickup Location."
+                                status = "Pickup location selected. Press 💾 Save Pickup Location."
                                 isSelecting = false
                             }
                         }
@@ -591,7 +591,7 @@ fun CamiguinMarketMapScreen(
                             snippet = "Ikaw karon"
                         )
                     }
-                    // Tanan nga seller pins (listahan sa mga listing nga may coordinates).
+                    // All seller pins (listings that have coordinates).
                     sellersWithLocation(sellers).forEach { listing ->
                         val lat = listing.latitude
                         val lng = listing.longitude
@@ -613,12 +613,12 @@ fun CamiguinMarketMapScreen(
                         key(point) {
                             Marker(
                                 state = rememberUpdatedMarkerState(position = point),
-                                title = "Gipangita nga lugar",
+                                title = "Searched place",
                                 snippet = formatCoordinates(point)
                             )
                         }
                     }
-                    // Ruta A→B: ang linya sa dalan.
+                    // A→B route: the road polyline.
                     route?.let { r ->
                         Polyline(
                             points = r.points,
@@ -658,7 +658,7 @@ fun CamiguinMarketMapScreen(
                                     value = searchQuery,
                                     onValueChange = { searchQuery = it },
                                     singleLine = true,
-                                    placeholder = { Text("Pangita og lugar o seller…") },
+                                    placeholder = { Text("Search a place or seller…") },
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(Modifier.width(8.dp))
@@ -721,7 +721,7 @@ fun CamiguinMarketMapScreen(
                     OutlinedButton(
                         onClick = {
                             isSelecting = true
-                            status = "Pindota ang mapa aron ibutang ang pickup pin."
+                            status = "Tap the map to place the pickup pin."
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("📌 Select Pickup Location") }
@@ -736,7 +736,7 @@ fun CamiguinMarketMapScreen(
                     OutlinedButton(
                         onClick = {
                             isSelecting = true
-                            status = "Pindota ang mapa aron makita ang bag-ong punto."
+                            status = "Tap the map to see the new point."
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("📌 Select Pickup Location") }
@@ -756,14 +756,14 @@ fun CamiguinMarketMapScreen(
                         OutlinedButton(
                             onClick = {
                                 tapTarget = TapTarget.ROUTE_A
-                                status = "Pindota ang mapa aron ibutang ang Point A (start)."
+                                status = "Tap the map to place Point A (start)."
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("🅰️ Set A") }
                         OutlinedButton(
                             onClick = {
                                 tapTarget = TapTarget.ROUTE_B
-                                status = "Pindota ang mapa aron ibutang ang Point B (destination)."
+                                status = "Tap the map to place Point B (destination)."
                             },
                             modifier = Modifier.weight(1f)
                         ) { Text("🅱️ Set B") }
@@ -773,7 +773,7 @@ fun CamiguinMarketMapScreen(
                         onClick = { buildRoute() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (routeLoading) "Ginakuha ang ruta…" else "🧭 Ipakita ang Ruta A→B")
+                        Text(if (routeLoading) "Fetching the route…" else "🧭 Show the A→B Route")
                     }
                     route?.let { r ->
                         Text(
@@ -784,9 +784,9 @@ fun CamiguinMarketMapScreen(
                             style = MaterialTheme.typography.bodyMedium
                         )
                         TextButton(
-                            onClick = { route = null; status = "Giklar ang ruta." },
+                            onClick = { route = null; status = "Route cleared." },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("🗑️ Klarohon ang ruta") }
+                        ) { Text("🗑️ Clear route") }
                     }
                 }
 
@@ -801,14 +801,14 @@ fun CamiguinMarketMapScreen(
                     OutlinedButton(
                         onClick = { openMapPreview(context, pickupLocation, sellerLabel) },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("🗺️ View Map sa Google Maps App") }
+                    ) { Text("🗺️ View Map in the Google Maps App") }
                 }
             }
         }
     }
 }
 
-/** Full-screen picker gikan sa Post dialog, mobalik ang napili nga coordinates. */
+/** Full-screen picker opened from the post dialog; returns the picked coordinates. */
 @Composable
 fun PickupLocationPickerDialog(
     initial: LatLng?,
@@ -823,7 +823,7 @@ fun PickupLocationPickerDialog(
             CamiguinMarketMapScreen(
                 sellerLocation = initial ?: CamiguinCenter,
                 sellerLabel = "Pickup Location",
-                sellerSnippet = "Dinhi mokuha ang customer",
+                sellerSnippet = "Customer picks up here",
                 pickMode = true,
                 onPickLocation = { point ->
                     onPicked(point)
@@ -835,7 +835,7 @@ fun PickupLocationPickerDialog(
     }
 }
 
-/** View Map + Get Directions sa usa ka listing (Option A). */
+/** View Map + Get Directions for one listing (Option A). */
 @Composable
 fun SellerMapDialog(
     listing: Listing,
@@ -874,7 +874,7 @@ fun SellerMapDialog(
                     TextButton(
                         onClick = open,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("🌐 Tan-awa sa Mapbox (web map)") }
+                    ) { Text("🌐 View on Mapbox (web map)") }
                 }
             }
         }
@@ -882,8 +882,8 @@ fun SellerMapDialog(
 }
 
 /**
- * Tanan nga seller pins sa usa ka mapa, uban ang search bar sa ibabaw
- * ug ruta A→B. Tap sa pin aron makita ang detalye sa listing.
+ * All seller pins on one map, with the search bar on top
+ * and the A→B route. Tap a pin to see the listing detail.
  */
 @Composable
 fun AllSellersMapDialog(
@@ -900,7 +900,7 @@ fun AllSellersMapDialog(
             CamiguinMarketMapScreen(
                 sellerLocation = CamiguinCenter,
                 sellerLabel = "Camiguin Market",
-                sellerSnippet = "Pili og seller pin",
+                sellerSnippet = "Pick a seller pin",
                 showSearch = true,
                 showRoute = true,
                 showPickupMarker = false,
@@ -914,7 +914,7 @@ fun AllSellersMapDialog(
     }
 }
 
-/** I-save ang coordinates sa listing document sa Firestore. */
+/** Save the coordinates into the listing document in Firestore. */
 fun saveListingLocation(
     db: FirebaseFirestore,
     listingId: String,

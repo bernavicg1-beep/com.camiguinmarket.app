@@ -22,8 +22,8 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FirebaseFirestore
 
 /**
- * Rating sa seller human sa `done` nga order (Firestore: ratings/{orderId}).
- * Ang doc id = order id, busa dili makabalik-balik og rate ang buyer.
+ * Seller rating after a `done` order (Firestore: ratings/{orderId}).
+ * The doc id is the order id, so a buyer cannot rate twice.
  */
 data class Rating(
     val id: String = "",
@@ -44,7 +44,7 @@ fun submitRating(
     onResult: (String?) -> Unit
 ) {
     if (stars !in 1..5) {
-        onResult("Pilia ang bituon (1-5).")
+        onResult("Pick a star rating (1-5).")
         return
     }
     val rating = Rating(
@@ -63,12 +63,12 @@ fun submitRating(
                 toUid = order.sellerId,
                 fromUid = order.buyerId,
                 fromName = order.buyerName,
-                message = "${order.buyerName} nag-rate og $stars⭐ sa order: ${order.listingTitle}"
+                message = "${order.buyerName} rated $stars⭐ for the order: ${order.listingTitle}"
                     .take(190)
             )
             onResult(null)
         }
-        .addOnFailureListener { onResult(it.localizedMessage ?: "Napakyas ang pag-rate.") }
+        .addOnFailureListener { onResult(it.localizedMessage ?: "Rating failed.") }
 }
 
 @Composable
@@ -81,7 +81,7 @@ fun StarRow(
         (1..5).forEach { i ->
             Icon(
                 if (i <= stars) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                contentDescription = "$i ka bituon",
+                contentDescription = "$i stars",
                 tint = if (i <= stars) BrandGold else Color.Gray,
                 modifier = Modifier
                     .size(size.dp)
@@ -110,7 +110,7 @@ fun RatingDialog(order: Order, onClose: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = { if (!sending) onClose() },
-        title = { Text("Rate sa seller") },
+        title = { Text("Seller rating") },
         text = {
             Column {
                 Text(order.listingTitle, style = MaterialTheme.typography.bodyMedium)
@@ -121,7 +121,7 @@ fun RatingDialog(order: Order, onClose: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 when (alreadyRated) {
                     null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    true -> Text("Gi-rate na nimo kini nga order. Salamat!")
+                    true -> Text("You already rated this order. Thanks!")
                     false -> {
                         StarRow(stars, size = 34) { stars = it }
                         Spacer(Modifier.height(8.dp))
@@ -151,7 +151,7 @@ fun RatingDialog(order: Order, onClose: () -> Unit) {
                             if (err == null) onClose() else error = err
                         }
                     }
-                ) { Text("Ipadala") }
+                ) { Text("Send") }
             } else {
                 TextButton(onClick = onClose) { Text("Sira") }
             }
@@ -164,7 +164,7 @@ fun RatingDialog(order: Order, onClose: () -> Unit) {
     )
 }
 
-/** Average nga rating sa seller: "⭐ 4.6 (12)". */
+/** Seller average rating: "⭐ 4.6 (12)". */
 @Composable
 fun SellerRatingSummary(sellerId: String) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -189,7 +189,7 @@ fun SellerRatingSummary(sellerId: String) {
     }
 }
 
-/** Mga review sa seller: average + hangtod 3 ka pinakabag-o nga komentaryo. */
+/** Seller reviews: average + up to 3 latest comments. */
 @Composable
 fun SellerReviews(sellerId: String) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -206,7 +206,7 @@ fun SellerReviews(sellerId: String) {
     }
 
     if (reviews.isEmpty()) {
-        Text("Wala pay review ang seller.", style = MaterialTheme.typography.labelSmall)
+        Text("The seller has no reviews yet.", style = MaterialTheme.typography.labelSmall)
         return
     }
 
@@ -228,7 +228,7 @@ fun SellerReviews(sellerId: String) {
     }
 }
 
-/** Tanan nga review sa seller (gikuha gikan sa detalye sa listing). */
+/** All seller reviews (opened from the listing detail). */
 @Composable
 fun ReviewsScreen(sellerId: String, sellerName: String) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -263,7 +263,7 @@ fun ReviewsScreen(sellerId: String, sellerName: String) {
         }
         Spacer(Modifier.height(6.dp))
         if (reviews.isEmpty()) {
-            Text("Wala pay review ang seller.")
+            Text("The seller has no reviews yet.")
             return@Column
         }
         val avg = reviews.map { it.rating }.average()
@@ -271,7 +271,7 @@ fun ReviewsScreen(sellerId: String, sellerName: String) {
             StarRow(avg.toInt(), size = 18)
             Spacer(Modifier.width(6.dp))
             Text(
-                "%.1f · ${reviews.size} ka review".format(avg),
+                "%.1f · ${reviews.size} reviews".format(avg),
                 style = MaterialTheme.typography.labelMedium
             )
         }

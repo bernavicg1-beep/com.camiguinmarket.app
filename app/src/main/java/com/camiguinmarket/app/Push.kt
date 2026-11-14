@@ -6,11 +6,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Nagpakilo sa Worker (`POST /push`) aron makapadala og push notification.
+ * Calls the Worker (`POST /push`) to deliver a push notification.
  *
- * Ang Worker (pareho sa R2 upload) maoy mo-verify sa Firebase ID token,
- * mopili sa recipient gikan sa Firestore, ug mokontak sa FCM gamit ang
- * service account — busa walay secret dinhi sa app.
+ * The Worker (same as the R2 upload) verifies the Firebase ID token,
+ * picks the recipient from Firestore, and calls FCM using the
+ * service account — so no secret lives in the app.
  */
 fun sendPush(
     kind: String,
@@ -30,7 +30,7 @@ fun sendPush(
     user.getIdToken(false).addOnSuccessListener { result ->
         val token = result.token ?: return@addOnSuccessListener
         Thread {
-            // Best-effort: kon mapakyas ang push, dili maapektohan ang order/chat.
+            // Best-effort: a failed push never blocks the order/chat.
             runCatching {
                 val conn = URL("$base/push").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"

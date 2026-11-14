@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.firestore.FirebaseFirestore
 
 /**
- * Stats kada listing sa seller: views, pagdugang sa cart, ug orders.
- * Ang orders gi-group sa app (walay composite index nga kinahanglan).
+ * Per-listing stats for the seller: views, cart adds, and orders.
+ * Orders are grouped in the app (no composite index needed).
  */
 @Composable
 fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
@@ -42,25 +42,25 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
             Icon(Icons.Filled.ReceiptLong, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
             Text(
-                "Stats sa listing",
+                "Listing stats",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
         }
         Text(
-            "${myListings.size} ka listing • ${myListings.sumOf { it.views }} ka views sa tanan",
+            "${myListings.size} listings • ${myListings.sumOf { it.views }} total views",
             style = MaterialTheme.typography.labelSmall
         )
         Spacer(Modifier.height(8.dp))
         if (myListings.isNotEmpty()) {
-            ViewsChart(mergedViews(myListings), "Tanang listing • kataposang 7 ka adlaw")
+            ViewsChart(mergedViews(myListings), "All listings • last 7 days")
             Spacer(Modifier.height(8.dp))
         }
         MonthlySalesChart(orders)
         Spacer(Modifier.height(8.dp))
 
         if (myListings.isEmpty()) {
-            Text("Wala pa kay listing. Pindota ang + Baligya aron makasugod.")
+            Text("No listings yet. Press + Sell to get started.")
             return@Column
         }
 
@@ -92,13 +92,13 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
                             StatCard("$orderCount", "📦 Order", Modifier.weight(1f))
                         }
                         Text(
-                            if (expanded) "Pindota aron matago ang chart" else "Pindota aron makita ang chart",
+                            if (expanded) "Tap to hide the chart" else "Tap to show the chart",
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(top = 6.dp)
                         )
                         if (expanded) {
                             Spacer(Modifier.height(8.dp))
-                            ViewsChart(l.viewsByDay, "Kini nga listing • kataposang 7 ka adlaw")
+                            ViewsChart(l.viewsByDay, "This listing • last 7 days")
                         }
                     }
                 }
@@ -107,16 +107,16 @@ fun ListingStatsScreen(uid: String, myListings: List<Listing>) {
     }
 }
 
-/** I-merge ang viewsByDay sa daghang listing (total sa tindahan). */
+/** Merge viewsByDay across listings (store total). */
 fun mergedViews(listings: List<Listing>): Map<String, Long> {
     val out = mutableMapOf<String, Long>()
     listings.forEach { l -> l.viewsByDay.forEach { (d, v) -> out[d] = (out[d] ?: 0L) + v } }
     return out
 }
 
-/** Bar chart sa views kada adlaw (7 ka adlaw) alang sa usa ka listing o tibuok tindahan. */
+/** Daily views bar chart (7 days) for one listing or the whole store. */
 @Composable
-fun ViewsChart(viewsByDay: Map<String, Long>, subtitle: String = "Kataposang 7 ka adlaw") {
+fun ViewsChart(viewsByDay: Map<String, Long>, subtitle: String = "Last 7 days") {
     val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
     val days = (6 downTo 0).map { offset ->
         val c = java.util.Calendar.getInstance()
@@ -162,14 +162,14 @@ fun ViewsChart(viewsByDay: Map<String, Long>, subtitle: String = "Kataposang 7 k
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Karon: ${totals.last()} ka views • 7 ka adlaw: ${totals.sum()}",
+                "Today: ${totals.last()} views • last 7 days: ${totals.sum()}",
                 style = MaterialTheme.typography.labelMedium
             )
         }
     }
 }
 
-/** Bar chart sa kita (₱) kada bulan sa kataposang 6 ka bulan. */
+/** Monthly revenue (₱) bar chart for the last 6 months. */
 @Composable
 fun MonthlySalesChart(orders: List<Order>) {
     val months = (5 downTo 0).map { offset ->
@@ -193,7 +193,7 @@ fun MonthlySalesChart(orders: List<Order>) {
     Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Text("Kita kada bulan", fontWeight = FontWeight.Bold)
-            Text("Kataposang 6 ka bulan (walay cancelled)", style = MaterialTheme.typography.labelSmall)
+            Text("Last 6 months (cancelled excluded)", style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.height(8.dp))
             Canvas(Modifier.fillMaxWidth().height(110.dp)) {
                 val slot = size.width / sums.size
@@ -223,7 +223,7 @@ fun MonthlySalesChart(orders: List<Order>) {
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                "Kini nga bulan: ₱%.2f".format(sums.last()),
+                "This month: ₱%.2f".format(sums.last()),
                 style = MaterialTheme.typography.labelMedium
             )
         }

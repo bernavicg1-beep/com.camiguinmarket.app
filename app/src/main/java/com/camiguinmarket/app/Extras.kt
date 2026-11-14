@@ -64,7 +64,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
 // ---------------------------------------------------------------------------
-// Design system gikan sa mockup: asul nga tema, linginon nga cards, gold accent.
+// Design system from the mockup: blue theme, rounded cards, gold accent.
 // ---------------------------------------------------------------------------
 
 val BrandBlue = Color(0xFF1565C0)
@@ -107,7 +107,7 @@ private fun themePrefs(context: Context) =
 
 fun loadDarkMode(context: Context): Boolean = themePrefs(context).getBoolean("dark", false)
 
-/** Cooldown sa verification email aron dili spam (60s). */
+/** Verification email cooldown so it cannot be spammed (60s). */
 fun verifyCooldownUntil(context: Context): Long =
     context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
         .getLong("verify_last", 0L) + 60_000L
@@ -129,8 +129,8 @@ data class SavedSearch(
     val id: String = "",
     val name: String = "",
     val query: String = "",
-    val category: String = "Tanan",
-    val town: String = "Tanan",
+    val category: String = "All",
+    val town: String = "All",
     val createdAt: Long = 0L,
     val lastCheckedAt: Long = 0L
 ) {
@@ -161,7 +161,7 @@ fun deleteSavedSearch(db: FirebaseFirestore, uid: String, id: String) {
     db.collection("savedSearches").document(uid).collection("items").document(id).delete()
 }
 
-/** Pag-abli sa app: pahibaloon ang user kon dunay bag-ong listing nga mohaom. */
+/** App open: notify the user when new listings match a saved search. */
 fun checkSavedSearches(
     db: FirebaseFirestore,
     uid: String,
@@ -174,8 +174,8 @@ fun checkSavedSearches(
             it.createdAt > s.lastCheckedAt && it.sellerId != uid &&
                 (s.query.isBlank() || it.title.contains(s.query, true) ||
                     it.description.contains(s.query, true)) &&
-                (s.category == "Tanan" || it.category == s.category) &&
-                (s.town == "Tanan" || it.town == s.town)
+                (s.category == "All" || normalizeCategory(it.category) == normalizeCategory(s.category)) &&
+                (s.town == "All" || it.town == s.town)
         }
         val latest = listings.maxOfOrNull { it.createdAt } ?: s.lastCheckedAt
         if (matches.isNotEmpty()) {
@@ -184,7 +184,7 @@ fun checkSavedSearches(
                 toUid = uid,
                 fromUid = uid,
                 fromName = "Saved search",
-                message = "🔔 ${matches.size} ka bag-ong listing para sa \"${s.label}\"".take(190)
+                message = "🔔 ${matches.size} new listings for \"${s.label}\"".take(190)
             )
             db.collection("savedSearches").document(uid).collection("items")
                 .document(s.id).update("lastCheckedAt", latest)
@@ -192,7 +192,7 @@ fun checkSavedSearches(
     }
 }
 
-/** Ang mga tab sa ubos nga navigation. */
+/** The bottom navigation tabs. */
 enum class MarketTab(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home),
     Categories("Categories", Icons.Filled.Apps),
@@ -201,8 +201,8 @@ enum class MarketTab(val label: String, val icon: ImageVector) {
     Profile("Profile", Icons.Filled.Person)
 }
 
-/** Ang mga kategorya sa grid (emoji ang icon, walay dugang nga library). */
-val priceFilters = listOf("Tanan", "Ubos sa ₱50", "₱50–₱200", "₱200–₱500", "Sobras ₱500")
+/** The categories in the grid (with icons). */
+val priceFilters = listOf("All", "Under ₱50", "₱50–₱200", "₱200–₱500", "Over ₱500")
 val sortOptions = listOf("Bag-o", "Presyo ↑", "Presyo ↓", "Trending")
 
 fun sortListings(list: List<Listing>, sort: String): List<Listing> = when (sort) {
@@ -213,10 +213,10 @@ fun sortListings(list: List<Listing>, sort: String): List<Listing> = when (sort)
 }
 
 fun matchesPrice(price: Double, filter: String): Boolean = when (filter) {
-    "Ubos sa ₱50" -> price < 50
+    "Under ₱50" -> price < 50
     "₱50–₱200" -> price in 50.0..200.0
     "₱200–₱500" -> price in 200.0..500.0
-    "Sobras ₱500" -> price > 500
+    "Over ₱500" -> price > 500
     else -> true
 }
 
@@ -250,12 +250,12 @@ fun FilterBar(
 }
 
 val categoryIcons: Map<String, ImageVector> = linkedMapOf(
-    "Tanan" to Icons.Filled.Apps,
-    "Pagkaon ug Seafood" to Icons.Filled.Restaurant,
-    "Lokal nga Produkto" to Icons.Filled.LocalFlorist,
-    "Sinina" to Icons.Filled.Checkroom,
+    "All" to Icons.Filled.Apps,
+    "Food & Seafood" to Icons.Filled.Restaurant,
+    "Local Products" to Icons.Filled.LocalFlorist,
+    "Clothing" to Icons.Filled.Checkroom,
     "Gadgets" to Icons.Filled.PhoneAndroid,
-    "Uban pa" to Icons.Filled.MoreHoriz
+    "Other" to Icons.Filled.MoreHoriz
 )
 
 // ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ fun addToCart(
     onResult: (String?) -> Unit
 ) {
     if (listing.sellerId == uid) {
-        onResult("Imo man kining listing.")
+        onResult("This listing is yours.")
         return
     }
     val ref = db.collection("carts").document(uid).collection("items").document(listing.id)
@@ -308,7 +308,7 @@ fun addToCart(
                 )
             )
         }
-        // Stats sa seller: ihapon ang pagdugang sa cart.
+        // Seller stats: count cart adds.
         tx.update(listingRef, "cartAdds", FieldValue.increment(1))
         null
     }.addOnSuccessListener {
@@ -317,11 +317,11 @@ fun addToCart(
             toUid = listing.sellerId,
             fromUid = uid,
             fromName = fromName,
-            message = "$fromName nagdugang sa cart: ${listing.title}",
+            message = "$fromName added to cart: ${listing.title}",
             listing = listing
         )
         onResult(null)
-    }.addOnFailureListener { onResult(it.localizedMessage ?: "Napakyas ang pagdugang sa cart.") }
+    }.addOnFailureListener { onResult(it.localizedMessage ?: "Failed to add to cart.") }
 }
 
 fun updateCartQuantity(db: FirebaseFirestore, uid: String, itemId: String, quantity: Long) {
@@ -363,7 +363,7 @@ fun toggleFavorite(db: FirebaseFirestore, uid: String, listing: Listing, onResul
             )
         }
         null
-    }.addOnFailureListener { onResult(it.localizedMessage ?: "Napakyas ang paborito.") }
+    }.addOnFailureListener { onResult(it.localizedMessage ?: "Favorite failed.") }
         .addOnSuccessListener { onResult(null) }
 }
 
@@ -405,7 +405,7 @@ fun notifyUser(
 
 // ---------------------------------------------------------------------------
 // Chat (Firestore: chats/{chatId}/messages/{autoId})
-// Ang chatId = duha ka uid nga gi-sort, busa pareho ang thread sa duha ka user.
+// chatId = the two uids sorted, so both users share the same thread.
 // ---------------------------------------------------------------------------
 
 data class ChatMessage(
@@ -417,7 +417,7 @@ data class ChatMessage(
 
 fun chatIdFor(a: String, b: String): String = if (a < b) "${a}_$b" else "${b}_$a"
 
-/** Oras sa mensahe, pananglitan "7:42 PM". */
+/** Message time, for example "7:42 PM". */
 fun chatTime(ts: Long): String =
     SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ts))
 
@@ -451,11 +451,11 @@ fun sendChatMessage(
         mapOf(
             "updatedAt" to System.currentTimeMillis(),
             "lastMessage" to text.trim(),
-            // Kon ang pikas wala pa kaabli sa chat, dugangi ang iyang unread badge.
+            // If the other side has not opened the chat, bump their unread badge.
             "unread.$otherUid" to FieldValue.increment(1)
         )
     )
-    // Push sa pikas nga participant pinaagi sa Worker (best-effort).
+    // Push to the other participant through the Worker (best-effort).
     sendPush("chat", chatId = id, text = text.trim())
     db.collection("chats").document(id).get().addOnSuccessListener { snap ->
         val participants = (snap.get("participants") as? List<*>)?.filterIsInstance<String>().orEmpty()
@@ -472,7 +472,7 @@ fun sendChatMessage(
 }
 
 // ---------------------------------------------------------------------------
-// Mga komponent sa UI
+// UI components
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -531,7 +531,7 @@ fun IconTextButton(icon: ImageVector, badge: Int, onClick: () -> Unit) {
     }
 }
 
-/** Recent searches: tipigan sa device aron dali makabalik ang user. */
+/** Recent searches: stored on the device for quick access. */
 private fun searchPrefs(context: Context) =
     context.getSharedPreferences("search_cache", Context.MODE_PRIVATE)
 
@@ -726,7 +726,7 @@ fun ListingCard(
                 )
                 if (showViews) {
                     Text(
-                        "👁 ${listing.views} ka views",
+                        "👁 ${listing.views} views",
                         style = MaterialTheme.typography.labelSmall,
                         color = BrandBlue
                     )
@@ -773,7 +773,7 @@ fun BottomNavBar(tab: MarketTab, cartCount: Int, onSelect: (MarketTab) -> Unit) 
 // Cart screen
 // ---------------------------------------------------------------------------
 
-/** Offline mirror sa cart: makita gihapon bisan walay internet. */
+/** Offline cart mirror: still visible without internet. */
 private fun cartPrefs(context: Context) =
     context.getSharedPreferences("cart_cache", Context.MODE_PRIVATE)
 
@@ -824,7 +824,7 @@ fun saveCartCache(context: Context, uid: String, items: List<CartItem>) {
 fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
-    // Unaha ang local cache aron dunay makita bisan offline.
+    // Show the local cache first so something appears even offline.
     var items by remember { mutableStateOf(loadCartCache(context, uid)) }
     var offline by remember { mutableStateOf(false) }
 
@@ -854,7 +854,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
         }
         if (offline) {
             Text(
-                "Offline — gipakita ang na-save nga cart sa device.",
+                "Offline — showing the cart saved on this device.",
                 style = MaterialTheme.typography.labelSmall,
                 color = BrandGold
             )
@@ -863,9 +863,9 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Wala pay sulod ang cart.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Your cart is empty.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = onBrowse) { Text("Pangita og produkto") }
+                    Button(onClick = onBrowse) { Text("Search products") }
                 }
             }
         } else {
@@ -917,7 +917,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
             ) { Text("✅ I-checkout (₱%.2f)".format(total)) }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Ang matag seller makadawat og kaugalingong order ug notification.",
+                "Each seller receives their own order and notification.",
                 style = MaterialTheme.typography.labelSmall
             )
         }
@@ -948,11 +948,11 @@ fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color(0xFFE53935))
             Spacer(Modifier.width(6.dp))
-            Text("Akong mga Paborito", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("My Favorites", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
-            Text("Wala pa kay paborito. Pindota ang 🤍 sa listing.")
+            Text("No favorites yet. Press 🤍 on a listing.")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(items, key = { it.id }) { f ->
@@ -1001,7 +1001,7 @@ fun NotificationsScreen(uid: String) {
     }
 
     LaunchedEffect(items.size) {
-        // Markahan nga nabasa ang tanan pag-abli sa screen.
+        // Mark everything as read when the screen opens.
         items.filter { !it.read }.forEach { n ->
             db.collection("notifications").document(uid).collection("items")
                 .document(n.id).update("read", true)
@@ -1016,7 +1016,7 @@ fun NotificationsScreen(uid: String) {
         }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
-            Text("Wala pay notification. Makadawat ka dinhi kon dunay magdugang sa imong listing sa cart o mag-chat.")
+            Text("No notifications yet. You'll get them here when someone adds your listing to their cart or messages you.")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(items, key = { it.id }) { n ->
@@ -1026,7 +1026,7 @@ fun NotificationsScreen(uid: String) {
                             if (n.listingTitle.isNotBlank()) {
                                 Text("Listing: ${n.listingTitle}", style = MaterialTheme.typography.labelSmall)
                             }
-                            Text("gikan ni ${n.fromName}", style = MaterialTheme.typography.labelSmall)
+                            Text("from ${n.fromName}", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -1044,9 +1044,9 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     val db = remember { FirebaseFirestore.getInstance() }
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var text by remember { mutableStateOf("") }
-    // Kataposang oras nga giablihan/nabasahan sa pikas ang thread.
+    // Last time the other side opened/read the thread.
     var otherRead by remember { mutableStateOf(0L) }
-    // Typing indicator: kanus-a katapusan nagsulat ang pikas, ug lokal nga ticker.
+    // Typing indicator: when the other side last typed, plus a local ticker.
     var otherTypingAt by remember { mutableStateOf(0L) }
     var lastTypingWrite by remember { mutableStateOf(0L) }
     var tick by remember { mutableStateOf(0L) }
@@ -1056,7 +1056,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         ensureChat(db, uid, otherUid, otherName, listingTitle)
     }
 
-    // Markahan nga nabasa samtang bukas ang thread (unread = 0, read receipt).
+    // Mark as read while the thread is open (unread = 0, read receipt).
     LaunchedEffect(chatId, messages.size) {
         db.collection("chats").document(chatId).update(
             mapOf(
@@ -1077,7 +1077,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         onDispose { reg.remove() }
     }
 
-    // Ticker aron ma-expire ang "nagsulat…" human sa pipila ka segundo.
+    // Ticker so "typing…" expires after a few seconds.
     LaunchedEffect(Unit) {
         while (true) {
             tick = System.currentTimeMillis()
@@ -1085,7 +1085,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         }
     }
 
-    // Ipadala ang typing signal, labing daghan kada 2.5s aron dili maghuot ang writes.
+    // Send the typing signal at most every 2.5s so writes do not pile up.
     LaunchedEffect(text) {
         val now = System.currentTimeMillis()
         if (text.isNotBlank() && now - lastTypingWrite > 2500) {
@@ -1112,7 +1112,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             Text(otherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
         if (listingTitle.isNotBlank()) {
-            Text("Mahitungod sa: $listingTitle", style = MaterialTheme.typography.labelSmall)
+            Text("About: $listingTitle", style = MaterialTheme.typography.labelSmall)
         }
         if (otherTypingAt > 0 && tick - otherTypingAt < 7000) {
             Text(
@@ -1267,7 +1267,7 @@ fun ProfileScreen(
         OutlinedButton(onClick = onListingStats, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Stats sa listing")
+            Text("Listing stats")
         }
         if (isAdmin) {
             Spacer(Modifier.height(8.dp))
@@ -1296,7 +1296,7 @@ fun ProfileScreen(
         TextButton(onClick = onDeleteAccount, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Papason ang account ug data", color = MaterialTheme.colorScheme.error)
+            Text("Delete account and data", color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(16.dp))
         Text(
@@ -1316,18 +1316,18 @@ fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** Ang mga lungsod sa Camiguin (gigamit sa hero banner ug filters). */
+/** The towns of Camiguin (used by the hero banner and filters). */
 @Composable
 fun TownChips(selected: String, onSelect: (String) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(listOf("Tanan") + towns) { t ->
+        items(listOf("All") + towns) { t ->
             FilterChip(selected = t == selected, onClick = { onSelect(t) }, label = { Text(t) })
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Home ug Categories tab (gikuha gikan sa mockup)
+// Home and Categories tabs (from the mockup)
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -1383,7 +1383,7 @@ fun HomeTab(
                             TextButton(onClick = {
                                 clearRecentSearches(ctx)
                                 recent = emptyList()
-                            }) { Text("Klarohon") }
+                            }) { Text("Clear") }
                         }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(recent) { r ->
@@ -1434,11 +1434,11 @@ fun HomeTab(
                 TextButton(
                     onClick = {
                         saveSearch(
-                            db, uid, query, category, "Tanan",
+                            db, uid, query, category, "All",
                             name = query.ifBlank { category }
                         )
                     },
-                    enabled = query.isNotBlank() || category != "Tanan"
+                    enabled = query.isNotBlank() || category != "All"
                 ) {
                     Icon(
                         Icons.Filled.Notifications,
@@ -1446,7 +1446,7 @@ fun HomeTab(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("I-save kini nga pagpangita", style = MaterialTheme.typography.labelMedium)
+                    Text("Save this search", style = MaterialTheme.typography.labelMedium)
                 }
                 if (searches.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1511,8 +1511,8 @@ fun HomeTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("Wala pay listing nga makita.", fontWeight = FontWeight.Bold)
-                        Text("Pindota ang + Baligya aron makabaligya ka.")
+                        Text("No listings to show.", fontWeight = FontWeight.Bold)
+                        Text("Press + Sell to post a listing.")
                         Spacer(Modifier.height(8.dp))
                         Button(onClick = onSell) { Text("+ Baligya") }
                     }
@@ -1594,7 +1594,7 @@ fun CategoriesTab(
             }
         }
         item {
-            Text("${listings.size} ka listing", style = MaterialTheme.typography.labelMedium)
+            Text("${listings.size} listings", style = MaterialTheme.typography.labelMedium)
         }
         items(listings, key = { it.id }) { l ->
             ListingCard(
@@ -1641,13 +1641,13 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
             )
         }
         Text(
-            "Pindota aron magamit ang filter. Usba ang pangan o tangtanga.",
+            "Tap to apply the filter. Rename or remove it.",
             style = MaterialTheme.typography.labelSmall
         )
         Spacer(Modifier.height(8.dp))
 
         if (searches.isEmpty()) {
-            Text("Wala pa kay saved search. Sa Home, pindota ang \"I-save kini nga pagpangita\".")
+            Text("No saved searches yet. On Home, press \"Save this search\".")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(searches, key = { it.id }) { s ->
@@ -1670,14 +1670,14 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
                                 Text(
                                     listOfNotNull(
                                         s.query.takeIf { it.isNotBlank() },
-                                        s.category.takeIf { it != "Tanan" },
-                                        s.town.takeIf { it != "Tanan" }
-                                    ).joinToString(" • ").ifBlank { "Tanan nga listing" },
+                                        s.category.takeIf { it != "All" },
+                                        s.town.takeIf { it != "All" }
+                                    ).joinToString(" • ").ifBlank { "All listings" },
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
                             IconButton(onClick = { editing = s }) {
-                                Icon(Icons.Filled.Edit, contentDescription = "Usba ang pangan")
+                                Icon(Icons.Filled.Edit, contentDescription = "Rename")
                             }
                             IconButton(onClick = { deleteSavedSearch(db, uid, s.id) }) {
                                 Icon(
@@ -1697,12 +1697,12 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
         var name by remember(s.id) { mutableStateOf(s.name.ifBlank { s.label }) }
         AlertDialog(
             onDismissRequest = { editing = null },
-            title = { Text("Usba ang pangan") },
+            title = { Text("Rename") },
             text = {
                 OutlinedTextField(
                     name,
                     { name = it },
-                    label = { Text("Pangan sa saved search") },
+                    label = { Text("Saved search name") },
                     modifier = Modifier.fillMaxWidth()
                 )
             },

@@ -2,22 +2,22 @@ rules_version = '2';
 
 // Camiguin Market — Firestore security rules.
 //
-// Palisiya:
-//   - Kinahanglan naka-log in (Firebase Auth) aron makabasa sa listings.
-//   - Ang tag-iya (sellerId == uid) ra ang makabuhat, makausab, ug makapapas
-//     sa iyang listing.
-//   - Wala nay laing collection nga gibuksan; default deny ang tanan.
+// Policy:
+//   - Must be signed in (Firebase Auth) to read listings.
+//   - Only the owner (sellerId == uid) can create, update, and delete
+//     their own listing.
+//   - No other collection is open; everything is denied by default.
 //
-// I-deploy:  firebase deploy --only firestore:rules
-// (o i-paste sa Firebase Console → Firestore → Rules).
+// Deploy:  firebase deploy --only firestore:rules
+// (or paste it into Firebase Console → Firestore → Rules).
 //
-// Awtomatiko usab kining ma-deploy sa GitHub Actions (Firestore rules workflow)
-// ug ma-test sa Firestore emulator sa wala pa kini mo-abot sa production.
+// It is also deployed automatically by GitHub Actions (Firestore rules workflow)
+// and tested in the Firestore emulator before it reaches production.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Ang listing balido kon kompleto ang importante nga fields ug husto ang tipo.
+    // A listing is valid when the required fields exist and have the right types.
     function validListing(data) {
       return data.sellerId is string
         && data.sellerId.size() > 0
@@ -28,43 +28,43 @@ service cloud.firestore {
         && data.price >= 0
         && data.contact is string
         && data.contact.size() <= 60
-        // Optional ang daghang litrato (max 6).
+        // Multiple photos are optional (max 6).
         && (!('imageUrls' in data) || data.imageUrls.size() <= 6)
-        // Optional ang pickup coordinates, apan kon naa kinahanglan numero.
+        // Pickup coordinates are optional, but must be numbers when present.
         && (!('latitude' in data) || data.latitude == null || data.latitude is number)
         && (!('longitude' in data) || data.longitude == null || data.longitude is number);
     }
 
-    // Moderator: dunay dokumento sa `admins/{uid}` (gina-set sa Console ra).
+    // Moderator: an `admins/{uid}` document exists (written from the Console only).
     function isAdmin() {
       return request.auth != null
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Ang lista sa admins mabasa sa naka-log in (aron ma-check sa app),
-    // apan dili kini masulat gikan sa app.
+    // The admins list is readable by signed-in users (so the app can check it),
+    // but it cannot be written from the app.
     match /admins/{userId} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
     match /listings/{listingId} {
-      // Ang customer kinahanglan makakita sa mga listing, apan kinahanglan log in.
+      // Customers must be able to see listings, but they must be signed in.
       allow read: if request.auth != null;
 
-      // Ang seller ra ang makahimo og listing sa iyang kaugalingong ngalan.
+      // Only the seller can create a listing in their own name.
       allow create: if request.auth != null
         && request.resource.data.sellerId == request.auth.uid
         && validListing(request.resource.data);
 
-      // Dili ma-transfer ang listing ngadto sa laing seller.
+      // A listing cannot be transferred to another seller.
       allow update: if request.auth != null
         && resource.data.sellerId == request.auth.uid
         && request.resource.data.sellerId == request.auth.uid
         && validListing(request.resource.data);
 
-      // Ang views ug cartAdds makadugang ang bisan kinsang naka-log in, apan
-      // +1 ra gayud kada update ug walay lain nga field nga mausab.
+      // Any signed-in user can increment views and cartAdds, but
+      // exactly +1 per update and no other field may change.
       allow update: if request.auth != null
         && (
           (
@@ -77,35 +77,35 @@ service cloud.firestore {
           )
         );
 
-      // Gigamit usab ni sa account deletion (papason ang tanan listing sa user),
-      // ug sa moderation.
+      // Also used by account deletion (delete all of the user's listings),
+      // and by moderation.
       allow delete: if request.auth != null
         && (resource.data.sellerId == request.auth.uid || isAdmin());
     }
 
-    // Cart: ang user ra ang makabasa/makasulat sa iyang kaugalingong cart.
+    // Cart: a user can only read/write their own cart.
     match /carts/{userId}/items/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // FCM tokens sa user: kaugalingon ra ang makabasa/makasulat.
+    // FCM tokens: only the owner can read/write.
     match /users/{userId}/tokens/{tokenId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Saved searches: kaugalingon ra.
+    // Saved searches: owner only.
     match /savedSearches/{userId}/items/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Paborito: pareho sa cart, kaugalingon ra.
+    // Favorites: like the cart, owner only.
     match /favorites/{userId}/items/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Notifications: ang tag-iya ra ang makabasa ug makausab; ang bisan kinsang
-    // naka-log in makahimo og notification para sa uban, apan ang `fromUid`
-    // kinahanglan siya gayud (dili makapanghimakak sa laing tawo).
+    // Notifications: only the owner can read and update; any signed-in
+    // user can create a notification for someone else, but `fromUid`
+    // must be themselves (nobody can impersonate another user).
     match /notifications/{userId}/items/{notificationId} {
       allow read, update, delete: if request.auth != null && request.auth.uid == userId;
       allow create: if request.auth != null
@@ -115,8 +115,8 @@ service cloud.firestore {
         && request.resource.data.message.size() <= 200;
     }
 
-    // Reports: ang bisan kinsang naka-log in makahimo sa iyang kaugalingong
-    // report; ang reporter ug ang admin ra ang makabasa; admin ra ang maka-update.
+    // Reports: any signed-in user can create their own
+    // report; only the reporter and an admin can read it; only an admin can update it.
     match /reports/{reportId} {
       allow create: if request.auth != null
         && request.resource.data.reporterUid == request.auth.uid
@@ -127,7 +127,7 @@ service cloud.firestore {
         && request.resource.data.note.size() <= 500
         && request.resource.data.status == "open";
 
-      // Duha ka linya aron makahimo ang admin og walay-filter nga query.
+      // Two lines so an admin can run an unfiltered query.
       allow read: if isAdmin();
       allow read: if request.auth != null
         && resource.data.reporterUid == request.auth.uid;
@@ -136,8 +136,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Orders: ang buyer makahimo; ang buyer ug ang seller ra ang makabasa.
-    // Ang seller ra ang makausab sa status.
+    // Orders: the buyer creates; only the buyer and the seller can read.
+    // Only the seller can change the status.
     match /orders/{orderId} {
       allow read: if request.auth != null
         && (resource.data.buyerId == request.auth.uid
@@ -152,8 +152,8 @@ service cloud.firestore {
         && request.resource.data.quantity > 0
         && request.resource.data.status == "pending";
 
-      // Ang seller maka-usab sa status bisan kanus-a; ang buyer makakanselar
-      // sa `pending` ra, ug dili makailis sa mga partido sa order.
+      // The seller can change the status at any time; the buyer can cancel
+      // only while `pending`, and cannot swap the order's parties.
       allow update: if request.auth != null
         && request.resource.data.sellerId == resource.data.sellerId
         && request.resource.data.buyerId == resource.data.buyerId
@@ -169,8 +169,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Ratings: usa ka rating kada order (doc id = order id), ug ang buyer ra
-    // sa `done` nga order ang makahimo niini.
+    // Ratings: one rating per order (doc id = order id), and only the buyer
+    // of a `done` order can create it.
     match /ratings/{orderId} {
       allow read: if request.auth != null;
 
@@ -188,7 +188,7 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Chat: ang duha ka participants ra ang makabasa/makasulat.
+    // Chat: only the two participants can read/write.
     match /chats/{chatId} {
       allow read: if request.auth != null
         && request.auth.uid in resource.data.participants;
@@ -208,7 +208,7 @@ service cloud.firestore {
       }
     }
 
-    // Default deny sa ubang dalan.
+    // Default deny for every other path.
     match /{document=**} {
       allow read, write: if false;
     }
