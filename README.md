@@ -76,6 +76,25 @@ Kini nga mga feature dunay kaugalingong Firestore collections: `carts/{uid}/item
 `favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, ug
 `chats/{chatId}/messages`.
 
+### Moderation
+
+Kon dunay `admins/{uid}` document sa Firestore, makita sa Profile ang **Moderation**
+nga screen: tanang listing, ug makapapas ang moderator og bisan unsang listing
+(pahibaloon ang seller).
+
+**Unsaon paghimo og moderator:** Firebase Console → Firestore → **Start collection**
+`admins` → document ID = ang `uid` sa user (makita sa Authentication tab) → field
+`active` (boolean) = `true`. Wala kini UI sa app kay dili buot nga makahimo ang
+bisan kinsa og moderator; ang `admins` gina-block sa rules (`allow write: if false`).
+
+### Share ug offline cart
+
+- Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
+  presyo, lungsod, ug contact ang gipadala.
+- Ang cart dunay **local cache** (`SharedPreferences`, `cart_cache`): makita gihapon
+  ang mga item bisan offline, ug dunay gamay nga "Offline" nga pahibalo. Ang
+  Firestore offline queue ang bahala sa writes kon mobalik ang internet.
+
 ## Pag-post, pag-edit, ug pagpapas sa listing
 
 - **`+ Baligya`** — mag-post og listing (ngalan, presyo, contact, kategorya, lungsod,
@@ -171,6 +190,8 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
   maka-update sa status; ang buyer makakanselar (`pending` → `cancelled`) ra.
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
+- **admins** — mabasa sa naka-log in (aron ma-check sa app) apan `write: if false`,
+  ug ang `isAdmin()` makapapas og listing.
 - **default deny** — wala nay laing collection nga gibuksan.
 
 I-deploy ang rules (usa ra ka beses, o kon may kausaban):

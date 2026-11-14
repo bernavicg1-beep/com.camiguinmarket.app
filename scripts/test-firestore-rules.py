@@ -268,6 +268,36 @@ check("order: taga-gawas dili maka-cancel", "PATCH", "/orders/o3", 403,
       uid="u3", body=order_doc("u1", "u2", status="cancelled"))
 
 
+# --- moderation --------------------------------------------------------------
+def seed(path, doc_id, body):
+    """Pagsulat pinaagi sa emulator owner bypass (dili maagi sa rules)."""
+    url = BASE + path + "?documentId=" + doc_id
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Authorization", "Bearer owner")
+    with urllib.request.urlopen(req) as resp:
+        return resp.status
+
+
+seed("/admins", "admin1", {"fields": {"active": {"booleanValue": True}}})
+
+check("mod: ang admins mabasa sa naka-log in", "GET", "/admins/admin1", 200, uid="u1")
+check("mod: dili makasulat sa admins gikan sa app", "POST", "/admins", 403,
+      uid="u1", body={"fields": {"active": {"booleanValue": True}}}, doc_id="fake")
+
+check("mod: listing sa u2 alang sa moderation", "POST", "/listings", 200,
+      uid="u2", body=app_listing("u2"), doc_id="mod1")
+check("mod: dili-admin dili makapapas og listing sa uban", "DELETE", "/listings/mod1", 403,
+      uid="u3")
+check("mod: admin makapapas sa listing sa uban", "DELETE", "/listings/mod1", 200,
+      uid="admin1")
+
+
+check("mod: listing para sa non-admin delete", "POST", "/listings", 200,
+      uid="u1", body=app_listing("u1"), doc_id="mod2")
+check("mod: dili-admin dili makapapas (2)", "DELETE", "/listings/mod2", 403, uid="u3")
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

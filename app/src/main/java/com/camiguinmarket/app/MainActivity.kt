@@ -2,6 +2,7 @@ package com.camiguinmarket.app
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.content.Intent
 import android.widget.Toast
 import android.net.Uri
 import android.os.Bundle
@@ -185,6 +186,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var chatListing by remember { mutableStateOf<Listing?>(null) }
     var chatUnread by remember { mutableStateOf(0) }
     var orderDetail by remember { mutableStateOf<Order?>(null) }
+    var isAdmin by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val reg = db.collection("carts").document(uid).collection("items")
@@ -198,6 +200,13 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
         val reg = db.collection("notifications").document(uid).collection("items")
             .whereEqualTo("read", false)
             .addSnapshotListener { snap, _ -> unread = snap?.size() ?: 0 }
+        onDispose { reg.remove() }
+    }
+
+    // Admin kon dunay `admins/{uid}` document (gina-set sa Console).
+    DisposableEffect(Unit) {
+        val reg = db.collection("admins").document(uid)
+            .addSnapshotListener { snap, _ -> isAdmin = snap?.exists() == true }
         onDispose { reg.remove() }
     }
 
@@ -268,6 +277,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                             "notifications" -> "Notifications"
                             "orders" -> "Mga Order"
                             "order" -> "Detalye sa Order"
+                            "moderation" -> "Moderation"
                             "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
@@ -303,6 +313,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                     orderDetail = order
                     overlay = "order"
                 }
+
+                "moderation" -> ModerationScreen(uid, isAdmin)
 
                 "order" -> orderDetail?.let { order ->
                     OrderDetailScreen(
@@ -387,8 +399,10 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         email = auth.currentUser?.email ?: "",
                         myListings = listings.filter { it.sellerId == uid },
                         onFavorites = { overlay = "favorites" },
+                        isAdmin = isAdmin,
                         onOrders = { overlay = "orders" },
                         onInbox = { overlay = "inbox" },
+                        onModeration = { overlay = "moderation" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }
                     )
@@ -430,10 +444,28 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
             onDismissRequest = { selected = null },
             confirmButton = { TextButton(onClick = { selected = null }) { Text("Sira") } },
             dismissButton = {
-                if (l.sellerId == uid) {
-                    Row {
-                        TextButton(onClick = { selected = null; editListing = l }) { Text("✏️ Edit") }
-                        TextButton(onClick = { db.collection("listings").document(l.id).delete(); selected = null }) { Text("Papas") }
+                Row {
+                    TextButton(onClick = {
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(
+                                Intent.EXTRA_TEXT,
+                                "${l.title} — ₱%.2f sa ${l.town}\nContact: ${l.contact}\n\n".format(l.price) +
+                                    "Tan-awa sa Camiguin Market app."
+                            )
+                        }
+                        context.startActivity(Intent.createChooser(share, "Ipakigbahin ang listing"))
+                    }) {
+                        Text("Ipakigbahin")
+                    }
+                    if (l.sellerId == uid) {
+                        TextButton(onClick = { selected = null; editListing = l }) { Text("I-edit") }
+                        TextButton(
+                            onClick = {
+                                db.collection("listings").document(l.id).delete()
+                                selected = null
+                            }
+                        ) { Text("Papas") }
                     }
                 }
             },

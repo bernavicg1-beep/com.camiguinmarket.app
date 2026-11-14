@@ -47,7 +47,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
+import android.content.Context
 import com.google.firebase.firestore.FieldValue
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -575,17 +578,73 @@ fun BottomNavBar(tab: MarketTab, cartCount: Int, onSelect: (MarketTab) -> Unit) 
 // Cart screen
 // ---------------------------------------------------------------------------
 
+/** Offline mirror sa cart: makita gihapon bisan walay internet. */
+private fun cartPrefs(context: Context) =
+    context.getSharedPreferences("cart_cache", Context.MODE_PRIVATE)
+
+fun loadCartCache(context: Context, uid: String): List<CartItem> {
+    val raw = cartPrefs(context).getString(uid, null) ?: return emptyList()
+    return runCatching {
+        val arr = JSONArray(raw)
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            CartItem(
+                id = o.optString("id"),
+                listingId = o.optString("listingId"),
+                title = o.optString("title"),
+                price = o.optDouble("price"),
+                imageUrl = o.optString("imageUrl"),
+                sellerId = o.optString("sellerId"),
+                sellerName = o.optString("sellerName"),
+                contact = o.optString("contact"),
+                town = o.optString("town"),
+                quantity = o.optLong("quantity", 1L)
+            )
+        }
+    }.getOrDefault(emptyList())
+}
+
+fun saveCartCache(context: Context, uid: String, items: List<CartItem>) {
+    val arr = JSONArray()
+    items.forEach { i ->
+        arr.put(
+            JSONObject().apply {
+                put("id", i.id)
+                put("listingId", i.listingId)
+                put("title", i.title)
+                put("price", i.price)
+                put("imageUrl", i.imageUrl)
+                put("sellerId", i.sellerId)
+                put("sellerName", i.sellerName)
+                put("contact", i.contact)
+                put("town", i.town)
+                put("quantity", i.quantity)
+            }
+        )
+    }
+    cartPrefs(context).edit().putString(uid, arr.toString()).apply()
+}
+
 @Composable
 fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
-    var items by remember { mutableStateOf<List<CartItem>>(emptyList()) }
+    val context = LocalContext.current
+    // Unaha ang local cache aron dunay makita bisan offline.
+    var items by remember { mutableStateOf(loadCartCache(context, uid)) }
+    var offline by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val reg = db.collection("carts").document(uid).collection("items")
-            .addSnapshotListener { snap, _ ->
-                items = snap?.documents?.mapNotNull { d ->
-                    d.toObject(CartItem::class.java)?.copy(id = d.id)
-                } ?: emptyList()
+            .addSnapshotListener { snap, err ->
+                if (snap != null) {
+                    items = snap.documents.mapNotNull { d ->
+                        d.toObject(CartItem::class.java)?.copy(id = d.id)
+                    }
+                    saveCartCache(context, uid, items)
+                    offline = false
+                } else {
+                    offline = err != null
+                }
             }
         onDispose { reg.remove() }
     }
@@ -597,6 +656,13 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
             Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
             Text("Akong Cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+        if (offline) {
+            Text(
+                "Offline — gipakita ang na-save nga cart sa device.",
+                style = MaterialTheme.typography.labelSmall,
+                color = BrandGold
+            )
         }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
@@ -930,9 +996,11 @@ fun ProfileScreen(
     displayName: String,
     email: String,
     myListings: List<Listing>,
+    isAdmin: Boolean,
     onFavorites: () -> Unit,
     onOrders: () -> Unit,
     onInbox: () -> Unit,
+    onModeration: () -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -987,6 +1055,14 @@ fun ProfileScreen(
             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
             Text("Mga Chat")
+        }
+        if (isAdmin) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onModeration, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Moderation")
+            }
         }
         Spacer(Modifier.height(8.dp))
         Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {

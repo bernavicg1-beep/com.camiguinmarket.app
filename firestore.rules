@@ -33,6 +33,19 @@ service cloud.firestore {
         && (!('longitude' in data) || data.longitude == null || data.longitude is number);
     }
 
+    // Moderator: dunay dokumento sa `admins/{uid}` (gina-set sa Console ra).
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Ang lista sa admins mabasa sa naka-log in (aron ma-check sa app),
+    // apan dili kini masulat gikan sa app.
+    match /admins/{userId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     match /listings/{listingId} {
       // Ang customer kinahanglan makakita sa mga listing, apan kinahanglan log in.
       allow read: if request.auth != null;
@@ -48,9 +61,10 @@ service cloud.firestore {
         && request.resource.data.sellerId == request.auth.uid
         && validListing(request.resource.data);
 
-      // Gigamit usab ni sa account deletion (papason ang tanan listing sa user).
+      // Gigamit usab ni sa account deletion (papason ang tanan listing sa user),
+      // ug sa moderation.
       allow delete: if request.auth != null
-        && resource.data.sellerId == request.auth.uid;
+        && (resource.data.sellerId == request.auth.uid || isAdmin());
     }
 
     // Cart: ang user ra ang makabasa/makasulat sa iyang kaugalingong cart.
