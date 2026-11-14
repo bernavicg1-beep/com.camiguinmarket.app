@@ -82,6 +82,22 @@ RELEASE_KEY_ALIAS=…
 RELEASE_KEY_PASSWORD=…
 ```
 
+## Pagpapas sa account (requirement sa Play Store)
+
+Kon ang app makahimo og account, kinahanglan nga ang user makapapas niini:
+
+- **Sa app** — pindota ang **🗑️** sa top bar sulod sa market screen. Mapapas ang
+tanan niyang listing sa Firestore, dayon ang Firebase Auth account.
+- **Sa web** — `docs/account-deletion.html`. I-host kini via **GitHub Pages**
+  (Settings → Pages → Branch: `main`, folder: `/docs`) ug ibutang ang URL sa
+  Play Console → *App content → Data deletion*.
+
+**Importante:** ilisi ang `YOUR_SUPPORT_EMAIL_HERE` sa `docs/account-deletion.html`
+sa imong tinuod nga support email sa wala pa i-publish ang page.
+
+Kon dugay na ang login sa user, mobalik ang `FirebaseAuthRecentLoginRequiredException`
+ug hangyoon siya sa pag-log out/log in pag-usab — normal kini sa Firebase.
+
 ## Pag-build
 
 ```bash

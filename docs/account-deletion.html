@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ceb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camiguin Market — Pagpapas sa Account</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 720px; margin: 0 auto; padding: 32px 20px 64px;
+    line-height: 1.6; color: #1b1b1b; background: #ffffff;
+  }
+  h1 { font-size: 1.7rem; margin-bottom: 4px; }
+  h2 { font-size: 1.15rem; margin-top: 32px; }
+  .sub { color: #555; margin-top: 0; }
+  nav a { color: #1b7f5c; }
+  ol, ul { padding-left: 22px; }
+  li { margin: 6px 0; }
+  .box {
+    background: #f4f8f6; border-left: 4px solid #1b7f5c;
+    padding: 12px 16px; border-radius: 6px; margin: 20px 0;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #ddd; vertical-align: top; }
+  code { background: #f2f2f2; padding: 1px 5px; border-radius: 4px; }
+  footer { margin-top: 40px; color: #666; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Pagpapas sa Account</h1>
+<p class="sub">Camiguin Market · <code>com.camiguinmarket.app</code></p>
+
+<p>
+  Kon gusto nimong papason ang imong account sa <strong>Camiguin Market</strong> ug ang
+  tanan niini nga data, adunay duha ka paagi: sa sulod sa app, o pinaagi sa email.
+</p>
+
+<h2>1. Sa sulod sa app (pinakadali)</h2>
+<ol>
+  <li>Sulod sa app gamit ang imong account.</li>
+  <li>Sa ibabaw nga bahin sa screen, pindota ang <strong>🗑️</strong> nga button.</li>
+  <li>Basaha ang pasidaan, dayon pindota ang <strong>Papason</strong>.</li>
+  <li>Kon dugay na ang imong login, hangyoa ka sa pag-log out ug pag-log in pag-usab
+      para seguridad, dayon sulayi pag-usab.</li>
+</ol>
+<p>
+  Human niini, permanenteng mapapas ang imong account ug ma-sign out ka.
+</p>
+
+<h2>2. Pinaagi sa email</h2>
+<p>
+  Kon dili na nimo ma-access ang app, magpadala og email ug hangyoa ang pagpapas sa account.
+  Apila kining mga detalye:
+</p>
+<ul>
+  <li>Ang <strong>email address</strong> nga gigamit sa account.</li>
+  <li>Ang subject: <code>Account deletion request</code>.</li>
+</ul>
+<p>
+  Ipadala sa: <strong><!-- ILISI: ibutang dinhi ang imong support email -->YOUR_SUPPORT_EMAIL_HERE</strong>
+</p>
+<p>
+  Mo-reply kami sulod sa <strong>7 ka adlaw</strong> sa trabaho ug tapuson ang pagpapas
+  sulod sa <strong>30 ka adlaw</strong>.
+</p>
+
+<div class="box">
+  <strong>Importante:</strong> ang pagpapas permanente. Dili na mabalik ang account,
+  ang mga listing, ug ang mga litrato niini.
+</div>
+
+<h2>Unsa ang mapapas</h2>
+<table>
+  <tr><th>Data</th><th>Unsa ang mahitabo</th></tr>
+  <tr>
+    <td>Account (email, password, display name)</td>
+    <td>Mapapas gikan sa Firebase Authentication.</td>
+  </tr>
+  <tr>
+    <td>Mga listing (ngalan sa produkto, presyo, deskripsyon, contact, lungsod, kategorya)</td>
+    <td>Mapapas gikan sa Firestore.</td>
+  </tr>
+  <tr>
+    <td>Pickup location (latitude/longitude)</td>
+    <td>Mapapas uban sa listing.</td>
+  </tr>
+</table>
+<p>
+  Wala kami magtipig og laing kopya sa imong data. Ang mga backup sa Firebase mawala
+  human sa ilang normal nga retention period (hangtod 30 ka adlaw).
+</p>
+
+<h2>Kon dili nimo papason ang account</h2>
+<p>
+  Pwede ka lang mo-log out ug dili na mogamit sa app. Ang imong data magpabilin
+  hangtod mangayo ka og pagpapas.
+</p>
+
+<footer>
+  Camiguin Market · Kini nga page gigamit isip account-deletion URL sa Google Play.
+</footer>
+</body>
+</html>

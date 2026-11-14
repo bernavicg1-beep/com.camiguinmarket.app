@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 
@@ -150,6 +151,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
     var mapboxListing by remember { mutableStateOf<Listing?>(null) }
     var showAllMap by remember { mutableStateOf(false) }
     var showCompare by remember { mutableStateOf(false) }
+    var showDeleteAccount by remember { mutableStateOf(false) }
+    val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
 
     DisposableEffect(Unit) {
@@ -176,6 +179,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 actions = {
                     TextButton(onClick = { showAllMap = true }) { Text("🗺️ Mapa") }
                     TextButton(onClick = { showCompare = true }) { Text("⚖️ Itandi") }
+                    TextButton(onClick = { showDeleteAccount = true }) { Text("🗑️") }
                     TextButton(onClick = onLogout) { Text("Log out") }
                 }
             )
@@ -283,6 +287,20 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
         RouteCompareDialog(onDismiss = { showCompare = false })
     }
 
+    // Play requirement: ang user makahimo sa pagpapas sa iyang account ug data.
+    if (showDeleteAccount) {
+        DeleteAccountDialog(
+            auth = auth,
+            db = db,
+            uid = uid,
+            onDismiss = { showDeleteAccount = false },
+            onDeleted = {
+                showDeleteAccount = false
+                onLogout()
+            }
+        )
+    }
+
     // Tanan nga seller pins sa usa ka mapa (search bar + ruta A→B).
     if (showAllMap) {
         AllSellersMapDialog(
@@ -387,4 +405,112 @@ fun PostDialog(uid: String, sellerName: String, db: FirebaseFirestore, onClose: 
             onDismiss = { showPicker = false }
         )
     }
+}
+
+/**
+ * Play Store requirement: ang user makahimo sa pagpapas sa iyang account ug data
+ * gikan mismo sa app. Ang web version naa sa `docs/account-deletion.html`.
+ */
+@Composable
+fun DeleteAccountDialog(
+    auth: FirebaseAuth,
+    db: FirebaseFirestore,
+    uid: String,
+    onDismiss: () -> Unit,
+    onDeleted: () -> Unit
+) {
+    var deleting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!deleting) onDismiss() },
+        title = { Text("Papason ang account?") },
+        text = {
+            Column {
+                Text(
+                    "Permanenteng mapapas ang imong account, profile, ug tanan nimong " +
+                        "listing. Dili na kini mabalik."
+                )
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !deleting,
+                onClick = {
+                    deleting = true
+                    error = null
+                    deleteAccountAndData(auth, db, uid) { result ->
+                        deleting = false
+                        if (result == null) onDeleted() else error = result
+                    }
+                }
+            ) { Text(if (deleting) "Ginapas…" else "Papason") }
+        },
+        dismissButton = {
+            TextButton(enabled = !deleting, onClick = onDismiss) { Text("Kanselar") }
+        }
+    )
+}
+
+/**
+ * Papason ang tanan listing sa user, dayon ang Firebase Auth account.
+ *
+ * Ang `delete()` nagkinahanglan og bag-ong login; kon dugay na ang session,
+ * makadawat kitag [FirebaseAuthRecentLoginRequiredException].
+ * `onResult` makadawat og `null` kon malampuson, o mensahe kon mapakyas.
+ */
+fun deleteAccountAndData(
+    auth: FirebaseAuth,
+    db: FirebaseFirestore,
+    uid: String,
+    onResult: (String?) -> Unit
+) {
+    db.collection("listings").whereEqualTo("sellerId", uid).get()
+        .addOnSuccessListener { snapshot ->
+            val deleteUser = {
+                val user = auth.currentUser
+                if (user == null) {
+                    onResult("Wala nay naka-log in nga account. Log in pag-usab.")
+                } else {
+                    user.delete().addOnCompleteListener { task ->
+                        if (task.isSuccessful) onResult(null)
+                        else onResult(deleteAccountError(task.exception))
+                    }
+                }
+            }
+            if (snapshot.documents.isEmpty()) {
+                deleteUser()
+            } else {
+                val batch = db.batch()
+                snapshot.documents.forEach { batch.delete(it.reference) }
+                batch.commit().addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        deleteUser()
+                    } else {
+                        onResult(
+                            "Napakyas ang pagpapas sa imong mga listing: " +
+                                (task.exception?.localizedMessage ?: "wala mailhi nga sayop")
+                        )
+                    }
+                }
+            }
+        }
+        .addOnFailureListener { e ->
+            onResult(
+                "Napakyas ang pagbasa sa imong mga listing: " +
+                    (e.localizedMessage ?: "wala mailhi nga sayop")
+            )
+        }
+}
+
+private fun deleteAccountError(e: Exception?): String = when (e) {
+    is FirebaseAuthRecentLoginRequiredException ->
+        "Para seguridad, log out dayon log in pag-usab, unya sulayi ang pagpapas."
+    else ->
+        "Napakyas ang pagpapas sa account: " +
+            (e?.localizedMessage ?: "wala mailhi nga sayop")
 }
