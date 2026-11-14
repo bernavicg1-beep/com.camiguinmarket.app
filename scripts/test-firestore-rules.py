@@ -228,6 +228,34 @@ check("chat: taga-gawas dili makasulat og mensahe", "POST", "/chats/u1_u2/messag
 check("chat: makabasa sa mga mensahe", "GET", "/chats/u1_u2/messages", 200, uid="u1")
 
 
+# --- orders ------------------------------------------------------------------
+def order_doc(buyer, seller, status="pending"):
+    return {"fields": {
+        "buyerId": {"stringValue": buyer},
+        "buyerName": {"stringValue": "Nena"},
+        "sellerId": {"stringValue": seller},
+        "listingTitle": {"stringValue": "Saging"},
+        "price": {"doubleValue": 25.5},
+        "quantity": {"integerValue": "2"},
+        "total": {"doubleValue": 51.0},
+        "status": {"stringValue": status},
+        "createdAt": {"integerValue": "1"},
+    }}
+
+
+check("order: buyer makahimo", "POST", "/orders", 200,
+      uid="u1", body=order_doc("u1", "u2"), doc_id="o1")
+check("order: dili makahimo sa ngalan sa uban", "POST", "/orders", 403,
+      uid="u1", body=order_doc("u3", "u2"), doc_id="o2")
+check("order: buyer makabasa", "GET", "/orders/o1", 200, uid="u1")
+check("order: seller makabasa", "GET", "/orders/o1", 200, uid="u2")
+check("order: taga-gawas dili makabasa", "GET", "/orders/o1", 403, uid="u3")
+check("order: seller maka-update sa status", "PATCH", "/orders/o1", 200,
+      uid="u2", body=order_doc("u1", "u2", status="confirmed"))
+check("order: buyer dili maka-update", "PATCH", "/orders/o1", 403,
+      uid="u1", body=order_doc("u1", "u2", status="done"))
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

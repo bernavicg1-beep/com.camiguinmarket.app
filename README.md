@@ -40,13 +40,24 @@ Asul nga tema, logo header, ug bottom navigation:
 | **Home** | Search bar, hero banner, **Shop by Category** grid nga dunay icons, ug **Featured Products** (thumbnail, presyo, lungsod, ♡, `Add to Cart`) |
 | **Categories** | Category grid + filter sa lungsod + list sa mga listing |
 | **Sell** | Moabli sa dialog sa pag-post |
-| **Cart** | Ang mga nadugang sa cart, `+`/`−` sa quantity, total, ug contact sa seller |
-| **Profile** | Ngalan, email, ihap sa imong listing, ❤️ Paborito, Log out, ug 🗑️ Papas sa account |
+| **Cart** | Ang mga nadugang sa cart, `+`/`−` sa quantity, total, ug **I-checkout** |
+| **Profile** | Ngalan, email, ihap sa imong listing, Paborito, **Mga Order**, **Mga Chat**, Log out, ug Papas sa account |
 
-Dugang pa: **🔔 Notifications** (kon dunay magdugang sa imong listing sa cart o mag-chat) ug
-**💬 Chat sa seller** (thread kada pares sa user). Kini nga mga feature dunay kaugalingong
-Firestore collections: `carts/{uid}/items`, `favorites/{uid}/items`,
-`notifications/{uid}/items`, ug `chats/{chatId}/messages`.
+Dugang pa: **Notifications** (kon dunay magdugang sa imong listing sa cart, mag-order, o
+mag-chat), **Chat sa seller** nga dunay **inbox** (tanan nga thread), ug **checkout**.
+Ang mga icon Material icons na (`material-icons-extended`), dili na emoji.
+
+### Checkout ug orders
+
+- Ang **I-checkout** sa Cart maghimo og usa ka `orders` document kada cart item (kada
+  seller dunay kaugalingong order), dayon i-empty ang cart ug pahibaloon ang seller.
+- Ang Profile → **Mga Order** dunay duha ka filter: *Ako ang mipalit* ug *Ako ang
+  gibaligya*. Ang status: `pending` → `confirmed` → `done`.
+- Walay composite index nga gikinahanglan: `whereEqualTo` ra ang query ug i-sort sa app.
+
+Kini nga mga feature dunay kaugalingong Firestore collections: `carts/{uid}/items`,
+`favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, ug
+`chats/{chatId}/messages`.
 
 ## Pag-post, pag-edit, ug pagpapas sa listing
 
@@ -139,6 +150,8 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
 - **carts / favorites** — ang user ra ang makabasa ug makasulat sa kaugalingon.
 - **notifications** — ang tag-iya ra ang makabasa; ang bisan kinsang naka-log in
   makahimo og notification para sa uban, apan `fromUid` kinahanglan siya gayud.
+- **orders** — ang buyer makahimo; ang buyer ug seller ra ang makabasa; ang seller
+  ra ang maka-update sa status.
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
 - **default deny** — wala nay laing collection nga gibuksan.

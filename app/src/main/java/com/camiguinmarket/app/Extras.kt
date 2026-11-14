@@ -7,7 +7,33 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddShoppingCart
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.LocalFlorist
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,22 +73,22 @@ val marketColorScheme
     )
 
 /** Ang mga tab sa ubos nga navigation. */
-enum class MarketTab(val label: String, val emoji: String) {
-    Home("Home", "🏠"),
-    Categories("Categories", "🗂️"),
-    Sell("Sell", "➕"),
-    Cart("Cart", "🛒"),
-    Profile("Profile", "👤")
+enum class MarketTab(val label: String, val icon: ImageVector) {
+    Home("Home", Icons.Filled.Home),
+    Categories("Categories", Icons.Filled.Apps),
+    Sell("Sell", Icons.Filled.Add),
+    Cart("Cart", Icons.Filled.ShoppingCart),
+    Profile("Profile", Icons.Filled.Person)
 }
 
 /** Ang mga kategorya sa grid (emoji ang icon, walay dugang nga library). */
-val categoryIcons = linkedMapOf(
-    "Tanan" to "🧺",
-    "Pagkaon ug Seafood" to "🍲",
-    "Lokal nga Produkto" to "🍎",
-    "Sinina" to "👕",
-    "Gadgets" to "📱",
-    "Uban pa" to "✨"
+val categoryIcons: Map<String, ImageVector> = linkedMapOf(
+    "Tanan" to Icons.Filled.Apps,
+    "Pagkaon ug Seafood" to Icons.Filled.Restaurant,
+    "Lokal nga Produkto" to Icons.Filled.LocalFlorist,
+    "Sinina" to Icons.Filled.Checkroom,
+    "Gadgets" to Icons.Filled.PhoneAndroid,
+    "Uban pa" to Icons.Filled.MoreHoriz
 )
 
 // ---------------------------------------------------------------------------
@@ -247,7 +273,12 @@ fun sendChatMessage(
     val id = chatIdFor(uid, otherUid)
     val chatRef = db.collection("chats").document(id)
     chatRef.collection("messages").add(ChatMessage(from = uid, text = text.trim(), createdAt = System.currentTimeMillis()))
-    chatRef.update("updatedAt", System.currentTimeMillis())
+    chatRef.update(
+        mapOf(
+            "updatedAt" to System.currentTimeMillis(),
+            "lastMessage" to text.trim()
+        )
+    )
     db.collection("chats").document(id).get().addOnSuccessListener { snap ->
         val participants = (snap.get("participants") as? List<*>)?.filterIsInstance<String>().orEmpty()
         participants.filter { it != uid }.forEach { other ->
@@ -287,7 +318,7 @@ fun BrandHeader(
                     .clip(CircleShape)
                     .background(Brush.verticalGradient(listOf(BrandBlue, BrandBlueDark))),
                 contentAlignment = Alignment.Center
-            ) { Text("🏝️") }
+            ) { Icon(Icons.Filled.Landscape, contentDescription = null, tint = Color.White) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -298,16 +329,16 @@ fun BrandHeader(
                 )
                 Text("Buy Local. Support Camiguin.", style = MaterialTheme.typography.labelSmall)
             }
-            IconTextButton(emoji = "🛒", badge = cartCount, onClick = onCart)
-            IconTextButton(emoji = "🔔", badge = unreadCount, onClick = onNotifications)
+            IconTextButton(icon = Icons.Filled.ShoppingCart, badge = cartCount, onClick = onCart)
+            IconTextButton(icon = Icons.Filled.Notifications, badge = unreadCount, onClick = onNotifications)
         }
     }
 }
 
 @Composable
-fun IconTextButton(emoji: String, badge: Int, onClick: () -> Unit) {
+fun IconTextButton(icon: ImageVector, badge: Int, onClick: () -> Unit) {
     Box {
-        IconButton(onClick = onClick) { Text(emoji, style = MaterialTheme.typography.titleLarge) }
+        IconButton(onClick = onClick) { Icon(icon, contentDescription = null) }
         if (badge > 0) {
             Badge(
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 2.dp),
@@ -323,7 +354,7 @@ fun SearchBar(query: String, onQuery: (String) -> Unit) {
         value = query,
         onValueChange = onQuery,
         placeholder = { Text("Search products…") },
-        leadingIcon = { Text("🔍") },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         singleLine = true,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
@@ -343,7 +374,12 @@ fun HeroBanner() {
                 .padding(18.dp)
         ) {
             Column {
-                Text("🌋", style = MaterialTheme.typography.headlineMedium)
+                Icon(
+                    Icons.Filled.Landscape,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(34.dp)
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Welcome to Camiguin Market",
@@ -401,7 +437,12 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                             Modifier.padding(vertical = 12.dp).fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(emoji, style = MaterialTheme.typography.headlineSmall)
+                            Icon(
+                                emoji,
+                                contentDescription = null,
+                                tint = if (active) Color.White else BrandBlueDark,
+                                modifier = Modifier.size(26.dp)
+                            )
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 name,
@@ -458,7 +499,11 @@ fun ListingCard(
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = onFavorite, modifier = Modifier.size(28.dp)) {
-                        Text(if (isFavorite) "❤️" else "🤍", style = MaterialTheme.typography.bodyMedium)
+                        Icon(
+                            if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = "Paborito",
+                            tint = if (isFavorite) Color(0xFFE53935) else Color.Gray
+                        )
                     }
                 }
                 Text(
@@ -479,7 +524,11 @@ fun ListingCard(
                     shape = RoundedCornerShape(20.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp)
-                ) { Text("Add to Cart", style = MaterialTheme.typography.labelMedium) }
+                ) {
+                    Icon(Icons.Filled.AddShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add to Cart", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }
@@ -495,10 +544,10 @@ fun BottomNavBar(tab: MarketTab, cartCount: Int, onSelect: (MarketTab) -> Unit) 
                 icon = {
                     if (item == MarketTab.Cart && cartCount > 0) {
                         BadgedBox(badge = { Badge(containerColor = BrandGold) { Text("$cartCount") } }) {
-                            Text(item.emoji)
+                            Icon(item.icon, contentDescription = item.label)
                         }
                     } else {
-                        Text(item.emoji, style = MaterialTheme.typography.titleMedium)
+                        Icon(item.icon, contentDescription = item.label)
                     }
                 },
                 label = { Text(item.label, style = MaterialTheme.typography.labelSmall) }
@@ -512,7 +561,7 @@ fun BottomNavBar(tab: MarketTab, cartCount: Int, onSelect: (MarketTab) -> Unit) 
 // ---------------------------------------------------------------------------
 
 @Composable
-fun CartScreen(uid: String, onBrowse: () -> Unit) {
+fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     var items by remember { mutableStateOf<List<CartItem>>(emptyList()) }
 
@@ -529,7 +578,11 @@ fun CartScreen(uid: String, onBrowse: () -> Unit) {
     val total = items.sumOf { it.price * it.quantity }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Text("🛒 Akong Cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = BrandBlue)
+            Spacer(Modifier.width(6.dp))
+            Text("Akong Cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -561,9 +614,13 @@ fun CartScreen(uid: String, onBrowse: () -> Unit) {
                                 }
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                TextButton(onClick = { updateCartQuantity(db, uid, item.id, item.quantity + 1) }) { Text("+") }
-                                Text("${item.quantity}")
-                                TextButton(onClick = { updateCartQuantity(db, uid, item.id, item.quantity - 1) }) { Text("−") }
+                                IconButton(onClick = { updateCartQuantity(db, uid, item.id, item.quantity + 1) }) {
+                                    Icon(Icons.Filled.Add, contentDescription = "Dugangi")
+                                }
+                                Text("${item.quantity}", fontWeight = FontWeight.Bold)
+                                IconButton(onClick = { updateCartQuantity(db, uid, item.id, item.quantity - 1) }) {
+                                    Icon(Icons.Filled.Remove, contentDescription = "Kunhoran")
+                                }
                             }
                         }
                     }
@@ -576,9 +633,15 @@ fun CartScreen(uid: String, onBrowse: () -> Unit) {
                     Text("₱%.2f".format(total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = BrandBlueDark)
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { onCheckout(items) },
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("✅ I-checkout (₱%.2f)".format(total)) }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Kontaka ang seller sa numero sa ibabaw aron makig-transaksyon.",
+                "Ang matag seller makadawat og kaugalingong order ug notification.",
                 style = MaterialTheme.typography.labelSmall
             )
         }
@@ -606,7 +669,11 @@ fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Text("❤️ Akong mga Paborito", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color(0xFFE53935))
+            Spacer(Modifier.width(6.dp))
+            Text("Akong mga Paborito", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
             Text("Wala pa kay paborito. Pindota ang 🤍 sa listing.")
@@ -666,7 +733,11 @@ fun NotificationsScreen(uid: String) {
     }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Text("🔔 Notifications", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Notifications, contentDescription = null, tint = BrandBlue)
+            Spacer(Modifier.width(6.dp))
+            Text("Notifications", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
             Text("Wala pay notification. Makadawat ka dinhi kon dunay magdugang sa imong listing sa cart o mag-chat.")
@@ -713,7 +784,11 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Text("💬 $otherName", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Chat, contentDescription = null, tint = BrandBlue)
+            Spacer(Modifier.width(6.dp))
+            Text(otherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
         if (listingTitle.isNotBlank()) {
             Text("Mahitungod sa: $listingTitle", style = MaterialTheme.typography.labelSmall)
         }
@@ -751,7 +826,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                     text = ""
                 },
                 shape = RoundedCornerShape(20.dp)
-            ) { Text("Send") }
+            ) { Icon(Icons.Filled.Send, contentDescription = "Send") }
         }
     }
 }
@@ -767,6 +842,8 @@ fun ProfileScreen(
     email: String,
     myListings: List<Listing>,
     onFavorites: () -> Unit,
+    onOrders: () -> Unit,
+    onInbox: () -> Unit,
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -800,14 +877,35 @@ fun ProfileScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        OutlinedButton(onClick = onFavorites, modifier = Modifier.fillMaxWidth()) {
-            Text("❤️ Akong mga Paborito")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onFavorites, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.Favorite, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Paborito", maxLines = 1)
+            }
+            OutlinedButton(onClick = onOrders, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Orders", maxLines = 1)
+            }
         }
         Spacer(Modifier.height(8.dp))
-        Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text("Log out") }
+        OutlinedButton(onClick = onInbox, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Mga Chat")
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Log out")
+        }
         Spacer(Modifier.height(8.dp))
         TextButton(onClick = onDeleteAccount, modifier = Modifier.fillMaxWidth()) {
-            Text("🗑️ Papason ang account ug data", color = MaterialTheme.colorScheme.error)
+            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Papason ang account ug data", color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(16.dp))
         Text(

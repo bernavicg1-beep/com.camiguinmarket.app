@@ -250,6 +250,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         when (overlay) {
                             "favorites" -> "Paborito"
                             "notifications" -> "Notifications"
+                            "orders" -> "Mga Order"
+                            "inbox" -> "Mga Chat"
                             else -> "Chat"
                         },
                         style = MaterialTheme.typography.titleMedium,
@@ -279,6 +281,14 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 }
 
                 "notifications" -> NotificationsScreen(uid)
+
+                "orders" -> OrdersScreen(uid)
+
+                "inbox" -> InboxScreen(uid) { thread ->
+                    chatListing = null
+                    chatWith = thread.otherUid to thread.otherName
+                    overlay = "chat"
+                }
 
                 "chat" -> chatWith?.let { (otherId, otherName) ->
                     ChatScreen(uid, otherId, otherName, chatListing?.title ?: "")
@@ -325,7 +335,19 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         }
                     )
 
-                    MarketTab.Cart -> CartScreen(uid) { tab = MarketTab.Home }
+                    MarketTab.Cart -> CartScreen(
+                        uid = uid,
+                        onBrowse = { tab = MarketTab.Home },
+                        onCheckout = { items ->
+                            checkoutCart(db, uid, displayName, items) { err ->
+                                Toast.makeText(
+                                    context,
+                                    err ?: "Malampuson ang order ✅",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    )
 
                     MarketTab.Profile -> ProfileScreen(
                         uid = uid,
@@ -333,6 +355,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         email = auth.currentUser?.email ?: "",
                         myListings = listings.filter { it.sellerId == uid },
                         onFavorites = { overlay = "favorites" },
+                        onOrders = { overlay = "orders" },
+                        onInbox = { overlay = "inbox" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }
                     )
@@ -413,7 +437,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("🛒 Add to Cart") }
+                        ) { Text("Add to Cart") }
                         OutlinedButton(
                             onClick = {
                                 chatListing = l
@@ -422,7 +446,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                                 overlay = "chat"
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("💬 Chat sa seller") }
+                        ) { Text("Chat sa seller") }
                     }
 
                     if (sellerLat != null && sellerLng != null) {
