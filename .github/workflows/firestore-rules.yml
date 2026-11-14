@@ -194,4 +194,4 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          exit 0
+          exit $status
