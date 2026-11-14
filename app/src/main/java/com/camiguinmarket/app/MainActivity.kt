@@ -1,7 +1,9 @@
 package com.camiguinmarket.app
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import android.content.Intent
 import android.widget.Toast
 import android.net.Uri
@@ -774,6 +776,7 @@ fun MarketScreen(
                             photos.forEachIndexed { idx, url ->
                                 RemoteImage(
                                     url = url,
+                                    targetPx = 800,
                                     modifier = Modifier
                                         .width(if (photos.size == 1) 300.dp else 150.dp)
                                         .height(180.dp)
@@ -1205,31 +1208,53 @@ fun decodeImageBitmap(context: Context, uri: Uri): ImageBitmap? = runCatching {
     }
 }.getOrNull()
 
+/** Decoded photos kept in memory so scrolling never downloads or decodes twice. */
+private val imageCache = object : LruCache<String, ImageBitmap>(32) {}
+
+/** Decode JPEG/PNG bytes at roughly [targetPx] on the longest edge. */
+private fun decodeDownsampled(bytes: ByteArray, targetPx: Int): ImageBitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= targetPx && bounds.outHeight / (sample * 2) >= targetPx) {
+        sample *= 2
+    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
+}
+
 /**
  * Listing photos come from Cloudflare R2 (through our Worker).
  *
- * Downloaded once per URL inside the composition — enough for the small
- * thumbnails and the full photo in the detail.
+ * The bitmap is downsampled while decoding (to about [targetPx] on the long
+ * edge) and kept in an in-memory cache, so a 5 MB phone photo never becomes a
+ * full-size bitmap inside a small row, and scrolling back is instant.
  */
 @Composable
-fun RemoteImage(url: String, modifier: Modifier = Modifier) {
-    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+fun RemoteImage(url: String, modifier: Modifier = Modifier, targetPx: Int = 512) {
+    val key = "$targetPx|$url"
+    var bitmap by remember(key) { mutableStateOf(imageCache.get(key)) }
 
-    LaunchedEffect(url) {
+    LaunchedEffect(key) {
         if (url.isBlank()) {
             bitmap = null
             return@LaunchedEffect
         }
-        bitmap = withContext(Dispatchers.IO) {
+        imageCache.get(key)?.let { cached ->
+            bitmap = cached
+            return@LaunchedEffect
+        }
+        val loaded = withContext(Dispatchers.IO) {
             runCatching {
                 val conn = URL(url).openConnection() as HttpURLConnection
                 conn.connectTimeout = 10_000
                 conn.readTimeout = 20_000
-                conn.inputStream.use { stream ->
-                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
-                }
+                val bytes = conn.inputStream.use { it.readBytes() }
+                decodeDownsampled(bytes, targetPx)
             }.getOrNull()
         }
+        if (loaded != null) imageCache.put(key, loaded)
+        bitmap = loaded
     }
 
     bitmap?.let {
@@ -1240,6 +1265,50 @@ fun RemoteImage(url: String, modifier: Modifier = Modifier) {
             modifier = modifier
         )
     }
+}
+
+/**
+ * Downscale and re-encode a picked photo before uploading it.
+ *
+ * Gallery photos are 3–8 MB at 4000 px; resized to [maxPx] and JPEG
+ * [quality] they are usually 150–400 KB, which is what makes the listing list
+ * load quickly on mobile data.
+ */
+fun compressForUpload(
+    context: Context,
+    uri: Uri,
+    maxPx: Int = 1600,
+    quality: Int = 80
+): ByteArray {
+    val original = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        ?: error("Can't read the selected photo.")
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(original, 0, original.size, bounds)
+    if (bounds.outWidth <= maxPx && bounds.outHeight <= maxPx && original.size <= 400_000) {
+        return original
+    }
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= maxPx || bounds.outHeight / (sample * 2) >= maxPx) {
+        sample *= 2
+    }
+    val decoded = BitmapFactory.decodeByteArray(
+        original, 0, original.size,
+        BitmapFactory.Options().apply { inSampleSize = sample }
+    ) ?: return original
+    val longest = maxOf(decoded.width, decoded.height)
+    val scaled = if (longest > maxPx) {
+        val scale = maxPx.toFloat() / longest
+        Bitmap.createScaledBitmap(
+            decoded,
+            (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
+    } else decoded
+    val out = java.io.ByteArrayOutputStream()
+    scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+    if (scaled !== decoded) scaled.recycle()
+    return out.toByteArray()
 }
 
 /**
@@ -1254,9 +1323,10 @@ fun uploadListingImage(
     idToken: String,
     uri: Uri
 ): String {
-    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        ?: error("Can't read the selected photo.")
-    val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+    // Sent already downscaled, so the Worker and every phone that reads the
+    // listing deal with a few hundred KB instead of several MB.
+    val bytes = compressForUpload(context, uri)
+    val mime = "image/jpeg"
 
     val conn = URL(baseUrl.trimEnd('/') + "/upload").openConnection() as HttpURLConnection
     try {

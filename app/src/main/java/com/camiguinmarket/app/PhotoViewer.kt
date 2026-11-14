@@ -36,7 +36,7 @@ fun PhotoViewer(urls: List<String>, startIndex: Int, onClose: () -> Unit) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    RemoteImage(urls[page], Modifier.fillMaxWidth())
+                    RemoteImage(urls[page], Modifier.fillMaxWidth(), targetPx = 1600)
                 }
             }
             IconButton(

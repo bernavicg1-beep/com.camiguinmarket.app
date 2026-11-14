@@ -421,7 +421,8 @@ builds the release variant and uploads it as `CamiguinMarket-release-apk` (APK) 
 
 There is no device/emulator in the development environment, so **runtime behaviour
 is unverified**: GPS location, tapping the map, the WebView bridge (`onRoute`),
-photo upload to R2, SMS phone verification (needs Firebase **Phone** sign-in
+photo upload to R2 (photos are downscaled to 1600 px / JPEG 80 before upload,
+so a listing photo is a few hundred KB instead of several MB), SMS phone verification (needs Firebase **Phone** sign-in
 enabled plus the app's SHA-1 fingerprint registered), and the real
 Google/Mapbox API responses. What is confirmed:
 `gradle assembleDebug` and `gradle assembleRelease` compile, and the JavaScript in

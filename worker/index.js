@@ -92,11 +92,17 @@ async function handleUpload(request, env) {
   return json({ url: `${publicBase(request, env)}/i/${key}`, key }, 200);
 }
 
-async function handleImage(key, env) {
+async function handleImage(key, env, request, ctx) {
+  // Serve repeat views from the Cloudflare edge instead of R2 every time.
+  const cache = caches.default;
+  const cacheKey = new Request(request.url, { method: "GET" });
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
   const object = await env.IMAGES.get(key);
   if (!object) return new Response("Not found", { status: 404, headers: CORS });
 
-  return new Response(object.body, {
+  const response = new Response(object.body, {
     headers: {
       "Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
       // The key has a timestamp and random suffix, so it never changes.
@@ -105,6 +111,9 @@ async function handleImage(key, env) {
       ...CORS,
     },
   });
+
+  if (ctx && ctx.waitUntil) ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
 }
 
 
@@ -395,7 +404,7 @@ async function handlePush(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
@@ -424,7 +433,7 @@ export default {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return json({ error: "method_not_allowed" }, 405);
       }
-      return handleImage(decodeURIComponent(url.pathname.slice(3)), env);
+      return handleImage(decodeURIComponent(url.pathname.slice(3)), env, request, ctx);
     }
 
     return json({ error: "not_found" }, 404);
