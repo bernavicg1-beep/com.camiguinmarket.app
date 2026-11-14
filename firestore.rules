@@ -74,6 +74,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Saved searches: kaugalingon ra.
+    match /savedSearches/{userId}/items/{itemId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Paborito: pareho sa cart, kaugalingon ra.
     match /favorites/{userId}/items/{itemId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

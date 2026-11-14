@@ -1,6 +1,7 @@
 package com.camiguinmarket.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -83,6 +85,98 @@ val marketColorScheme
         surfaceVariant = BrandSky,
         onSurfaceVariant = Color(0xFF334155)
     )
+
+val marketDarkColorScheme
+    @Composable get() = darkColorScheme(
+        primary = Color(0xFF64B5F6),
+        onPrimary = Color(0xFF06213F),
+        primaryContainer = Color(0xFF1E3A5F),
+        onPrimaryContainer = Color(0xFFD6EBFF),
+        secondary = BrandGold,
+        onSecondary = Color(0xFF241A00),
+        background = Color(0xFF0F172A),
+        surface = Color(0xFF111C2E),
+        surfaceVariant = Color(0xFF1E293B),
+        onSurface = Color(0xFFE6EDF7),
+        onSurfaceVariant = Color(0xFFC3CFE0)
+    )
+
+private fun themePrefs(context: Context) =
+    context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
+
+fun loadDarkMode(context: Context): Boolean = themePrefs(context).getBoolean("dark", false)
+
+fun saveDarkMode(context: Context, dark: Boolean) {
+    themePrefs(context).edit().putBoolean("dark", dark).apply()
+}
+
+// ---------------------------------------------------------------------------
+// Saved searches (Firestore: savedSearches/{uid}/items)
+// ---------------------------------------------------------------------------
+
+data class SavedSearch(
+    val id: String = "",
+    val query: String = "",
+    val category: String = "Tanan",
+    val town: String = "Tanan",
+    val createdAt: Long = 0L,
+    val lastCheckedAt: Long = 0L
+) {
+    val label: String get() = query.ifBlank { "$category • $town" }
+}
+
+fun saveSearch(
+    db: FirebaseFirestore,
+    uid: String,
+    query: String,
+    category: String,
+    town: String
+) {
+    db.collection("savedSearches").document(uid).collection("items").document().set(
+        SavedSearch(
+            query = query.trim(),
+            category = category,
+            town = town,
+            createdAt = System.currentTimeMillis(),
+            lastCheckedAt = System.currentTimeMillis()
+        )
+    )
+}
+
+fun deleteSavedSearch(db: FirebaseFirestore, uid: String, id: String) {
+    db.collection("savedSearches").document(uid).collection("items").document(id).delete()
+}
+
+/** Pag-abli sa app: pahibaloon ang user kon dunay bag-ong listing nga mohaom. */
+fun checkSavedSearches(
+    db: FirebaseFirestore,
+    uid: String,
+    searches: List<SavedSearch>,
+    listings: List<Listing>
+) {
+    if (searches.isEmpty() || listings.isEmpty()) return
+    searches.forEach { s ->
+        val matches = listings.filter {
+            it.createdAt > s.lastCheckedAt && it.sellerId != uid &&
+                (s.query.isBlank() || it.title.contains(s.query, true) ||
+                    it.description.contains(s.query, true)) &&
+                (s.category == "Tanan" || it.category == s.category) &&
+                (s.town == "Tanan" || it.town == s.town)
+        }
+        val latest = listings.maxOfOrNull { it.createdAt } ?: s.lastCheckedAt
+        if (matches.isNotEmpty()) {
+            notifyUser(
+                db = db,
+                toUid = uid,
+                fromUid = uid,
+                fromName = "Saved search",
+                message = "🔔 ${matches.size} ka bag-ong listing para sa \"${s.label}\"".take(190)
+            )
+            db.collection("savedSearches").document(uid).collection("items")
+                .document(s.id).update("lastCheckedAt", latest)
+        }
+    }
+}
 
 /** Ang mga tab sa ubos nga navigation. */
 enum class MarketTab(val label: String, val icon: ImageVector) {
@@ -364,7 +458,7 @@ fun BrandHeader(
     onChats: () -> Unit,
     onNotifications: () -> Unit
 ) {
-    Surface(color = Color.White, shadowElevation = 2.dp) {
+    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -618,7 +712,7 @@ fun ListingCard(
 
 @Composable
 fun BottomNavBar(tab: MarketTab, cartCount: Int, onSelect: (MarketTab) -> Unit) {
-    NavigationBar(containerColor = Color.White, tonalElevation = 3.dp) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
         MarketTab.entries.forEach { item ->
             NavigationBarItem(
                 selected = tab == item,
@@ -999,13 +1093,15 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                     horizontalArrangement = if (m.from == uid) Arrangement.End else Arrangement.Start
                 ) {
                     Surface(
-                        color = if (m.from == uid) BrandBlue else BrandSky,
+                        color = if (m.from == uid) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
                             Text(
                                 m.text,
-                                color = if (m.from == uid) Color.White else Color.Black
+                                color = if (m.from == uid) Color.White
+                                else MaterialTheme.colorScheme.onSurface
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -1061,6 +1157,8 @@ fun ProfileScreen(
     email: String,
     myListings: List<Listing>,
     isAdmin: Boolean,
+    dark: Boolean,
+    onToggleDark: (Boolean) -> Unit,
     onFavorites: () -> Unit,
     onOrders: () -> Unit,
     onInbox: () -> Unit,
@@ -1129,6 +1227,15 @@ fun ProfileScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Dark mode", style = MaterialTheme.typography.bodyMedium)
+            Switch(checked = dark, onCheckedChange = onToggleDark)
+        }
+        Spacer(Modifier.height(8.dp))
         Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
@@ -1174,6 +1281,7 @@ fun TownChips(selected: String, onSelect: (String) -> Unit) {
 
 @Composable
 fun HomeTab(
+    uid: String,
     query: String,
     onQuery: (String) -> Unit,
     category: String,
@@ -1252,6 +1360,59 @@ fun HomeTab(
             }
         }
         item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
+        item {
+            val db = remember { FirebaseFirestore.getInstance() }
+            var searches by remember { mutableStateOf<List<SavedSearch>>(emptyList()) }
+            DisposableEffect(uid) {
+                val reg = db.collection("savedSearches").document(uid).collection("items")
+                    .addSnapshotListener { snap, _ ->
+                        searches = snap?.documents?.mapNotNull { d ->
+                            d.toObject(SavedSearch::class.java)?.copy(id = d.id)
+                        } ?: emptyList()
+                    }
+                onDispose { reg.remove() }
+            }
+            LaunchedEffect(listings, searches) {
+                checkSavedSearches(db, uid, searches, listings)
+            }
+            Column {
+                TextButton(
+                    onClick = { saveSearch(db, uid, query, category, "Tanan") },
+                    enabled = query.isNotBlank() || category != "Tanan"
+                ) {
+                    Icon(
+                        Icons.Filled.Notifications,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("I-save kini nga pagpangita", style = MaterialTheme.typography.labelMedium)
+                }
+                if (searches.isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(searches, key = { it.id }) { s ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    onQuery(s.query)
+                                    onCategory(s.category)
+                                },
+                                label = { Text(s.label, style = MaterialTheme.typography.labelSmall) },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Tangtanga",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable { deleteSavedSearch(db, uid, s.id) }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         item { HeroBanner() }
         item {
             SectionTitle("Shop by Category") {

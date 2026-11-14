@@ -365,6 +365,22 @@ check("rating: laing user dili makahatag", "POST", "/ratings", 403,
 check("rating: mabasa sa naka-log in", "GET", "/ratings/o4", 200, uid="u3")
 
 
+# --- saved searches ----------------------------------------------------------
+saved_doc = {"fields": {
+    "query": {"stringValue": "saging"},
+    "category": {"stringValue": "Tanan"},
+    "town": {"stringValue": "Tanan"},
+    "createdAt": {"integerValue": "1"},
+    "lastCheckedAt": {"integerValue": "1"},
+}}
+check("saved: tag-iya makasulat", "POST", "/savedSearches/u1/items", 200,
+      uid="u1", body=saved_doc, doc_id="s1")
+check("saved: tag-iya makabasa", "GET", "/savedSearches/u1/items", 200, uid="u1")
+check("saved: uban dili makabasa", "GET", "/savedSearches/u1/items", 403, uid="u2")
+check("saved: uban dili makasulat", "POST", "/savedSearches/u1/items", 403,
+      uid="u2", body=saved_doc, doc_id="s2")
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

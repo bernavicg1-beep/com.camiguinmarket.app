@@ -78,21 +78,35 @@ class MainActivity : ComponentActivity() {
         // ang window aron dili ma-tabunan sa system bars ang sulod.
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(colorScheme = marketColorScheme) {
-                Surface(Modifier.fillMaxSize()) { AppRoot() }
+            val context = LocalContext.current
+            var dark by remember { mutableStateOf(loadDarkMode(context)) }
+            MaterialTheme(
+                colorScheme = if (dark) marketDarkColorScheme else marketColorScheme
+            ) {
+                Surface(Modifier.fillMaxSize()) {
+                    AppRoot(dark) { value ->
+                        dark = value
+                        saveDarkMode(context, value)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun AppRoot() {
+fun AppRoot(dark: Boolean, onToggleDark: (Boolean) -> Unit) {
     val auth = remember { FirebaseAuth.getInstance() }
     var user by remember { mutableStateOf(auth.currentUser) }
     if (user == null) {
         LoginScreen(auth) { user = auth.currentUser }
     } else {
-        MarketScreen(user!!.uid, user!!.displayName ?: user!!.email ?: "Seller") {
+        MarketScreen(
+            uid = user!!.uid,
+            displayName = user!!.displayName ?: user!!.email ?: "Seller",
+            dark = dark,
+            onToggleDark = onToggleDark
+        ) {
             auth.signOut(); user = null
         }
     }
@@ -162,7 +176,13 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
+fun MarketScreen(
+    uid: String,
+    displayName: String,
+    dark: Boolean,
+    onToggleDark: (Boolean) -> Unit,
+    onLogout: () -> Unit
+) {
     val db = remember { FirebaseFirestore.getInstance() }
     var listings by remember { mutableStateOf<List<Listing>>(emptyList()) }
     var category by remember { mutableStateOf(categories[0]) }
@@ -279,7 +299,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .background(Color.White)
+                        .background(MaterialTheme.colorScheme.surface)
                         .statusBarsPadding()
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -361,6 +381,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
 
                 else -> when (tab) {
                     MarketTab.Home -> HomeTab(
+                        uid = uid,
                         query = query,
                         onQuery = { query = it },
                         category = category,
@@ -429,6 +450,8 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                         myListings = listings.filter { it.sellerId == uid },
                         onFavorites = { overlay = "favorites" },
                         isAdmin = isAdmin,
+                        dark = dark,
+                        onToggleDark = onToggleDark,
                         onOrders = { overlay = "orders" },
                         onInbox = { overlay = "inbox" },
                         onModeration = { overlay = "moderation" },
@@ -437,6 +460,7 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                     )
 
                     MarketTab.Sell -> HomeTab(
+                        uid = uid,
                         query = query,
                         onQuery = { query = it },
                         category = category,
@@ -549,7 +573,12 @@ fun MarketScreen(uid: String, displayName: String, onLogout: () -> Unit) {
                     Text("₱%.2f".format(l.price), style = MaterialTheme.typography.titleMedium)
                     Text(l.description)
                     Spacer(Modifier.height(8.dp))
-                    Text("Seller: ${l.sellerName}")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Seller: ${l.sellerName}")
+                        Spacer(Modifier.width(8.dp))
+                        SellerRatingSummary(l.sellerId)
+                    }
+                    if (l.sellerId != uid) SellerReviews(l.sellerId)
                     Text("Lugar: ${l.town}")
                     Text("Contact: ${l.contact}")
                     Spacer(Modifier.height(8.dp))

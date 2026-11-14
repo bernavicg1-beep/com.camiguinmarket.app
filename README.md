@@ -121,6 +121,18 @@ isip `⭐ 4.6 (12)` sa Profile → Baligya.
 **Rules:** ang buyer ra sa `done` nga order ang makahimo (`get()` sa order),
 ug mabasa kini sa bisan kinsang naka-log in.
 
+### Reviews sa listing, saved search ug dark mode
+
+- Ang detalye sa listing nagpakita sa **average nga rating** sa seller ug hangtod
+  **3 ka pinakabag-o nga komentaryo**.
+- **Saved search:** sa Home (o Categories) dunay **"I-save kini nga pagpangita"** —
+  gina-save ang query ug category sa `savedSearches/{uid}/items`. Pag-abli sa app,
+  i-check ang mga listing nga bag-o pa kay sa `lastCheckedAt`; kon dunay mohaom,
+  makadawat ka og notification (diha-diha, walay server). Ang chip dunay ✕ aron
+  pagtangtang.
+- **Dark mode:** toggle sa Profile, gina-save sa `ui_prefs` sa device. Ang header,
+  bottom nav, ug chat bubbles naggamit na sa theme colors (`marketDarkColorScheme`).
+
 ### Share ug offline cart
 
 - Ang detalye sa listing dunay **Ipakigbahin** (Android share sheet) — titulo,
@@ -224,6 +236,7 @@ Ang `firestore.rules` maoy nagkontrolar sa acesso sa database:
   maka-update sa status; ang buyer makakanselar (`pending` → `cancelled`) ra.
 - **chats** — ang duha ka participants ra ang makabasa/makasulat; ang mensahe
   nagkinahanglan og membership sa chat (gina-check pinaagi sa `get()`).
+- **savedSearches** — ang tag-iya ra ang makabasa/makasulat.
 - **ratings** — create ra sa buyer sa `done` nga order (doc id = order id);
   mabasa sa naka-log in; dili ma-edit o mapapas.
 - **reports** — makahimo ang bisan kinsang naka-log in sa iyang kaugalingong

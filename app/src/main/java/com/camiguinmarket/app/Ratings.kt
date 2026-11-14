@@ -183,3 +183,42 @@ fun SellerRatingSummary(sellerId: String) {
         Text("(${ratings.size})", style = MaterialTheme.typography.labelSmall)
     }
 }
+
+/** Mga review sa seller: average + hangtod 3 ka pinakabag-o nga komentaryo. */
+@Composable
+fun SellerReviews(sellerId: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var reviews by remember { mutableStateOf<List<Rating>>(emptyList()) }
+
+    DisposableEffect(sellerId) {
+        val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
+            .addSnapshotListener { snap, _ ->
+                reviews = snap?.documents.orEmpty()
+                    .mapNotNull { d -> d.toObject(Rating::class.java)?.copy(id = d.id) }
+                    .sortedByDescending { it.createdAt }
+            }
+        onDispose { reg.remove() }
+    }
+
+    if (reviews.isEmpty()) {
+        Text("Wala pay review ang seller.", style = MaterialTheme.typography.labelSmall)
+        return
+    }
+
+    Column {
+        Text(
+            "Mga review (${reviews.size})",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+        reviews.filter { it.comment.isNotBlank() }.take(3).forEach { r ->
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StarRow(r.rating.toInt(), size = 14)
+                Spacer(Modifier.width(6.dp))
+                Text("— ${r.buyerName}", style = MaterialTheme.typography.labelSmall)
+            }
+            Text(r.comment, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
