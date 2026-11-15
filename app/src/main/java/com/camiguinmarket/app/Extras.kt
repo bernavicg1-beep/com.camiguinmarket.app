@@ -509,6 +509,7 @@ fun notifyUser(
 data class ChatMessage(
     val id: String = "",
     val from: String = "",
+    val fromName: String = "",
     val text: String = "",
     val createdAt: Long = 0L
 )
@@ -548,7 +549,7 @@ fun sendChatMessage(
     val id = chatIdFor(uid, otherUid)
     val chatRef = db.collection("chats").document(id)
     val senderName = userDisplayName()
-    chatRef.collection("messages").add(ChatMessage(from = uid, text = text.trim(), createdAt = System.currentTimeMillis()))
+    chatRef.collection("messages").add(ChatMessage(from = uid, fromName = senderName, text = text.trim(), createdAt = System.currentTimeMillis()))
     chatRef.update(
         mapOf(
             "updatedAt" to System.currentTimeMillis(),
@@ -1604,6 +1605,9 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(messages, key = { it.id }) { m ->
                 val fromSeller = m.from == sellerResolved
+                val senderName = m.fromName.ifBlank {
+                    if (m.from == uid) userDisplayName() else partner
+                }
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = if (fromSeller) Arrangement.End else Arrangement.Start
@@ -1619,6 +1623,13 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                         shadowElevation = 1.dp
                     ) {
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Text(
+                                senderName,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (fromSeller) Color.White.copy(alpha = 0.9f)
+                                else BrandBlue
+                            )
                             Text(
                                 m.text,
                                 color = if (fromSeller) Color.White
