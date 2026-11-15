@@ -775,7 +775,7 @@ fun MarketScreen(
                 }
 
                 "chat" -> chatWith?.let { (otherId, otherName) ->
-                    ChatScreen(uid, otherId, otherName, chatListing?.title ?: "")
+                    ChatScreen(uid, otherId, otherName, chatListing?.title ?: "", chatListing?.sellerId ?: "")
                 }
 
                 else -> when (tab) {

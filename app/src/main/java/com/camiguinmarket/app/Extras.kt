@@ -1492,7 +1492,7 @@ fun NotificationsScreen(uid: String) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: String) {
+fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: String, sellerUid: String = "") {
     val db = remember { FirebaseFirestore.getInstance() }
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var text by remember { mutableStateOf("") }
@@ -1504,6 +1504,14 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     var tick by remember { mutableStateOf(0L) }
     val chatId = remember(otherUid) { chatIdFor(uid, otherUid) }
     val partner = remember(otherName) { chatPartnerName(otherName) }
+    // The seller is always shown on the right and the buyer on the left.
+    // When no seller id is known (inbox/orders) the chat partner is treated as
+    // the seller, matching the "Chat with seller" flow of this app.
+    val sellerResolved = remember(sellerUid, otherUid) {
+        if (sellerUid.isNotBlank()) sellerUid else otherUid
+    }
+    val partnerIsSeller = sellerResolved == otherUid
+    val partnerLabel = if (partnerIsSeller) "$partner \u2022 Seller" else partner
 
     LaunchedEffect(chatId) {
         ensureChat(db, uid, otherUid, partner, listingTitle)
@@ -1576,7 +1584,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(partner, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(partnerLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
                     when {
                         typing -> "typing…"
@@ -1592,35 +1600,35 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         Spacer(Modifier.height(8.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(messages, key = { it.id }) { m ->
-                val mine = m.from == uid
+                val fromSeller = m.from == sellerResolved
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (fromSeller) Arrangement.End else Arrangement.Start
                 ) {
                     Surface(
-                        color = if (mine) BrandBlue else Color.White,
+                        color = if (fromSeller) BrandBlue else Color.White,
                         shape = RoundedCornerShape(
                             topStart = 18.dp,
                             topEnd = 18.dp,
-                            bottomStart = if (mine) 18.dp else 4.dp,
-                            bottomEnd = if (mine) 4.dp else 18.dp
+                            bottomStart = if (fromSeller) 18.dp else 4.dp,
+                            bottomEnd = if (fromSeller) 4.dp else 18.dp
                         ),
                         shadowElevation = 1.dp
                     ) {
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Text(
                                 m.text,
-                                color = if (mine) Color.White
+                                color = if (fromSeller) Color.White
                                 else BrandInk
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     chatTime(m.createdAt),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (mine) Color.White.copy(alpha = 0.8f)
+                                    color = if (fromSeller) Color.White.copy(alpha = 0.8f)
                                     else BrandMuted
                                 )
-                                if (mine) {
+                                if (m.from == uid) {
                                     Spacer(Modifier.width(4.dp))
                                     val seen = m.createdAt <= otherRead
                                     Text(
