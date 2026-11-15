@@ -791,14 +791,14 @@ fun ListingTile(
     isFavorite: Boolean,
     onOpen: () -> Unit,
     onFavorite: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier.width(164.dp)
 ) {
     Card(
         onClick = onOpen,
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = modifier.width(164.dp)
+        modifier = modifier
     ) {
         Column {
             Box(
@@ -1931,16 +1931,19 @@ fun HomeTab(
         item { CategoryGrid(category, onCategory) }
         if (trending.isNotEmpty()) {
             item { SectionTitle("🔥 Trending now") }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(trending, key = { it.id }) { l ->
+            // Two cards per row, as in the mockup's "Trending Now" grid.
+            items(trending.chunked(2)) { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { l ->
                         ListingTile(
                             listing = l,
                             isFavorite = favorites.contains(l.id),
                             onOpen = { onOpen(l) },
-                            onFavorite = { onFavorite(l) }
+                            onFavorite = { onFavorite(l) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
+                    if (pair.size == 1) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -2022,16 +2025,19 @@ fun CategoriesTab(
         item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
         if (trending.isNotEmpty()) {
             item { SectionTitle("🔥 Trending now") }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(trending, key = { it.id }) { l ->
+            // Two cards per row, as in the mockup's "Trending Now" grid.
+            items(trending.chunked(2)) { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { l ->
                         ListingTile(
                             listing = l,
                             isFavorite = favorites.contains(l.id),
                             onOpen = { onOpen(l) },
-                            onFavorite = { onFavorite(l) }
+                            onFavorite = { onFavorite(l) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
+                    if (pair.size == 1) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
