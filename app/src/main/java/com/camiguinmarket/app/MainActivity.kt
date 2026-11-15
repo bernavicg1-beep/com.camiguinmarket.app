@@ -19,7 +19,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
@@ -104,6 +108,10 @@ data class Listing(
 /** True once a perishable listing has reached its expiration time. */
 fun Listing.isExpired(now: Long = System.currentTimeMillis()): Boolean =
     isPerishable && expiresAt in 1..now
+
+/** Price without a trailing ".00" when the amount is round. */
+fun formatPrice(price: Double): String =
+    if (price % 1.0 == 0.0) "%.0f".format(price) else "%.2f".format(price)
 
 /** Expiration shown as "Nov 15, 6:00 PM". */
 fun formatExpiry(ts: Long): String =
@@ -225,27 +233,130 @@ fun AppRoot(
     }
 }
 
+/**
+ * First screen: the poster's lockup over the island photo, with the two ways
+ * in. The form itself is a separate step so the app opens on the brand.
+ */
+@Composable
+private fun WelcomeScreen(onStart: () -> Unit, onSignIn: () -> Unit) {
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_island),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color(0x400B3D91),
+                        0.55f to Color(0x990B3D91),
+                        0.78f to Color.White,
+                        1f to Color.White
+                    )
+                )
+        )
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(28.dp))
+            BrandLogo(92.dp)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Camiguin Market",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(12.dp))
+            Surface(color = Color(0xFF0B3D91), shape = RoundedCornerShape(50)) {
+                Text(
+                    "Buy • Sell • Connect",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = onStart,
+                shape = RoundedCornerShape(26.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+                Text(
+                    "Get Started",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onSignIn,
+                shape = RoundedCornerShape(26.dp),
+                border = BorderStroke(1.5.dp, Color(0xFF0B3D91)),
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+                Text(
+                    "I already have an account",
+                    color = Color(0xFF0B3D91),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var isRegister by remember { mutableStateOf(false) }
+    var showForm by remember { mutableStateOf(false) }
     var showReset by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
-    Column(
+    if (!showForm) {
+        WelcomeScreen(
+            onStart = { isRegister = true; error = null; showForm = true },
+            onSignIn = { isRegister = false; error = null; showForm = true }
+        )
+    } else Column(
         Modifier.fillMaxSize()
             .padding(WindowInsets.systemBars.asPaddingValues())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Camiguin Market 🛒", style = MaterialTheme.typography.headlineMedium)
-        Text("Buy and sell across Camiguin", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(24.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { showForm = false; error = null }) {
+                Text("←", style = MaterialTheme.typography.titleLarge)
+            }
+            BrandLogo(38.dp)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    "Camiguin Market",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (isRegister) "Create your seller account" else "Welcome back",
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+        Spacer(Modifier.height(20.dp))
         if (isRegister) {
-            OutlinedTextField(name, { name = it }, label = { Text("Ngalan") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
         }
         OutlinedTextField(
@@ -281,12 +392,12 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
                                 onDone()
                             } ?: onDone()
                         } else onDone()
-                    } else error = t.exception?.localizedMessage ?: "Napakyas"
+                    } else error = t.exception?.localizedMessage ?: "Sign-in failed"
                 }
             }
-        ) { Text(if (isRegister) "Mag-register" else "Log in") }
+        ) { Text(if (isRegister) "Create account" else "Log in") }
         TextButton(onClick = { isRegister = !isRegister }) {
-            Text(if (isRegister) "Naa nay account? Log in" else "No account yet? Register")
+            Text(if (isRegister) "Already have an account? Log in" else "No account yet? Create one")
         }
         if (!isRegister) {
             TextButton(onClick = { showReset = true }) {
@@ -328,7 +439,7 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
                                 resetMsg = "Reset link sent. Check your email."
                             }
                             .addOnFailureListener { e ->
-                                resetMsg = e.localizedMessage ?: "Napakyas."
+                                resetMsg = e.localizedMessage ?: "Failed."
                             }
                     }
                 }) { Text("Send") }
@@ -876,7 +987,7 @@ fun MarketScreen(
                             overlay = "reviews"
                         }) { Text("See all reviews") }
                     }
-                    Text("Lugar: ${l.town}")
+                    Text("Town: ${l.town}")
                     Text("Contact: ${l.contact}")
                     Spacer(Modifier.height(8.dp))
                     Text("Pickup location: ${coordinatesLabel(l) ?: "wala pa ma-set"}")
@@ -1114,7 +1225,7 @@ fun PostDialog(
                 )
                 Text("Category", style = MaterialTheme.typography.labelMedium)
                 ChipRow(categories.drop(1), category) { category = it }
-                Text("Lugar", style = MaterialTheme.typography.labelMedium)
+                Text("Town", style = MaterialTheme.typography.labelMedium)
                 ChipRow(towns, town) { town = it }
 
                 Spacer(Modifier.height(8.dp))

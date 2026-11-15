@@ -46,6 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Park
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -483,6 +490,39 @@ fun sendChatMessage(
 // UI components
 // ---------------------------------------------------------------------------
 
+/**
+ * Brand mark from the marketing poster: a shopping cart and a palm tree over
+ * the island blue, inside a rounded square.
+ */
+@Composable
+fun BrandLogo(size: Dp = 40.dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.3f))
+            .background(Brush.verticalGradient(listOf(Color(0xFF4FA3F7), Color(0xFF0B4AA2)))),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Filled.ShoppingCart,
+            contentDescription = "Camiguin Market",
+            tint = Color.White,
+            modifier = Modifier
+                .size(size * 0.44f)
+                .offset(x = -size * 0.1f, y = -size * 0.08f)
+        )
+        Icon(
+            Icons.Filled.Park,
+            contentDescription = null,
+            tint = Color(0xFF7CE38B),
+            modifier = Modifier
+                .size(size * 0.42f)
+                .align(Alignment.BottomEnd)
+                .offset(x = -size * 0.06f, y = -size * 0.06f)
+        )
+    }
+}
+
 @Composable
 fun BrandHeader(
     cartCount: Int,
@@ -501,13 +541,7 @@ fun BrandHeader(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Brush.verticalGradient(listOf(BrandBlue, BrandBlueDark))),
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Filled.Landscape, contentDescription = null, tint = Color.White) }
+            BrandLogo(40.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -516,7 +550,7 @@ fun BrandHeader(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Text("Buy Local. Support Camiguin.", style = MaterialTheme.typography.labelSmall)
+                Text("Buy • Sell • Connect", style = MaterialTheme.typography.labelSmall)
             }
             IconTextButton(icon = Icons.Filled.Search, badge = 0, onClick = onSearch)
             IconTextButton(icon = Icons.Filled.ShoppingCart, badge = cartCount, onClick = onCart)
@@ -573,45 +607,54 @@ fun SearchBar(query: String, onQuery: (String) -> Unit, onSubmit: () -> Unit = {
     )
 }
 
+/** Hero banner from the poster: the island photo under the market slogan. */
 @Composable
 fun HeroBanner() {
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = BrandBlue),
+        colors = CardDefaults.cardColors(containerColor = BrandBlueDark),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            Modifier
-                .background(Brush.linearGradient(listOf(BrandBlue, BrandBlueDark)))
-                .padding(18.dp)
-        ) {
-            Column {
-                Icon(
-                    Icons.Filled.Landscape,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(34.dp)
-                )
-                Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(168.dp)) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_island),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0x1A000000), Color(0x4D04224A), Color(0xE604224A))
+                        )
+                    )
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
                 Text(
-                    "Welcome to Camiguin Market",
+                    "Shop Local.",
                     color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    "Buy Local. Support Local!",
-                    color = BrandSky,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    towns.take(3).forEach {
-                        Surface(
-                            color = Color.White.copy(alpha = 0.18f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) { Text("📍 $it", color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) }
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Support Camiguin",
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        " ♡",
+                        color = BrandGold,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -629,45 +672,144 @@ fun SectionTitle(text: String, trailing: (@Composable () -> Unit)? = null) {
     }
 }
 
+/** Colour per category, matching the coloured tiles in the mockup. */
+private val categoryTints = linkedMapOf(
+    "All" to Color(0xFF0B57D0),
+    "Food & Seafood" to Color(0xFFEF6C00),
+    "Local Products" to Color(0xFF2E7D32),
+    "Clothing" to Color(0xFF7B1FA2),
+    "Gadgets" to Color(0xFF1565C0),
+    "Other" to Color(0xFF00695C)
+)
+
 @Composable
 fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
-    val entries = categoryIcons.entries.toList()
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        entries.chunked(3).forEach { row ->
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        categoryIcons.entries.toList().chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { (name, emoji) ->
+                row.forEach { (name, icon) ->
+                    val tint = categoryTints[name] ?: BrandBlue
                     val active = name == selected
-                    Card(
-                        onClick = { onSelect(name) },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (active) BrandBlue
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        modifier = Modifier.weight(1f)
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onSelect(name) }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Column(
-                            Modifier.padding(vertical = 12.dp).fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(tint)
+                                .then(
+                                    if (active) Modifier.border(
+                                        2.dp,
+                                        BrandGold,
+                                        RoundedCornerShape(14.dp)
+                                    ) else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                emoji,
+                                icon,
                                 contentDescription = null,
-                                tint = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(26.dp)
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                name,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.labelSmall,
+                            textAlign = TextAlign.Center,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** Product tile for the "Trending now" row: photo on top, price and town below. */
+@Composable
+fun ListingTile(
+    listing: Listing,
+    isFavorite: Boolean,
+    onOpen: () -> Unit,
+    onFavorite: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onOpen,
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.width(164.dp)
+    ) {
+        Column {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(112.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                if (listing.imageUrl.isNotBlank()) {
+                    RemoteImage(listing.imageUrl, Modifier.fillMaxSize())
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("🛍️", style = MaterialTheme.typography.headlineMedium)
+                    }
+                }
+                IconButton(
+                    onClick = onFavorite,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
+                        .background(Color.White.copy(alpha = 0.9f), CircleShape)
+                ) {
+                    Icon(
+                        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "Favorites",
+                        tint = if (isFavorite) Color(0xFFE53935) else Color(0xFF5A6472),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Text(
+                    listing.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "₱${formatPrice(listing.price)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandBlueDark
+                )
+                Text(
+                    "📍 ${listing.town}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (listing.isPerishable && listing.expiresAt > 0) {
+                    Text(
+                        "⏳ ${formatExpiry(listing.expiresAt)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF8A6D00),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -1703,7 +1845,7 @@ fun HomeTab(
                                 trailingIcon = {
                                     Icon(
                                         Icons.Filled.Close,
-                                        contentDescription = "Tangtanga",
+                                        contentDescription = "Remove",
                                         modifier = Modifier
                                             .size(14.dp)
                                             .clickable { deleteSavedSearch(db, uid, s.id) }
@@ -1725,17 +1867,14 @@ fun HomeTab(
         if (trending.isNotEmpty()) {
             item { SectionTitle("🔥 Trending now") }
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(trending, key = { it.id }) { l ->
-                        Box(Modifier.width(300.dp)) {
-                            ListingCard(
-                                listing = l,
-                                isFavorite = favorites.contains(l.id),
-                                onOpen = { onOpen(l) },
-                                onFavorite = { onFavorite(l) },
-                                onAddToCart = { onAddToCart(l) }
-                            )
-                        }
+                        ListingTile(
+                            listing = l,
+                            isFavorite = favorites.contains(l.id),
+                            onOpen = { onOpen(l) },
+                            onFavorite = { onFavorite(l) }
+                        )
                     }
                 }
             }
@@ -1811,7 +1950,7 @@ fun CategoriesTab(
         item { CategoryGrid(category, onCategory) }
         item {
             Column {
-                Text("Lugar", style = MaterialTheme.typography.labelMedium)
+                Text("Town", style = MaterialTheme.typography.labelMedium)
                 TownChips(town, onTown)
             }
         }
@@ -1819,18 +1958,14 @@ fun CategoriesTab(
         if (trending.isNotEmpty()) {
             item { SectionTitle("🔥 Trending now") }
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(trending, key = { it.id }) { l ->
-                        Box(Modifier.width(300.dp)) {
-                            ListingCard(
-                                listing = l,
-                                isFavorite = favorites.contains(l.id),
-                                onOpen = { onOpen(l) },
-                                onFavorite = { onFavorite(l) },
-                                onAddToCart = { onAddToCart(l) },
-                                showViews = l.sellerId == ownerUid
-                            )
-                        }
+                        ListingTile(
+                            listing = l,
+                            isFavorite = favorites.contains(l.id),
+                            onOpen = { onOpen(l) },
+                            onFavorite = { onFavorite(l) }
+                        )
                     }
                 }
             }
