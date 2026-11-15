@@ -41,8 +41,8 @@ android {
         applicationId = "com.camiguinmarket.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "0.25"
+        versionCode = 26
+        versionName = "0.26"
 
         // The Worker that stores photos in Cloudflare R2 (no secret here).
         buildConfigField("String", "R2_UPLOAD_URL", "\"$r2UploadUrl\"")
@@ -93,6 +93,6 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-messaging")
 
-    // Maps are Leaflet + OpenStreetMap inside a WebView, so neither the Google
-    // Maps SDK nor the Mapbox SDK is a dependency anymore.
+    // Maps use osmdroid (OpenStreetMap) natively: pan/zoom/markers, no API key.
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
 }

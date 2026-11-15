@@ -352,66 +352,40 @@ fun LeafletMapView(
     latitude: Double,
     longitude: Double,
     modifier: Modifier = Modifier,
-    zoom: Int = 14
+    zoom: Double = 14.0
 ) {
-    // Fetch a single OSM tile for this location and show it as an image,
-    // with a red marker dot on top. This avoids WebView entirely, which kept
-    // rendering blank on device.
-    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-    var failed by remember { mutableStateOf(false) }
-
-    LaunchedEffect(latitude, longitude, zoom) {
-        bitmap = null
-        failed = false
-        try {
-            val bmp = withContext(Dispatchers.IO) {
-                val n = 1 shl zoom
-                val latRad = Math.toRadians(latitude)
-                val x = Math.floor((longitude + 180.0) / 360.0 * n).toInt()
-                val y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
-                val url = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
-                val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                    setRequestProperty("User-Agent", "CamiguinMarket/1.0 (Android)")
-                    connectTimeout = 10000
-                    readTimeout = 10000
+    // osmdroid: native OpenStreetMap view with pan/zoom and a marker.
+    val context = LocalContext.current
+    var mapView by remember { mutableStateOf<org.osmdroid.views.MapView?>(null) }
+    DisposableEffect(mapView) {
+        mapView?.onResume()
+        onDispose { mapView?.onPause() }
+    }
+    AndroidView(
+        modifier = modifier.defaultMinSize(minHeight = 280.dp),
+        factory = { ctx ->
+            org.osmdroid.config.Configuration.getInstance().load(
+                ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE)
+            )
+            org.osmdroid.views.MapView(ctx).apply {
+                mapView = this
+                setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
+                setMultiTouchControls(true)
+                controller.setZoom(zoom)
+                controller.setCenter(org.osmdroid.util.GeoPoint(latitude, longitude))
+                // Marker for the seller/pin.
+                val marker = org.osmdroid.views.overlay.Marker(this).apply {
+                    position = org.osmdroid.util.GeoPoint(latitude, longitude)
+                    setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                    title = "Location"
                 }
-                val result = conn.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
-                conn.disconnect()
-                result
+                overlays.add(marker)
             }
-            bitmap = bmp
-        } catch (e: Exception) {
-            android.util.Log.e("LeafletMap", "tile fetch failed: ${e.message}")
-            failed = true
+        },
+        update = { mv ->
+            mv.controller.setCenter(org.osmdroid.util.GeoPoint(latitude, longitude))
         }
-    }
-
-    Box(
-        modifier = modifier
-            .defaultMinSize(minHeight = 280.dp)
-            .background(androidx.compose.ui.graphics.Color(0xFFEAF1FB)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap!!.asImageBitmap(),
-                contentDescription = "Map",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            // Red marker dot in the centre.
-            Box(
-                Modifier
-                    .size(18.dp)
-                    .background(androidx.compose.ui.graphics.Color.Red, CircleShape)
-                    .border(2.dp, androidx.compose.ui.graphics.Color.White, CircleShape)
-            )
-        } else if (failed) {
-            Text("Map unavailable. Tap 'Open map' below.", color = BrandMuted)
-        } else {
-            CircularProgressIndicator()
-        }
-    }
+    )
 }
 
 
@@ -625,15 +599,51 @@ fun LeafletMapScreen(
                                 ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                             ) {
                                 val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-                                var best: Location? = null
-                                for (p in providers) {
-                                    try {
-                                        val l = manager?.getLastKnownLocation(p)
-                                        if (l != null && (best == null || l.accuracy < best.accuracy)) best = l
-                                    } catch (_: SecurityException) { }
+                                if (manager == null) {
+                                    status = "Location service unavailable."
+                                } else {
+                                    // Prefer a fresh fix over a stale last-known location.
+                                    var gotFix = false
+                                    val listener = object : android.location.LocationListener {
+                                        override fun onLocationChanged(loc: Location) {
+                                            if (!gotFix) {
+                                                gotFix = true
+                                                marker = LatLng(loc.latitude, loc.longitude)
+                                                status = formatCoordinates(marker)
+                                                try { manager.removeUpdates(this) } catch (_: Exception) { }
+                                            }
+                                        }
+                                        override fun onProviderEnabled(p: String) { }
+                                        override fun onProviderDisabled(p: String) { }
+                                        @Deprecated("Deprecated in Java")
+                                        override fun onStatusChanged(p: String?, s: Int, e: android.os.Bundle?) { }
+                                    }
+                                    val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                                        .filter { manager.isProviderEnabled(it) }
+                                    if (providers.isEmpty()) {
+                                        status = "No location provider enabled."
+                                    } else {
+                                        providers.forEach { p ->
+                                            try {
+                                                manager.requestSingleUpdate(p, listener, android.os.Looper.getMainLooper())
+                                            } catch (_: SecurityException) { }
+                                            catch (_: IllegalArgumentException) { }
+                                        }
+                                        // Fall back to last-known if no fix arrives shortly.
+                                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                            if (!gotFix) {
+                                                var best: Location? = null
+                                                providers.forEach { p ->
+                                                    try {
+                                                        val l = manager.getLastKnownLocation(p)
+                                                        if (l != null && (best == null || l.accuracy < best.accuracy)) best = l
+                                                    } catch (_: SecurityException) { }
+                                                }
+                                                best?.let { marker = LatLng(it.latitude, it.longitude); status = formatCoordinates(marker) }
+                                            }
+                                        }, 4000)
+                                    }
                                 }
-                                best?.let { marker = LatLng(it.latitude, it.longitude); status = formatCoordinates(marker) }
                             } else {
                                 locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
                             }
