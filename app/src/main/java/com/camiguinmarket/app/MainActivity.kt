@@ -191,9 +191,10 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             var dark by remember { mutableStateOf(loadDarkMode(context)) }
             MaterialTheme(
-                colorScheme = if (dark) marketDarkColorScheme else marketColorScheme
+                colorScheme = if (dark) marketDarkColorScheme else marketColorScheme,
+                shapes = marketShapes
             ) {
-                Surface(Modifier.fillMaxSize()) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     AppRoot(
                         dark = dark,
                         pushTarget = pushTarget,
@@ -277,7 +278,7 @@ private fun WelcomeScreen(onStart: () -> Unit, onSignIn: () -> Unit) {
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(12.dp))
-            Surface(color = Color(0xFF0B3D91), shape = RoundedCornerShape(50)) {
+            Surface(color = BrandBlueDark, shape = RoundedCornerShape(50)) {
                 Text(
                     "Buy • Sell • Connect",
                     color = Color.White,
@@ -288,7 +289,7 @@ private fun WelcomeScreen(onStart: () -> Unit, onSignIn: () -> Unit) {
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = onStart,
-                shape = RoundedCornerShape(26.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 Text(
@@ -300,13 +301,13 @@ private fun WelcomeScreen(onStart: () -> Unit, onSignIn: () -> Unit) {
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onSignIn,
-                shape = RoundedCornerShape(26.dp),
-                border = BorderStroke(1.5.dp, Color(0xFF0B3D91)),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.5.dp, BrandBlue),
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 Text(
                     "I already have an account",
-                    color = Color(0xFF0B3D91),
+                    color = BrandBlue,
                     fontWeight = FontWeight.SemiBold
                 )
             }

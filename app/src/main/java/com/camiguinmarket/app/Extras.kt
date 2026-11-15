@@ -84,11 +84,28 @@ import com.google.firebase.firestore.Query
 // Design system from the mockup: blue theme, rounded cards, gold accent.
 // ---------------------------------------------------------------------------
 
+// Palette taken from the poster and the mockups: deep ocean blue header, white
+// cards on a pale blue page, gold as the small highlight colour.
 val BrandBlue = Color(0xFF1565C0)
-val BrandBlueDark = Color(0xFF0D47A1)
-val BrandSky = Color(0xFFE3F2FD)
+val BrandBlueDeep = Color(0xFF0E4FA8)
+val BrandBlueDark = Color(0xFF0B3F91)
+val BrandSky = Color(0xFFE8F1FD)
 val BrandGold = Color(0xFFF2A900)
 val BrandGreen = Color(0xFF1B7F5C)
+val BrandInk = Color(0xFF10233F)
+val BrandMuted = Color(0xFF5B6B80)
+val BrandPage = Color(0xFFF5F8FD)
+val BrandBadge = Color(0xFFE53935)
+
+/** Header gradient, from the darker top edge to the mid blue of the mockups. */
+val BrandHeaderBrush: Brush =
+    Brush.verticalGradient(listOf(BrandBlueDeep, Color(0xFF1976D2)))
+
+val marketShapes = Shapes(
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp)
+)
 
 val marketColorScheme
     @Composable get() = lightColorScheme(
@@ -98,10 +115,11 @@ val marketColorScheme
         onPrimaryContainer = BrandBlueDark,
         secondary = BrandGold,
         onSecondary = Color.White,
-        background = Color(0xFFF7F9FC),
+        background = BrandPage,
         surface = Color.White,
         surfaceVariant = BrandSky,
-        onSurfaceVariant = Color(0xFF334155)
+        onSurface = BrandInk,
+        onSurfaceVariant = BrandMuted
     )
 
 val marketDarkColorScheme
@@ -495,12 +513,19 @@ fun sendChatMessage(
  * the island blue, inside a rounded square.
  */
 @Composable
-fun BrandLogo(size: Dp = 40.dp, modifier: Modifier = Modifier) {
+fun BrandLogo(size: Dp = 40.dp, modifier: Modifier = Modifier, ring: Boolean = false) {
     Box(
         modifier
             .size(size)
             .clip(RoundedCornerShape(size * 0.3f))
-            .background(Brush.verticalGradient(listOf(Color(0xFF4FA3F7), Color(0xFF0B4AA2)))),
+            .background(Brush.verticalGradient(listOf(Color(0xFF4FA3F7), Color(0xFF0B4AA2))))
+            .then(
+                if (ring) Modifier.border(
+                    1.5.dp,
+                    Color.White.copy(alpha = 0.85f),
+                    RoundedCornerShape(size * 0.3f)
+                ) else Modifier
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -533,41 +558,55 @@ fun BrandHeader(
     onChats: () -> Unit,
     onNotifications: () -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
+    // Blue gradient bar from the mockups, with white type and icons.
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(BrandHeaderBrush)
+            .statusBarsPadding()
+            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
+    ) {
         Row(
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BrandLogo(40.dp)
+            BrandLogo(42.dp, ring = true)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     "Camiguin Market",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = Color.White
                 )
-                Text("Buy • Sell • Connect", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    "Buy • Sell • Connect",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.88f)
+                )
             }
-            IconTextButton(icon = Icons.Filled.Search, badge = 0, onClick = onSearch)
-            IconTextButton(icon = Icons.Filled.ShoppingCart, badge = cartCount, onClick = onCart)
-            IconTextButton(icon = Icons.Filled.Chat, badge = chatUnread, onClick = onChats)
-            IconTextButton(icon = Icons.Filled.Notifications, badge = unreadCount, onClick = onNotifications)
+            IconTextButton(Icons.Filled.Search, 0, onSearch, tint = Color.White)
+            IconTextButton(Icons.Filled.ShoppingCart, cartCount, onCart, tint = Color.White)
+            IconTextButton(Icons.Filled.Chat, chatUnread, onChats, tint = Color.White)
+            IconTextButton(Icons.Filled.Notifications, unreadCount, onNotifications, tint = Color.White)
         }
     }
 }
 
 @Composable
-fun IconTextButton(icon: ImageVector, badge: Int, onClick: () -> Unit) {
+fun IconTextButton(
+    icon: ImageVector,
+    badge: Int,
+    onClick: () -> Unit,
+    tint: Color = MaterialTheme.colorScheme.onSurface
+) {
     Box {
-        IconButton(onClick = onClick) { Icon(icon, contentDescription = null) }
+        IconButton(onClick = onClick) { Icon(icon, contentDescription = null, tint = tint) }
         if (badge > 0) {
             Badge(
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 2.dp),
-                containerColor = BrandGold
+                containerColor = BrandBadge,
+                contentColor = Color.White
             ) { Text(if (badge > 9) "9+" else "$badge") }
         }
     }
@@ -594,13 +633,20 @@ fun clearRecentSearches(context: Context) {
 
 @Composable
 fun SearchBar(query: String, onQuery: (String) -> Unit, onSubmit: () -> Unit = {}) {
-    OutlinedTextField(
+    // White pill floating over the blue header, as in the mockup.
+    TextField(
         value = query,
         onValueChange = onQuery,
-        placeholder = { Text("Search products…") },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        placeholder = { Text("Search a product or seller…", color = BrandMuted) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = BrandMuted) },
         singleLine = true,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(26.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent
+        ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
         modifier = Modifier.fillMaxWidth()
@@ -693,23 +739,24 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                     Column(
                         Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .then(
+                                if (active) Modifier.border(
+                                    2.dp,
+                                    BrandBlue,
+                                    RoundedCornerShape(16.dp)
+                                ) else Modifier
+                            )
                             .clickable { onSelect(name) }
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Box(
                             Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(tint)
-                                .then(
-                                    if (active) Modifier.border(
-                                        2.dp,
-                                        BrandGold,
-                                        RoundedCornerShape(14.dp)
-                                    ) else Modifier
-                                ),
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(tint),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -725,6 +772,7 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                             style = MaterialTheme.typography.labelSmall,
                             textAlign = TextAlign.Center,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                            color = if (active) BrandBlue else BrandInk,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -747,7 +795,9 @@ fun ListingTile(
 ) {
     Card(
         onClick = onOpen,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier.width(164.dp)
     ) {
         Column {
@@ -792,7 +842,7 @@ fun ListingTile(
                     "₱${formatPrice(listing.price)}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = BrandBlueDark
+                    color = BrandBlue
                 )
                 Text(
                     "📍 ${listing.town}",
@@ -826,7 +876,9 @@ fun ListingCard(
 ) {
     Card(
         onClick = onOpen,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(Modifier.padding(12.dp)) {
@@ -906,21 +958,34 @@ fun ListingCard(
 
 @Composable
 fun BottomNavBar(tab: MarketTab, cartCount: Int, onSelect: (MarketTab) -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+    NavigationBar(containerColor = Color.White, tonalElevation = 6.dp) {
         MarketTab.entries.forEach { item ->
             NavigationBarItem(
                 selected = tab == item,
                 onClick = { onSelect(item) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = BrandBlue,
+                    selectedTextColor = BrandBlue,
+                    indicatorColor = BrandSky,
+                    unselectedIconColor = BrandMuted,
+                    unselectedTextColor = BrandMuted
+                ),
                 icon = {
                     if (item == MarketTab.Cart && cartCount > 0) {
-                        BadgedBox(badge = { Badge(containerColor = BrandGold) { Text("$cartCount") } }) {
+                        BadgedBox(badge = { Badge(containerColor = BrandBadge) { Text("$cartCount") } }) {
                             Icon(item.icon, contentDescription = item.label)
                         }
                     } else {
                         Icon(item.icon, contentDescription = item.label)
                     }
                 },
-                label = { Text(item.label, style = MaterialTheme.typography.labelSmall) }
+                label = {
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (tab == item) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
             )
         }
     }
