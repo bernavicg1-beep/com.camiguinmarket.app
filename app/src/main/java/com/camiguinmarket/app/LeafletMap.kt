@@ -363,6 +363,7 @@ fun LeafletMapView(
                 settings.loadWithOverviewMode = true
                 settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
                 setBackgroundColor(android.graphics.Color.WHITE)
+                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
                 webViewClient = object : WebViewClient() {
                     override fun onReceivedError(
                         view: WebView?,
