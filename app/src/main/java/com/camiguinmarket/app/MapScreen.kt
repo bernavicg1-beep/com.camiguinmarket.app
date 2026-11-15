@@ -648,9 +648,11 @@ fun CamiguinMarketMapScreen(
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .padding(8.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        tonalElevation = 4.dp,
-                        shadowElevation = 4.dp
+                        // Floating white search card over the map (mockup).
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(20.dp),
+                        tonalElevation = 2.dp,
+                        shadowElevation = 6.dp
                     ) {
                         Column(Modifier.padding(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {

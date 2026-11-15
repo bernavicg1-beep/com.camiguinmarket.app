@@ -1178,7 +1178,13 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
-            Text("My cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("My Cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (items.size == 1) "1 item" else "${items.size} items",
+                style = MaterialTheme.typography.labelMedium,
+                color = BrandMuted
+            )
         }
         if (offline) {
             Text(
@@ -1199,50 +1205,102 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
                 items(items, key = { it.id }) { item ->
-                    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+                                Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (item.imageUrl.isNotBlank()) RemoteImage(item.imageUrl, Modifier.fillMaxSize())
                                 else Text("🛍️")
                             }
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(item.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("₱%.2f".format(item.price), color = BrandBlue)
-                                Text("Seller: ${item.sellerName} • ${item.town}", style = MaterialTheme.typography.labelSmall)
-                                if (item.contact.isNotBlank()) {
-                                    Text("📞 ${item.contact}", style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    "₱%.2f × %d".format(item.price, item.quantity),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BrandMuted
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                // Quantity stepper from the mockup: − count +.
+                                Row(
+                                    Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(BrandSky),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { updateCartQuantity(db, uid, item.id, item.quantity - 1) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Remove,
+                                            contentDescription = "Decrease quantity",
+                                            tint = BrandBlue,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Text(
+                                        "${item.quantity}",
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp)
+                                    )
+                                    IconButton(
+                                        onClick = { updateCartQuantity(db, uid, item.id, item.quantity + 1) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Add,
+                                            contentDescription = "Increase quantity",
+                                            tint = BrandBlue,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { updateCartQuantity(db, uid, item.id, item.quantity + 1) }) {
-                                    Icon(Icons.Filled.Add, contentDescription = "Dugangi")
-                                }
-                                Text("${item.quantity}", fontWeight = FontWeight.Bold)
-                                IconButton(onClick = { updateCartQuantity(db, uid, item.id, item.quantity - 1) }) {
-                                    Icon(Icons.Filled.Remove, contentDescription = "Kunhoran")
-                                }
-                            }
+                            Text(
+                                "₱%.0f".format(item.price * item.quantity),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = BrandInk
+                            )
                         }
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Total", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text("₱%.2f".format(total), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Total", style = MaterialTheme.typography.titleMedium, color = BrandMuted, modifier = Modifier.weight(1f))
+                    Text(
+                        "₱%.0f".format(total),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandBlue
+                    )
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Button(
                 onClick = { onCheckout(items) },
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("✅ Checkout (₱%.2f)".format(total)) }
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp)
+            ) {
+                Icon(Icons.Filled.ShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Checkout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 "Each seller receives their own order and notification.",
@@ -1434,25 +1492,33 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
+        val typing = otherTypingAt > 0 && tick - otherTypingAt < 7000
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Chat, contentDescription = null, tint = BrandBlue)
-            Spacer(Modifier.width(6.dp))
-            Text(otherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-        Text(
-            "by Bernavic Gamo",
-            style = MaterialTheme.typography.labelSmall
-        )
-        if (listingTitle.isNotBlank()) {
-            Text("About: $listingTitle", style = MaterialTheme.typography.labelSmall)
-        }
-        if (otherTypingAt > 0 && tick - otherTypingAt < 7000) {
-            Text(
-                "nagsulat…",
-                style = MaterialTheme.typography.labelSmall,
-                color = BrandBlue,
-                fontWeight = FontWeight.Bold
-            )
+            Box(
+                Modifier.size(42.dp).clip(CircleShape).background(BrandSky),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    otherName.take(1).uppercase(),
+                    color = BrandBlue,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(otherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        typing -> "typing…"
+                        listingTitle.isNotBlank() -> "About: $listingTitle"
+                        else -> "Online"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (typing) FontWeight.Bold else FontWeight.Normal,
+                    color = if (typing) BrandBlue else BrandMuted
+                )
+            }
         }
         Spacer(Modifier.height(8.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1464,29 +1530,27 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                     horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
                 ) {
                     Surface(
-                        color = if (mine) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(12.dp)
+                        color = if (mine) BrandBlue else Color.White,
+                        shape = RoundedCornerShape(
+                            topStart = 18.dp,
+                            topEnd = 18.dp,
+                            bottomStart = if (mine) 18.dp else 4.dp,
+                            bottomEnd = if (mine) 4.dp else 18.dp
+                        ),
+                        shadowElevation = 1.dp
                     ) {
-                        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Text(
                                 m.text,
                                 color = if (mine) Color.White
-                                else MaterialTheme.colorScheme.onSurface
+                                else BrandInk
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     chatTime(m.createdAt),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (mine) Color.White.copy(alpha = 0.8f)
-                                    else Color.Gray
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    senderName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (mine) Color.White.copy(alpha = 0.8f)
-                                    else Color.Gray
+                                    else BrandMuted
                                 )
                                 if (mine) {
                                     Spacer(Modifier.width(4.dp))
@@ -1504,22 +1568,37 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                 }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                text, { text = it },
-                placeholder = { Text("Message…") },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(20.dp)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color.White)
+                .padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text("Type a message…", color = BrandMuted) },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                maxLines = 4,
+                modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.width(8.dp))
             Button(
                 onClick = {
                     sendChatMessage(db, uid, otherUid, otherName, text, listingTitle)
                     text = ""
                     db.collection("chats").document(chatId).update("typing.$uid", 0L)
                 },
-                shape = RoundedCornerShape(20.dp)
-            ) { Icon(Icons.Filled.Send, contentDescription = "Send") }
+                shape = CircleShape,
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.size(46.dp)
+            ) { Icon(Icons.Filled.Send, contentDescription = "Send", modifier = Modifier.size(20.dp)) }
         }
     }
 }

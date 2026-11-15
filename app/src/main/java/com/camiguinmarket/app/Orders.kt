@@ -1,6 +1,7 @@
 package com.camiguinmarket.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -151,17 +152,34 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
             }
         }
         Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = asBuyer,
-                onClick = { asBuyer = true },
-                label = { Text("I'm the buyer") }
-            )
-            FilterChip(
-                selected = !asBuyer,
-                onClick = { asBuyer = false },
-                label = { Text("I'm the seller") }
-            )
+        // Pill toggle from the mockup: Buyer / Seller.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            listOf(true to "I'm the Buyer", false to "I'm the Seller").forEach { (buyer, label) ->
+                val active = asBuyer == buyer
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (active) BrandBlue else Color.Transparent)
+                        .clickable { asBuyer = buyer }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        color = if (active) Color.White else BrandBlue
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(4.dp))
         // Date filter (applied to the list and the CSV export).
@@ -181,7 +199,7 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                 "pending" to "Pending",
                 "confirmed" to "Confirmed",
                 "done" to "Done",
-                "cancelled" to "Gikansela"
+                "cancelled" to "Cancelled"
             )
             items(statuses) { (value, label) ->
                 FilterChip(
@@ -230,7 +248,17 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text("₱%.2f × %d = ₱%.2f".format(order.price, order.quantity, order.total), color = BrandBlue)
+                                Text(
+                                    "₱%.2f × %d".format(order.price, order.quantity),
+                                    color = BrandBlue,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.US)
+                                        .format(Date(order.createdAt)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandMuted
+                                )
                                 Text(
                                     if (asBuyer) "Seller: ${order.sellerName}" else "Buyer: ${order.buyerName}",
                                     style = MaterialTheme.typography.labelSmall
@@ -258,16 +286,41 @@ fun OrdersScreen(uid: String, onOpen: (Order) -> Unit, onRate: (Order) -> Unit) 
                                 onDone = { updateOrderStatus(db, order, "done") },
                                 onCancel = { cancelOrder(db, order, uid) }
                             )
-                        } else if (asBuyer && order.status == "pending") {
-                            TextButton(
-                                onClick = { cancelOrder(db, order, uid) },
-                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-                            ) { Text("Cancel order", color = Color(0xFFE53935)) }
+                        } else if (asBuyer && order.status != "done") {
+                            // Outlined Cancel next to the filled View details (mockup).
+                            Row(
+                                Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (order.status == "pending") {
+                                    OutlinedButton(
+                                        onClick = { cancelOrder(db, order, uid) },
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("Cancel") }
+                                }
+                                Button(
+                                    onClick = { onOpen(order) },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("View details") }
+                            }
                         } else if (asBuyer && order.status == "done") {
-                            TextButton(
-                                onClick = { onRate(order) },
-                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-                            ) { Text("Rate the seller") }
+                            Row(
+                                Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { onRate(order) },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Rate the seller") }
+                                OutlinedButton(
+                                    onClick = { onOpen(order) },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("View details") }
+                            }
                         }
                       }
                     }
@@ -339,16 +392,18 @@ fun shareSalesCsv(context: Context, orders: List<Order>) {
 
 @Composable
 fun StatusChip(status: String) {
+    // Badge colours from the mockup: orange while pending, green once confirmed.
     val color = when (status) {
-        "pending" -> BrandGold
-        "confirmed" -> BrandBlue
+        "pending" -> Color(0xFFEF6C00)
+        "confirmed" -> Color(0xFF2E9B5B)
         "done" -> BrandGreen
         "cancelled" -> Color(0xFFE53935)
         else -> Color.Gray
     }
+    val label = status.replaceFirstChar { it.uppercase() }
     Surface(color = color, shape = RoundedCornerShape(10.dp)) {
         Text(
-            status,
+            label,
             color = Color.White,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
