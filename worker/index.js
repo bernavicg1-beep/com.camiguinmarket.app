@@ -161,10 +161,24 @@ async function handleDeleteImages(request, env) {
 
 async function handleImage(key, env, request, ctx) {
   // Serve repeat views from the Cloudflare edge instead of R2 every time.
-  const cache = caches.default;
-  const cacheKey = new Request(request.url, { method: "GET" });
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  // Cache API may be unavailable in some runtimes; guard so a missing cache
+  // never breaks image serving.
+  let cache = null;
+  try {
+    cache = (typeof caches !== "undefined" && caches.default) ? caches.default : null;
+  } catch (e) {
+    cache = null;
+  }
+
+  if (cache) {
+    try {
+      const cacheKey = new Request(request.url, { method: "GET" });
+      const hit = await cache.match(cacheKey);
+      if (hit) return hit;
+    } catch (e) {
+      // ignore cache errors and fall through to R2
+    }
+  }
 
   const object = await env.IMAGES.get(key);
   if (!object) return new Response("Not found", { status: 404, headers: CORS });
@@ -179,7 +193,14 @@ async function handleImage(key, env, request, ctx) {
     },
   });
 
-  if (ctx && ctx.waitUntil) ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  if (cache && ctx && typeof ctx.waitUntil === "function") {
+    try {
+      const cacheKey = new Request(request.url, { method: "GET" });
+      ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    } catch (e) {
+      // ignore
+    }
+  }
   return response;
 }
 
