@@ -37,6 +37,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -445,7 +447,7 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
                 }) { Text("Send") }
             },
             dismissButton = {
-                TextButton(onClick = { showReset = false }) { Text("Sira") }
+                TextButton(onClick = { showReset = false }) { Text("Close") }
             }
         )
     }
@@ -531,7 +533,7 @@ fun MarketScreen(
                         orderDetail = order
                         overlay = "order"
                         if (BuildConfig.DEBUG) {
-                            android.util.Log.d("CamiguinPush", "order detail giablihan: $id")
+                            android.util.Log.d("CamiguinPush", "order detail opened: $id")
                         }
                     }
                 }
@@ -554,6 +556,14 @@ fun MarketScreen(
         }
         onPushHandled()
     }
+    // One-off repair of chat names that older builds saved as "Me".
+    LaunchedEffect(uid) {
+        val prefs = context.getSharedPreferences("chat_repair", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(uid, false)) {
+            repairChatNames(db, uid) { prefs.edit().putBoolean(uid, true).apply() }
+        }
+    }
+
     var isAdmin by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
@@ -904,151 +914,263 @@ fun MarketScreen(
     selected?.let { l ->
         val sellerLat = l.latitude
         val sellerLng = l.longitude
-        AlertDialog(
+        Dialog(
             onDismissRequest = { selected = null },
-            confirmButton = { TextButton(onClick = { selected = null }) { Text("Sira") } },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        val share = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(
-                                Intent.EXTRA_TEXT,
-                                "${l.title} — ₱%.2f in ${l.town}\nContact: ${l.contact}\n\n".format(l.price) +
-                                    "View it in the Camiguin Market app."
-                            )
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize()) {
+                    // Blue bar with the back button and the owner actions.
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(BrandHeaderBrush)
+                            .statusBarsPadding()
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { selected = null }) {
+                            Text("←", color = Color.White, style = MaterialTheme.typography.titleLarge)
                         }
-                        context.startActivity(Intent.createChooser(share, "Share listing"))
-                    }) {
-                        Text("Ipakigbahin")
-                    }
-                    if (l.sellerId == uid) {
-                        TextButton(onClick = { selected = null; editListing = l }) { Text("Edit") }
-                        TextButton(
-                            onClick = {
+                        Text(
+                            "Listing",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = {
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "${l.title} — ₱%.2f in ${l.town}\nContact: ${l.contact}\n\n".format(l.price) +
+                                        "View it in the Camiguin Market app."
+                                )
+                            }
+                            context.startActivity(Intent.createChooser(share, "Share listing"))
+                        }) {
+                            Text("↗", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                        }
+                        if (l.sellerId == uid) {
+                            IconButton(onClick = { selected = null; editListing = l }) {
+                                Text("✏️", style = MaterialTheme.typography.titleMedium)
+                            }
+                            IconButton(onClick = {
                                 // Photos are removed only after the document is gone,
                                 // so a failed delete keeps a reachable listing.
                                 val photos = l.imageUrls.takeIf { it.isNotEmpty() }
-                                    ?: listOfNotNull(
-                                        l.imageUrl.takeIf { !it.isNullOrBlank() }
-                                    )
+                                    ?: listOfNotNull(l.imageUrl.takeIf { !it.isNullOrBlank() })
                                 db.collection("listings").document(l.id).delete()
                                     .addOnSuccessListener { deleteListingImages(photos) }
                                 selected = null
-                            }
-                        ) { Text("Delete") }
-                    }
-                }
-            },
-            title = { Text(l.title) },
-            text = {
-                Column {
-                    val photos = l.imageUrls.takeIf { it.isNotEmpty() }
-                        ?: listOfNotNull(l.imageUrl.takeIf { it.isNotBlank() })
-                    if (photos.isNotEmpty()) {
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            photos.forEachIndexed { idx, url ->
-                                RemoteImage(
-                                    url = url,
-                                    targetPx = 800,
-                                    modifier = Modifier
-                                        .width(if (photos.size == 1) 300.dp else 150.dp)
-                                        .height(180.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { photoViewer = photos to idx }
-                                )
+                            }) {
+                                Text("🗑", style = MaterialTheme.typography.titleMedium)
                             }
                         }
-                        if (photos.size > 1) {
-                            Text(
-                                "${photos.size} photos — swipe right",
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
                     }
-                    Text("₱%.2f".format(l.price), style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "👁 ${l.views} views",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    Text(l.description)
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Seller: ${l.sellerName}")
-                        Spacer(Modifier.width(8.dp))
-                        SellerRatingSummary(l.sellerId)
-                    }
-                    if (l.sellerId != uid) {
-                        SellerReviews(l.sellerId)
-                        TextButton(onClick = {
-                            reviewsSeller = l.sellerId to l.sellerName
-                            selected = null
-                            overlay = "reviews"
-                        }) { Text("See all reviews") }
-                    }
-                    Text("Town: ${l.town}")
-                    Text("Contact: ${l.contact}")
-                    Spacer(Modifier.height(8.dp))
-                    Text("Pickup location: ${coordinatesLabel(l) ?: "not set yet"}")
 
-                    if (l.sellerId != uid) {
-                        Button(
-                            onClick = {
-                                addToCart(db, uid, l, displayName) { err ->
-                                    Toast.makeText(
-                                        context, err ?: "Added to cart ✅", Toast.LENGTH_SHORT
-                                    ).show()
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val photos = l.imageUrls.takeIf { it.isNotEmpty() }
+                            ?: listOfNotNull(l.imageUrl.takeIf { it.isNotBlank() })
+                        if (photos.isNotEmpty()) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .clickable { photoViewer = photos to 0 }
+                            ) {
+                                RemoteImage(photos.first(), Modifier.fillMaxSize(), targetPx = 1024)
+                            }
+                            if (photos.size > 1) {
+                                Row(
+                                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    photos.drop(1).forEachIndexed { idx, url ->
+                                        RemoteImage(
+                                            url = url,
+                                            targetPx = 400,
+                                            modifier = Modifier
+                                                .size(72.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable { photoViewer = photos to idx + 1 }
+                                        )
+                                    }
                                 }
-                            },
+                            }
+                        }
+
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Add to Cart") }
-                        OutlinedButton(
-                            onClick = {
-                                chatListing = l
-                                chatWith = l.sellerId to l.sellerName
-                                selected = null
-                                overlay = "chat"
-                            },
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(
+                                    l.title,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "₱%.2f".format(l.price),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandBlue
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "${l.town} • ${l.category} • 👁 ${l.views} views",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BrandMuted
+                                )
+                                if (l.description.isNotBlank()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(l.description)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Pickup: ${coordinatesLabel(l) ?: "not set yet"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrandMuted
+                                )
+                                if (l.isPerishable && l.expiresAt > 0) {
+                                    Text(
+                                        "⏳ Expires ${formatExpiry(l.expiresAt)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF8A6D00)
+                                    )
+                                }
+                            }
+                        }
+
+                        Card(
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Chat with seller") }
-                        TextButton(
-                            onClick = { reportListing = l },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Report this listing", color = Color(0xFFE53935)) }
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(BrandSky),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            l.sellerName.take(1).uppercase(),
+                                            color = BrandBlue,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(l.sellerName, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "Seller • ${l.contact}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BrandMuted
+                                        )
+                                    }
+                                    SellerRatingSummary(l.sellerId)
+                                }
+                                if (l.sellerId != uid) {
+                                    SellerReviews(l.sellerId)
+                                    TextButton(onClick = {
+                                        reviewsSeller = l.sellerId to l.sellerName
+                                        selected = null
+                                        overlay = "reviews"
+                                    }) { Text("See all reviews") }
+                                }
+                            }
+                        }
                     }
 
-                    if (sellerLat != null && sellerLng != null) {
-                        Button(
-                            onClick = { selected = null; mapListing = l },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("🗺️ View Map") }
-                        OutlinedButton(
-                            onClick = {
-                                openDirections(
-                                    context,
-                                    LatLng(sellerLat, sellerLng),
-                                    l.title
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("🧭 Get Directions") }
-                        TextButton(
-                            onClick = { selected = null; webMapListing = l },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("🌐 Open the full map") }
-                    } else if (l.sellerId == uid) {
-                        Button(
-                            onClick = { selected = null; mapListing = l },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("📍 Set the Pickup Location") }
+                    // Bottom actions, as in the mockup: the main action in blue.
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color.White)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (l.sellerId != uid) {
+                            Button(
+                                onClick = {
+                                    addToCart(db, uid, l, displayName) { err ->
+                                        Toast.makeText(
+                                            context, err ?: "Added to cart ✅", Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                            ) { Text("Add to Cart", fontWeight = FontWeight.Bold) }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (l.sellerId != uid) {
+                                OutlinedButton(
+                                    onClick = {
+                                        chatListing = l
+                                        chatWith = l.sellerId to l.sellerName
+                                        selected = null
+                                        overlay = "chat"
+                                    },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Chat with seller") }
+                            }
+                            if (sellerLat != null && sellerLng != null) {
+                                OutlinedButton(
+                                    onClick = { selected = null; mapListing = l },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("View Map") }
+                            } else if (l.sellerId == uid) {
+                                OutlinedButton(
+                                    onClick = { selected = null; mapListing = l },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Set pickup location") }
+                            }
+                        }
+                        if (sellerLat != null && sellerLng != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        openDirections(
+                                            context,
+                                            LatLng(sellerLat, sellerLng),
+                                            l.title
+                                        )
+                                    },
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Directions") }
+                                TextButton(onClick = { selected = null; webMapListing = l }) {
+                                    Text("Full map")
+                                }
+                            }
+                        }
+                        if (l.sellerId != uid) {
+                            TextButton(onClick = { reportListing = l }) {
+                                Text("Report this listing", color = Color(0xFFE53935))
+                            }
+                        }
                     }
                 }
             }
-        )
+        }
     }
 
     // Option A: native Google Map inside the app.
@@ -1211,11 +1333,94 @@ fun PostDialog(
         onClose()
     }
 
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text(if (existing == null) "New listing" else "Edit listing") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+    val canPost = !uploading && title.isNotBlank() &&
+        price.toDoubleOrNull() != null && contact.isNotBlank() &&
+        (!isPerishable || expiresAt > System.currentTimeMillis())
+
+    fun submit() {
+        val picked = imageUris
+        val baseUrl = BuildConfig.R2_UPLOAD_URL
+        when {
+            // No new photo: keep the old ones (when editing).
+            picked.isEmpty() -> saveListing(existingPhotos)
+
+            baseUrl.isBlank() -> {
+                uploadError = "R2_UPLOAD_URL is not set (local.properties or a Gradle property)."
+            }
+
+            else -> {
+                val user = FirebaseAuth.getInstance().currentUser
+                if (user == null) {
+                    uploadError = "You must be signed in to upload."
+                } else {
+                    uploading = true
+                    uploadError = null
+                    user.getIdToken(false)
+                        .addOnSuccessListener { tokenResult ->
+                            val token = tokenResult.token
+                            if (token.isNullOrBlank()) {
+                                uploading = false
+                                uploadError = "Couldn't get the Firebase ID token."
+                            } else {
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        runCatching {
+                                            picked.map { uri ->
+                                                uploadListingImage(context, baseUrl, token, uri)
+                                            }
+                                        }
+                                    }
+                                    uploading = false
+                                    result
+                                        .onSuccess { urls -> saveListing(urls) }
+                                        .onFailure {
+                                            uploadError = it.localizedMessage
+                                                ?: "Photo upload failed."
+                                        }
+                                }
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            uploading = false
+                            uploadError = e.localizedMessage
+                                ?: "Failed to get the ID token."
+                        }
+                }
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { if (!uploading) onClose() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(BrandHeaderBrush)
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { if (!uploading) onClose() }) {
+                        Text("←", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    }
+                    Text(
+                        if (existing == null) "Sell an item" else "Edit listing",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                 OutlinedTextField(title, { title = it }, label = { Text("Product name") })
                 OutlinedTextField(desc, { desc = it }, label = { Text("Description") })
                 OutlinedTextField(
@@ -1284,7 +1489,7 @@ fun PostDialog(
                 Spacer(Modifier.height(8.dp))
                 Text("Pickup location", style = MaterialTheme.typography.labelMedium)
                 Text(
-                    pickup?.let { "Napili: ${formatCoordinates(it)}" }
+                    pickup?.let { "Picked: ${formatCoordinates(it)}" }
                         ?: "No pickup point selected yet."
                 )
                 OutlinedButton(
@@ -1363,72 +1568,34 @@ fun PostDialog(
                     Text(it, color = MaterialTheme.colorScheme.error)
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !uploading && title.isNotBlank() &&
-                    price.toDoubleOrNull() != null && contact.isNotBlank() &&
-                    (!isPerishable || expiresAt > System.currentTimeMillis()),
-                onClick = {
-                    val picked = imageUris
-                    val baseUrl = BuildConfig.R2_UPLOAD_URL
-                    when {
-                        // No new photo: keep the old ones (when editing).
-                        picked.isEmpty() -> saveListing(existingPhotos)
-
-                        baseUrl.isBlank() -> {
-                            uploadError = "R2_UPLOAD_URL is not set " +
-                                "(local.properties o Gradle property)."
-                            Unit
-                        }
-
-                        else -> {
-                            val user = FirebaseAuth.getInstance().currentUser
-                            if (user == null) {
-                                uploadError = "You must be signed in to upload."
-                            } else {
-                                uploading = true
-                                uploadError = null
-                                user.getIdToken(false)
-                                    .addOnSuccessListener { tokenResult ->
-                                        val token = tokenResult.token
-                                        if (token.isNullOrBlank()) {
-                                            uploading = false
-                                            uploadError = "Couldn't get the Firebase ID token."
-                                        } else {
-                                            scope.launch {
-                                                val result = withContext(Dispatchers.IO) {
-                                                    runCatching {
-                                                        picked.map { uri ->
-                                                            uploadListingImage(context, baseUrl, token, uri)
-                                                        }
-                                                    }
-                                                }
-                                                uploading = false
-                                                result
-                                                    .onSuccess { urls -> saveListing(urls) }
-                                                    .onFailure {
-                                                        uploadError = it.localizedMessage
-                                                            ?: "Photo upload failed."
-                                                    }
-                                            }
-                                        }
-                                    }
-                                    .addOnFailureListener { e ->
-                                        uploading = false
-                                        uploadError = e.localizedMessage
-                                            ?: "Failed to get the ID token."
-                                    }
-                            }
-                        }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onClose,
+                        enabled = !uploading,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Cancel") }
+                    Button(
+                        enabled = canPost,
+                        onClick = { submit() },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(2f).height(50.dp)
+                    ) {
+                        Text(
+                            if (existing == null) "Post listing" else "Save changes",
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-            ) { Text(if (existing == null) "Post" else "Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onClose, enabled = !uploading) { Text("Cancel") }
+            }
         }
-    )
+    }
 
     if (showPicker) {
         PickupLocationPickerDialog(

@@ -43,7 +43,7 @@ fun PhotoViewer(urls: List<String>, startIndex: Int, onClose: () -> Unit) {
                 onClick = onClose,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
             ) {
-                Icon(Icons.Filled.Close, contentDescription = "Sira", tint = Color.White)
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
             }
             Text(
                 "${pager.currentPage + 1} / ${urls.size}",

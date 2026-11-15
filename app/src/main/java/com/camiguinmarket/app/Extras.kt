@@ -364,13 +364,68 @@ fun userDisplayName(): String {
 fun chatPartnerName(raw: String?): String =
     raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals("Me", ignoreCase = true) } ?: "User"
 
+/**
+ * Repairs every chat thread I am part of in one pass: my own name is rewritten
+ * from the account, and a partner that an older build saved as "Me" is looked
+ * up in the users collection (falling back to "User").
+ *
+ * Called once per account; [onDone] runs when every thread has been written.
+ */
+fun repairChatNames(db: FirebaseFirestore, uid: String, onDone: () -> Unit = {}) {
+    val myName = userDisplayName()
+    db.collection("chats").whereArrayContains("participants", uid).get()
+        .addOnSuccessListener { snap ->
+            val threads = snap.documents
+            if (threads.isEmpty()) {
+                onDone()
+                return@addOnSuccessListener
+            }
+            var pending = threads.size
+            fun oneDone() {
+                pending -= 1
+                if (pending <= 0) onDone()
+            }
+            threads.forEach { doc ->
+                val participants = (doc.get("participants") as? List<*>)
+                    ?.filterIsInstance<String>().orEmpty()
+                val other = participants.firstOrNull { it != uid }
+                val names = doc.get("names") as? Map<*, *>
+                val stored = (names?.get(other) as? String)?.trim()
+                val fields = mutableMapOf<String, Any>("names.$uid" to myName)
+
+                fun write() {
+                    doc.reference.update(fields)
+                        .addOnCompleteListener { oneDone() }
+                }
+
+                if (other == null || !stored.isNullOrEmpty() && !stored.equals("Me", true)) {
+                    write()
+                } else {
+                    db.collection("users").document(other).get()
+                        .addOnSuccessListener { user ->
+                            val real = (user.getString("name") ?: user.getString("displayName"))
+                                ?.trim()
+                                ?.takeIf { it.isNotEmpty() && !it.equals("Me", true) }
+                            fields["names.$other"] = real ?: "User"
+                            write()
+                        }
+                        .addOnFailureListener {
+                            fields["names.$other"] = "User"
+                            write()
+                        }
+                }
+            }
+        }
+        .addOnFailureListener { onDone() }
+}
+
 fun updateCartQuantity(db: FirebaseFirestore, uid: String, itemId: String, quantity: Long) {
     val ref = db.collection("carts").document(uid).collection("items").document(itemId)
     if (quantity <= 0) ref.delete() else ref.update("quantity", quantity)
 }
 
 // ---------------------------------------------------------------------------
-// Paborito (Firestore: favorites/{uid}/items/{listingId})
+// Favorites (Firestore: favorites/{uid}/items/{listingId})
 // ---------------------------------------------------------------------------
 
 data class FavoriteItem(
@@ -1322,7 +1377,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
 }
 
 // ---------------------------------------------------------------------------
-// Paborito
+// Favorites
 // ---------------------------------------------------------------------------
 
 @Composable

@@ -153,7 +153,7 @@ fun RatingDialog(order: Order, onClose: () -> Unit) {
                     }
                 ) { Text("Send") }
             } else {
-                TextButton(onClick = onClose) { Text("Sira") }
+                TextButton(onClick = onClose) { Text("Close") }
             }
         },
         dismissButton = {
