@@ -45,7 +45,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
-import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.firestore.FieldValue
@@ -473,7 +472,7 @@ fun MarketScreen(
     var editListing by remember { mutableStateOf<Listing?>(null) }
     var selected by remember { mutableStateOf<Listing?>(null) }
     var mapListing by remember { mutableStateOf<Listing?>(null) }
-    var mapboxListing by remember { mutableStateOf<Listing?>(null) }
+    var webMapListing by remember { mutableStateOf<Listing?>(null) }
     var showAllMap by remember { mutableStateOf(false) }
     var showCompare by remember { mutableStateOf(false) }
     var showDeleteAccount by remember { mutableStateOf(false) }
@@ -1038,9 +1037,9 @@ fun MarketScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("🧭 Get Directions") }
                         TextButton(
-                            onClick = { selected = null; mapboxListing = l },
+                            onClick = { selected = null; webMapListing = l },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("🌐 View on Mapbox (web)") }
+                        ) { Text("🌐 Open the full map") }
                     } else if (l.sellerId == uid) {
                         Button(
                             onClick = { selected = null; mapListing = l },
@@ -1061,11 +1060,11 @@ fun MarketScreen(
                 saveListingLocation(db, l.id, point) { }
                 mapListing = null
             },
-            onOpenMapbox = { mapListing = null; mapboxListing = l }
+            onOpenWebMap = { mapListing = null; webMapListing = l }
         )
     }
 
-    // Compare the A→B route on Google Map and Mapbox (same coordinates).
+    // Full-screen A→B route planner on the Leaflet map.
     if (showCompare) {
         RouteCompareDialog(onDismiss = { showCompare = false })
     }
@@ -1096,14 +1095,14 @@ fun MarketScreen(
         )
     }
 
-    // Option B: Mapbox GL JS inside a WebView.
-    mapboxListing?.let { l ->
-        MapboxMapDialog(
+    // Full-screen Leaflet map (OpenStreetMap) for one listing.
+    webMapListing?.let { l ->
+        LeafletMapDialog(
             latitude = l.latitude ?: CamiguinCenter.latitude,
             longitude = l.longitude ?: CamiguinCenter.longitude,
             label = l.title.ifBlank { "Seller Pickup Location" },
             sellers = filtered,
-            onDismiss = { mapboxListing = null }
+            onDismiss = { webMapListing = null }
         )
     }
 }

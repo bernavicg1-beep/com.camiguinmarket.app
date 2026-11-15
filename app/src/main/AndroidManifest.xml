@@ -13,10 +13,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CamiguinMarket">
 
-        <!-- Google Maps SDK key, from local.properties (MAPS_API_KEY). -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
+        <!-- Maps are Leaflet + OpenStreetMap in a WebView: no SDK key needed. -->
 
         <!-- Para makapakigbahin og CSV (orders export). -->
         <provider

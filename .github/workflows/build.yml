@@ -30,8 +30,6 @@ jobs:
       - name: Build debug APK
         run: >-
           gradle assembleDebug --no-daemon
-          -PMAPS_API_KEY="${{ secrets.MAPS_API_KEY }}"
-          -PMAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
           -PR2_UPLOAD_URL="${{ secrets.R2_UPLOAD_URL }}"
 
       - uses: actions/upload-artifact@v7
@@ -42,8 +40,6 @@ jobs:
       - name: Check secrets
         id: secrets
         env:
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           R2_UPLOAD_URL: ${{ secrets.R2_UPLOAD_URL }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -52,11 +48,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           # Values are never printed — only whether each secret is set.
-          if [ -n "$MAPS_API_KEY" ] && [ -n "$MAPBOX_ACCESS_TOKEN" ]; then
-            available=true
-          else
-            available=false
-          fi
+          # Maps are Leaflet + OpenStreetMap, so no map key is needed at all.
+          available=true
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] \
              && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             signing=true
@@ -70,8 +63,8 @@ jobs:
           mark() { if [ -n "$1" ]; then echo "✅ set"; else echo "⬜ not set"; fi; }
 
           missing=0
-          total=8
-          for v in "$MAPS_API_KEY" "$MAPBOX_ACCESS_TOKEN" "$R2_UPLOAD_URL" \
+          total=6
+          for v in "$R2_UPLOAD_URL" \
                    "$FIREBASE_SERVICE_ACCOUNT" "$KEYSTORE_BASE64" "$KEYSTORE_PASSWORD" \
                    "$KEY_ALIAS" "$KEY_PASSWORD"; do
             [ -z "$v" ] && missing=$((missing + 1))
@@ -82,8 +75,6 @@ jobs:
             echo ""
             echo "| Secret | Status | Used for | Required |"
             echo "|---|---|---|---|"
-            echo "| \`MAPS_API_KEY\` | $(mark "$MAPS_API_KEY") | Google Maps, A→B route, place search | for release build |"
-            echo "| \`MAPBOX_ACCESS_TOKEN\` | $(mark "$MAPBOX_ACCESS_TOKEN") | Mapbox map in the WebView | for release build |"
             echo "| \`R2_UPLOAD_URL\` | $(mark "$R2_UPLOAD_URL") | Listing photo upload + push (Cloudflare Worker) | recommended |"
             echo "| \`FIREBASE_SERVICE_ACCOUNT\` | $(mark "$FIREBASE_SERVICE_ACCOUNT") | Firestore rules deploy (GitHub Actions) | recommended |"
             echo "| \`KEYSTORE_BASE64\` | $(mark "$KEYSTORE_BASE64") | Signed release APK/AAB | optional |"
@@ -93,20 +84,15 @@ jobs:
             echo ""
             echo "**Debug APK:** always built and installable — no secret required."
             echo ""
-            if [ "$available" = "true" ]; then
-              if [ "$signing" = "true" ]; then
-                echo "**Release build:** running (signed)."
-              else
-                echo "**Release build:** running (unsigned — add the keystore secrets to sign it)."
-              fi
-              echo ""
-              echo "The **AAB** (\`CamiguinMarket-release-aab\`) is uploaded too, for Google Play Console."
+            if [ "$signing" = "true" ]; then
+              echo "**Release build:** running (signed)."
             else
-              echo "**Release build:** skipped because \`MAPS_API_KEY\` or \`MAPBOX_ACCESS_TOKEN\` is missing."
-              echo "Add them in Settings → Secrets and variables → Actions, then run this workflow again."
-              echo ""
-              echo "The debug APK from this run has **no Maps API key**, so the in-app Google map will not render."
+              echo "**Release build:** running (unsigned — add the keystore secrets to sign it)."
             fi
+            echo ""
+            echo "The **AAB** (\`CamiguinMarket-release-aab\`) is uploaded too, for Google Play Console."
+            echo ""
+            echo "Maps use Leaflet + OpenStreetMap inside the app, so no map API key is needed."
             if [ "$missing" -gt 0 ]; then
               echo ""
               echo "$missing of $total secrets are not set. Optional ones stay ⬜ until you add them; nothing else breaks."
@@ -122,7 +108,6 @@ jobs:
           test -s "$RUNNER_TEMP/release.keystore"
 
       - name: Build release APK + AAB
-        if: steps.secrets.outputs.available == 'true'
         env:
           RELEASE_KEYSTORE_FILE: ${{ steps.secrets.outputs.signing == 'true' && format('{0}/release.keystore', runner.temp) || '' }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -130,8 +115,6 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: >-
           gradle assembleRelease bundleRelease --no-daemon
-          -PMAPS_API_KEY="${{ secrets.MAPS_API_KEY }}"
-          -PMAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
           -PR2_UPLOAD_URL="${{ secrets.R2_UPLOAD_URL }}"
 
       # Proves the APK really carries the release key: an unsigned or wrongly

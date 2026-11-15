@@ -4,32 +4,34 @@ Android app (Kotlin + Jetpack Compose + Firebase) for buying and selling across
 Camiguin. The seller can drop a **pickup location on the map**, and the customer
 sees it, gets an **A→B route**, and can search for places.
 
-## The two maps
+## The map
 
-| | Option A — Google Map | Option B — Mapbox |
-|---|---|---|
-| How to open | `🗺️ Map` or `View Map` on a listing | `🌐 View on Mapbox (web)` |
-| Technology | Google Maps SDK + `maps-compose` (Compose) | Mapbox GL JS v3 in a `WebView` |
-| A→B route | Google Directions API | Mapbox Directions API |
-| Place search | Google Geocoding API | Mapbox Geocoding API |
+The app uses **Leaflet with OpenStreetMap tiles** inside a `WebView`, so there is
+no Google Maps SDK and no Mapbox account anywhere in the build:
 
-Both work the same way: **all seller pins**, a **search bar on top**, and an
-**A→B route**. The HTML used by Mapbox lives in `app/src/main/assets/mapbox_map.html`.
+| | Leaflet (OpenStreetMap) |
+|---|---|
+| How to open | `🗺️ Map`, `View Map` on a listing, or `Open the full map` |
+| Technology | Leaflet 1.9.4 in `app/src/main/assets/leaflet_map.html` |
+| A→B route | OSRM public server (OpenStreetMap road data) |
+| Place search | Nominatim (OpenStreetMap) |
+| API key | none — nothing to add to `local.properties` or GitHub secrets |
+
+All seller pins, a search bar on top, and an A→B route work the same way as
+before. The map HTML lives in `app/src/main/assets/leaflet_map.html`.
 
 ## Map features
 
 - **Pickup pin per listing** — `latitude`/`longitude` (Double) stored in the
   Firestore `listings` document. The seller taps the map to place the pin.
-- **View Map / Get Directions** — see the pin inside the app, or open the
-  Google Maps app for navigation.
-- **`📍 Use My Current Location`** — GPS location (requires the location permission).
+- **View Map / Get Directions** — see the pin inside the app, or hand the
+  coordinates to any map app installed on the phone (`geo:` intent).
 - **A→B route** — `🅰️ Set A` / `🅱️ Set B` (tap the map), then `🧭 Show the A→B Route`.
   It draws the road polyline, the distance (`km`) and the time (`min`).
 - **Search bar** — `Search a place or seller…`: sellers first (name, town,
   category), then a place search in Camiguin when no seller matches.
-- **`⚖️ Compare` (Google vs Mapbox)** — the same Point A and Point B go to both
-  maps; it shows distance/time for each and the difference
-  (`✅ Very close` when ≤ 0.5 km). Handy for testing and comparing.
+- **`🛣️ Route`** — a full-screen A→B planner: set the pin, press `Set A` or
+  `Set B`, then `Show the A→B Route` (distance and time from OSRM).
 
 ## New design (mockup)
 
@@ -244,36 +246,21 @@ and any signed-in user can read it.
 ⚠️ Without `R2_UPLOAD_URL` the app still works — only photo upload fails, and the
 dialog shows a clear error message.
 
-## Required API keys (never commit these!)
+## API keys
 
-1. **Google Maps API key** — in Google Cloud Console enable:
-   - `Maps SDK for Android`
-   - `Directions API` (for the A→B route)
-   - `Geocoding API` (for the search bar)
+The **map needs no key**: Leaflet, the OpenStreetMap tiles, OSRM and Nominatim
+are all free and keyless. There is no Google Maps or Mapbox entry to fill in
+`local.properties` anymore.
 
-   Restrict the key to the package name (`com.camiguinmarket.app`) and SHA-1.
-   Do not reuse the Firebase key for this.
-2. **Mapbox public access token** — `mapbox.com` → Account → Tokens (public token).
-   Directions and Geocoding are included in the free tier.
+What is still needed: a **Firebase project** (`app/google-services.json`) and,
+optionally, `R2_UPLOAD_URL` for photo uploads through the Cloudflare Worker.
 
-Put them in `local.properties` (not committed, it is in `.gitignore`):
-
-```properties
-MAPS_API_KEY=your_google_maps_key
-MAPBOX_ACCESS_TOKEN=pk.your_mapbox_token
-```
-
-`app/build.gradle.kts` reads them from `local.properties`, a Gradle property
-(`-PMAPS_API_KEY=...`), or an environment variable — they are never written into
-the code.
-
-On GitHub: **Settings → Secrets and variables → Actions**, add `MAPS_API_KEY`,
-`MAPBOX_ACCESS_TOKEN`, and `R2_UPLOAD_URL` (the image Worker URL).
+On GitHub: **Settings → Secrets and variables → Actions**, add `R2_UPLOAD_URL`
+and the signing secrets below if you want a signed release.
 
 The build workflow writes a **Build secrets status** table to the run summary. It
 shows ✅ for every secret that is set and ⬜ for the ones that are not — values are
-never printed. The debug APK is always built; the release build runs only when
-`MAPS_API_KEY` and `MAPBOX_ACCESS_TOKEN` are set.
+never printed. Debug and release builds both run without any map key.
 
 ### Signing the release APK (optional)
 

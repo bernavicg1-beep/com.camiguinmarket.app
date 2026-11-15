@@ -7,8 +7,8 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-// Secrets (Google Maps API key, Mapbox token): put them in local.properties
-// (not committed), or in a Gradle property (-PMAPS_API_KEY=...), or in an
+// Secrets (Workers URL, signing): put them in local.properties
+// (not committed), or in a Gradle property (-PR2_UPLOAD_URL=...), or in an
 // environment variable. Never commit them to a public repository.
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
@@ -21,8 +21,7 @@ fun secret(name: String): String =
         ?: System.getenv(name)
         ?: ""
 
-val mapsApiKey: String = secret("MAPS_API_KEY")
-val mapboxAccessToken: String = secret("MAPBOX_ACCESS_TOKEN")
+// Maps use Leaflet with OpenStreetMap tiles, so no Google or Mapbox key is needed.
 // Base URL of the Cloudflare Worker that uploads photos to R2.
 // Example: https://camiguin-market-images.<subdomain>.workers.dev
 val r2UploadUrl: String = secret("R2_UPLOAD_URL")
@@ -42,15 +41,9 @@ android {
         applicationId = "com.camiguinmarket.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.11"
+        versionCode = 12
+        versionName = "0.12"
 
-        // Used by AndroidManifest.xml: ${MAPS_API_KEY}
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
-        // Used by the Mapbox WebView screen.
-        buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"$mapboxAccessToken\"")
-        // Used by the Directions API (A→B route) and the Geocoding API (search bar).
-        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
         // The Worker that stores photos in Cloudflare R2 (no secret here).
         buildConfigField("String", "R2_UPLOAD_URL", "\"$r2UploadUrl\"")
     }
@@ -100,7 +93,6 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-messaging")
 
-    // Google Map inside the Compose app (Option A).
-    implementation("com.google.maps.android:maps-compose:9.0.1")
-    implementation("com.google.android.gms:play-services-location:21.4.0")
+    // Maps are Leaflet + OpenStreetMap inside a WebView, so neither the Google
+    // Maps SDK nor the Mapbox SDK is a dependency anymore.
 }

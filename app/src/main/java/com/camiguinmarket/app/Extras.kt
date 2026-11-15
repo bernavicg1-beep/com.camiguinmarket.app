@@ -2183,7 +2183,7 @@ fun HomeTab(
         item {
             SectionTitle("Featured Products") {
                 TextButton(onClick = onMap) { Text("🗺️ Map") }
-                TextButton(onClick = onCompare) { Text("⚖️ Compare") }
+                TextButton(onClick = onCompare) { Text("🛣️ Route") }
             }
         }
         if (listings.isEmpty()) {
