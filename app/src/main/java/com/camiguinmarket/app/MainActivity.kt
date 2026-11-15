@@ -673,7 +673,7 @@ fun MarketScreen(
         (category == "All" || it.category == category) &&
             (town == "All" || it.town == town) &&
             matchesPrice(it.price, priceFilter) &&
-            (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true))
+            (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true) || it.sellerName.contains(query, true) || it.town.contains(query, true))
     }.let { list -> sortListings(list, sort) }
 
     Scaffold(

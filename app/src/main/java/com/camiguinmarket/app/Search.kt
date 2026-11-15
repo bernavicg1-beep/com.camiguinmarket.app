@@ -39,7 +39,7 @@ fun GlobalSearchScreen(
         (category == "All" || it.category == category) &&
             (town == "All" || it.town == town) &&
             matchesPrice(it.price, priceFilter) &&
-            (q.isBlank() || it.title.contains(q, true) || it.description.contains(q, true))
+            (q.isBlank() || it.title.contains(q, true) || it.description.contains(q, true) || it.sellerName.contains(q, true) || it.town.contains(q, true))
     }.let { list -> sortListings(list, sort) }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
