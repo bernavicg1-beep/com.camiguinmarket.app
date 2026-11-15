@@ -724,6 +724,13 @@ fun ListingCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (listing.isPerishable && listing.expiresAt > 0) {
+                    Text(
+                        "⏳ Expires ${formatExpiry(listing.expiresAt)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF8A6D00)
+                    )
+                }
                 if (showViews) {
                     Text(
                         "👁 ${listing.views} views",
