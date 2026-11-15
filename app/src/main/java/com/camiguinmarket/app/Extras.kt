@@ -729,9 +729,9 @@ private val categoryTints = linkedMapOf(
 )
 
 @Composable
-fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
+fun CategoryGrid(selected: String, onSelect: (String) -> Unit, columns: Int = 3) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        categoryIcons.entries.toList().chunked(3).forEach { row ->
+        categoryIcons.entries.toList().chunked(columns).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { (name, icon) ->
                     val tint = categoryTints[name] ?: BrandBlue
@@ -754,7 +754,7 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                     ) {
                         Box(
                             Modifier
-                                .size(44.dp)
+                                .size(if (columns >= 4) 40.dp else 44.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(tint),
                             contentAlignment = Alignment.Center
@@ -778,7 +778,7 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit) {
                         )
                     }
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -1928,7 +1928,8 @@ fun HomeTab(
                 TextButton(onClick = onAllCategories) { Text("See All") }
             }
         }
-        item { CategoryGrid(category, onCategory) }
+        // Four tiles per row on Home, matching the mockup's "Shop by Category".
+        item { CategoryGrid(category, onCategory, columns = 4) }
         if (trending.isNotEmpty()) {
             item { SectionTitle("🔥 Trending now") }
             // Two cards per row, as in the mockup's "Trending Now" grid.
