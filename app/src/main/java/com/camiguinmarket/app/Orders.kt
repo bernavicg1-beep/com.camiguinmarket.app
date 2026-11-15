@@ -582,7 +582,7 @@ fun OrderDetailScreen(
     val db = remember { FirebaseFirestore.getInstance() }
     val isSeller = order.sellerId == uid
     val otherId = if (isSeller) order.buyerId else order.sellerId
-    val otherName = if (isSeller) order.buyerName else order.sellerName
+    val otherName = chatPartnerName(if (isSeller) order.buyerName else order.sellerName)
 
     Column(
         Modifier.fillMaxSize().padding(14.dp),
@@ -731,7 +731,7 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
                     ChatThread(
                         id = d.id,
                         otherUid = other,
-                        otherName = names?.get(other) as? String ?: "User",
+                        otherName = chatPartnerName(names?.get(other) as? String),
                         listingTitle = d.getString("listingTitle") ?: "",
                         lastMessage = d.getString("lastMessage") ?: "",
                         updatedAt = d.getLong("updatedAt") ?: 0L,

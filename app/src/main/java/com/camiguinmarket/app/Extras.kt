@@ -350,11 +350,19 @@ fun addToCart(
     }.addOnFailureListener { onResult(it.localizedMessage ?: "Failed to add to cart.") }
 }
 
-fun userDisplayName(): String =
-    FirebaseAuth.getInstance().currentUser
-        ?.displayName
-        ?.takeIf { it.isNotBlank() }
-        ?: "Bernavic Gamo"
+fun userDisplayName(): String {
+    val user = FirebaseAuth.getInstance().currentUser
+    return user?.displayName?.takeIf { it.isNotBlank() }
+        ?: user?.email?.substringBefore('@')?.takeIf { it.isNotBlank() }
+        ?: "User"
+}
+
+/**
+ * Threads written by older builds stored the sender's own name as "Me", so the
+ * other side saw "Me" instead of a person. Older documents are cleaned up here.
+ */
+fun chatPartnerName(raw: String?): String =
+    raw?.trim()?.takeIf { it.isNotEmpty() && !it.equals("Me", ignoreCase = true) } ?: "User"
 
 fun updateCartQuantity(db: FirebaseFirestore, uid: String, itemId: String, quantity: Long) {
     val ref = db.collection("carts").document(uid).collection("items").document(itemId)
@@ -455,15 +463,18 @@ fun chatTime(ts: Long): String =
 
 fun ensureChat(db: FirebaseFirestore, uid: String, otherUid: String, otherName: String, listingTitle: String) {
     val id = chatIdFor(uid, otherUid)
-    db.collection("chats").document(id).set(
-        mapOf(
-            "participants" to listOf(uid, otherUid),
-            "names" to mapOf(uid to "Me", otherUid to otherName),
-            "listingTitle" to listingTitle,
-            "updatedAt" to System.currentTimeMillis()
-        ),
-        com.google.firebase.firestore.SetOptions.merge()
+    // Field paths only: writing the whole `names` map let one device overwrite
+    // the other participant's name (that is where "Me" came from).
+    val fields = mutableMapOf<String, Any>(
+        "participants" to listOf(uid, otherUid),
+        "names.$uid" to userDisplayName(),
+        "listingTitle" to listingTitle,
+        "updatedAt" to System.currentTimeMillis()
     )
+    val knownName = chatPartnerName(otherName)
+    if (knownName != "User") fields["names.$otherUid"] = knownName
+    db.collection("chats").document(id)
+        .set(fields, com.google.firebase.firestore.SetOptions.merge())
 }
 
 fun sendChatMessage(
@@ -1437,9 +1448,12 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     var lastTypingWrite by remember { mutableStateOf(0L) }
     var tick by remember { mutableStateOf(0L) }
     val chatId = remember(otherUid) { chatIdFor(uid, otherUid) }
+    val partner = remember(otherName) { chatPartnerName(otherName) }
 
     LaunchedEffect(chatId) {
-        ensureChat(db, uid, otherUid, otherName, listingTitle)
+        ensureChat(db, uid, otherUid, partner, listingTitle)
+        // Repair threads where an older build saved my own name as "Me".
+        db.collection("chats").document(chatId).update("names.$uid", userDisplayName())
     }
 
     // Mark as read while the thread is open (unread = 0, read receipt).
@@ -1499,7 +1513,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    otherName.take(1).uppercase(),
+                    partner.take(1).uppercase(),
                     color = BrandBlue,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
@@ -1507,7 +1521,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(otherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(partner, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
                     when {
                         typing -> "typing…"
@@ -1524,7 +1538,6 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(messages, key = { it.id }) { m ->
                 val mine = m.from == uid
-                val senderName = if (mine) userDisplayName() else otherName
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
@@ -1591,7 +1604,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             )
             Button(
                 onClick = {
-                    sendChatMessage(db, uid, otherUid, otherName, text, listingTitle)
+                    sendChatMessage(db, uid, otherUid, partner, text, listingTitle)
                     text = ""
                     db.collection("chats").document(chatId).update("typing.$uid", 0L)
                 },
