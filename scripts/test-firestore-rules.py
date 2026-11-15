@@ -312,6 +312,49 @@ check("mod: listing for non-admin delete", "POST", "/listings", 200,
       uid="u1", body=app_listing("u1"), doc_id="mod2")
 check("mod: non-admin cannot delete (2)", "DELETE", "/listings/mod2", 403, uid="u3")
 
+# --- admin photo deletion + the Worker's admins check -------------------------
+def app_listing_with_photos(seller, photos):
+    """The app's `Listing` as written by PostDialog, with photos attached."""
+    doc = app_listing(seller)
+    doc["fields"]["imageUrl"] = {"stringValue": photos[0] if photos else ""}
+    doc["fields"]["imageUrls"] = {
+        "arrayValue": {"values": [{"stringValue": u} for u in photos]}
+    }
+    # Perishable fields from the same dialog (0 = never expires).
+    doc["fields"]["isPerishable"] = {"booleanValue": False}
+    doc["fields"]["expiresAt"] = {"integerValue": "0"}
+    return doc
+
+
+PHOTO_BASE = "https://worker.example/i/listing_images"
+photos = [f"{PHOTO_BASE}/u2/p{i}.jpg" for i in range(6)]
+
+# Photo cleanup in the app runs only after the document delete succeeds, so the
+# rules must: (a) accept a listing that carries photos, and (b) allow the admin
+# (never a normal user) to delete someone else's listing.
+check("photos: seller posts a listing with 6 photos", "POST", "/listings", 200,
+      uid="u2", body=app_listing_with_photos("u2", photos), doc_id="photodoc1")
+check("photos: seven photos are rejected", "POST", "/listings", 403, uid="u2",
+      body=app_listing_with_photos("u2", photos + [f"{PHOTO_BASE}/u2/p6.jpg"]),
+      doc_id="photodoc2")
+check("photos: another user can open the listing", "GET", "/listings/photodoc1", 200,
+      uid="u3")
+check("photos: non-admin cannot delete the listing", "DELETE", "/listings/photodoc1", 403,
+      uid="u3")
+check("photos: admin can delete the listing (photo cleanup runs after)", "DELETE",
+      "/listings/photodoc1", 200, uid="admin1")
+
+# The Worker decides "admin" by reading `admins/{uid}` with the service account;
+# these checks pin what that lookup can see for each kind of caller.
+check("worker: admin lookup finds the marker", "GET", "/admins/admin1", 200,
+      uid="admin1")
+check("worker: a normal user's lookup finds no marker", "GET", "/admins/u1", 404,
+      uid="u1")
+check("worker: anonymous admin lookup is denied", "GET", "/admins/admin1", 403)
+check("worker: a user cannot make themselves an admin", "POST", "/admins", 403,
+      uid="u3", body={"fields": {"active": {"booleanValue": True}}}, doc_id="u3")
+
+
 # --- reports -----------------------------------------------------------------
 def report_doc(listing_id, reporter, reason="Scam o pangilad"):
     return {"fields": {
