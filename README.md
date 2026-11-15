@@ -462,6 +462,23 @@ RELEASE_KEY_PASSWORD=…
 
 Never send these values in chat, a commit or a screenshot.
 
+### Publishing a release
+
+`.github/workflows/release.yml` builds the signed APK + AAB and attaches them to
+a **GitHub Release**, which gives you a permanent download link (Actions
+artifacts expire after 90 days).
+
+Run it from the Actions tab → *Release APK* → *Run workflow*, or push a tag:
+
+```bash
+git tag v0.8 && git push origin v0.8
+```
+
+On a manual run the tag comes from the app's `versionName` (`v0.8`), so bump
+`versionCode`/`versionName` in `app/build.gradle.kts` before releasing. The job
+stops early if the four signing secrets are missing, and verifies the APK with
+`apksigner` before publishing, so a release is always installable as an update.
+
 ## Not tested yet
 
 There is no device/emulator in the development environment, so **runtime behaviour
