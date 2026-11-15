@@ -646,6 +646,8 @@ fun MarketScreen(
             if (overlay == null) {
                 Column {
                 BrandHeader(
+                    query = query,
+                    onQuery = { query = it },
                     cartCount = cartCount,
                     unreadCount = unread,
                     chatUnread = chatUnread,
@@ -659,13 +661,13 @@ fun MarketScreen(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
+                        .background(BrandHeaderBrush)
                         .statusBarsPadding()
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { overlay = null }) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
+                        Text("←", style = MaterialTheme.typography.titleLarge, color = Color.White)
                     }
                     Text(
                         when (overlay) {
@@ -682,7 +684,8 @@ fun MarketScreen(
                             else -> "Chat"
                         },
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
             }

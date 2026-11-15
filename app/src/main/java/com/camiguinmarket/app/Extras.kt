@@ -551,6 +551,8 @@ fun BrandLogo(size: Dp = 40.dp, modifier: Modifier = Modifier, ring: Boolean = f
 
 @Composable
 fun BrandHeader(
+    query: String,
+    onQuery: (String) -> Unit,
     cartCount: Int,
     unreadCount: Int,
     chatUnread: Int,
@@ -559,37 +561,55 @@ fun BrandHeader(
     onChats: () -> Unit,
     onNotifications: () -> Unit
 ) {
-    // Blue gradient bar from the mockups, with white type and icons.
-    Box(
+    // Deep blue bar with the search field inside it, as in the mockups.
+    Column(
         Modifier
             .fillMaxWidth()
             .background(BrandHeaderBrush)
             .statusBarsPadding()
-            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
+            .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BrandLogo(42.dp, ring = true)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            BrandLogo(34.dp, ring = true)
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Camiguin Market",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    "Buy • Sell • Connect",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.88f)
-                )
-            }
-            IconTextButton(Icons.Filled.Search, 0, onSearch, tint = Color.White)
-            IconTextButton(Icons.Filled.ShoppingCart, cartCount, onCart, tint = Color.White)
-            IconTextButton(Icons.Filled.Chat, chatUnread, onChats, tint = Color.White)
-            IconTextButton(Icons.Filled.Notifications, unreadCount, onNotifications, tint = Color.White)
+            Text(
+                "Camiguin Market",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.weight(1f)
+            )
+            HeaderIcon(Icons.Filled.Search, 0, onSearch)
+            HeaderIcon(Icons.Filled.ShoppingCart, cartCount, onCart)
+            HeaderIcon(Icons.Filled.Chat, chatUnread, onChats)
+            HeaderIcon(Icons.Filled.Notifications, unreadCount, onNotifications)
+        }
+        Spacer(Modifier.height(10.dp))
+        SearchBar(query, onQuery)
+    }
+}
+
+/** White glyph on a soft white circle: the round header buttons of the mockups. */
+@Composable
+private fun HeaderIcon(icon: ImageVector, badge: Int, onClick: () -> Unit) {
+    Box {
+        Box(
+            Modifier
+                .padding(horizontal = 2.dp)
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.16f))
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+        if (badge > 0) {
+            Badge(
+                modifier = Modifier.align(Alignment.TopEnd),
+                containerColor = BrandBadge,
+                contentColor = Color.White
+            ) { Text(if (badge > 9) "9+" else "$badge") }
         }
     }
 }
@@ -737,45 +757,55 @@ private val categoryTints = linkedMapOf(
     "Other" to Color(0xFF00695C)
 )
 
+/** One-line description under each category name, as in the mockup list. */
+val categoryBlurbs: Map<String, String> = linkedMapOf(
+    "All" to "Everything on the market",
+    "Food & Seafood" to "Fresh catch from the island",
+    "Local Products" to "Camiguin-made goods",
+    "Clothing" to "Wear and accessories",
+    "Gadgets" to "Phones and electronics",
+    "Other" to "And more…"
+)
+
+/**
+ * Coloured icon tiles with the label underneath, exactly like the mockup's
+ * "Shop by Category" row. "All" lives in the filter chips, not in the tiles.
+ */
 @Composable
 fun CategoryGrid(selected: String, onSelect: (String) -> Unit, columns: Int = 3) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        categoryIcons.entries.toList().chunked(columns).forEach { row ->
+    val entries = categoryIcons.entries.filterNot { it.key == "All" }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        entries.chunked(columns).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { (name, icon) ->
                     val tint = categoryTints[name] ?: BrandBlue
                     val active = name == selected
                     Column(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .then(
-                                if (active) Modifier.border(
-                                    2.dp,
-                                    BrandBlue,
-                                    RoundedCornerShape(16.dp)
-                                ) else Modifier
-                            )
-                            .clickable { onSelect(name) }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        Modifier.weight(1f).clickable { onSelect(name) },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Box(
                             Modifier
-                                .size(if (columns >= 4) 40.dp else 44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(tint),
+                                .size(if (columns >= 4) 56.dp else 60.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(tint)
+                                .then(
+                                    if (active) Modifier.border(
+                                        3.dp,
+                                        BrandGold,
+                                        RoundedCornerShape(16.dp)
+                                    ) else Modifier
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 icon,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(7.dp))
                         Text(
                             name,
                             style = MaterialTheme.typography.labelSmall,
@@ -788,6 +818,73 @@ fun CategoryGrid(selected: String, onSelect: (String) -> Unit, columns: Int = 3)
                     }
                 }
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/**
+ * The Categories screen lists the categories as white rows with a thumbnail,
+ * a name and a short description, like the mockup.
+ */
+@Composable
+fun CategoryRows(selected: String, onSelect: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        categoryIcons.entries.forEach { (name, icon) ->
+            val tint = categoryTints[name] ?: BrandBlue
+            val active = name == selected
+            Card(
+                onClick = { onSelect(name) },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (active) Modifier.border(2.dp, BrandBlue, RoundedCornerShape(16.dp))
+                        else Modifier
+                    )
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(tint),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (active) BrandBlue else BrandInk
+                        )
+                        Text(
+                            categoryBlurbs[name] ?: "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = BrandMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        "\u203A",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = BrandMuted
+                    )
+                }
             }
         }
     }
@@ -1485,42 +1582,29 @@ fun ProfileScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onFavorites, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.Favorite, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Favorites", maxLines = 1)
-            }
-            OutlinedButton(onClick = onOrders, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Orders", maxLines = 1)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onInbox, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("Chats")
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onSavedSearches, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("Saved searches")
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onListingStats, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("Listing stats")
-        }
-        if (isAdmin) {
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onModeration, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Moderation")
+        // White rows with a coloured icon, a label and a chevron (mockup).
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column {
+                ProfileRow(Icons.Filled.ReceiptLong, "My listings", onListingStats, "${myListings.size}")
+                ProfileDivider()
+                ProfileRow(Icons.Filled.Favorite, "Favorites", onFavorites)
+                ProfileDivider()
+                ProfileRow(Icons.Filled.ReceiptLong, "Orders", onOrders)
+                ProfileDivider()
+                ProfileRow(Icons.Filled.Chat, "Chats", onInbox)
+                ProfileDivider()
+                ProfileRow(Icons.Filled.Notifications, "Saved searches", onSavedSearches)
+                ProfileDivider()
+                ProfileRow(Icons.Filled.Storefront, "Listing stats", onListingStats)
+                if (isAdmin) {
+                    ProfileDivider()
+                    ProfileRow(Icons.Filled.Delete, "Moderation", onModeration)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -1558,6 +1642,57 @@ fun ProfileScreen(
             style = MaterialTheme.typography.labelSmall
         )
     }
+}
+
+/** One tappable row of the profile menu card. */
+@Composable
+private fun ProfileRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    trailing: String? = null
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(BrandSky),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
+        if (trailing != null) {
+            Text(trailing, style = MaterialTheme.typography.bodyMedium, color = BrandMuted)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text("\u203A", style = MaterialTheme.typography.titleMedium, color = BrandMuted)
+    }
+}
+
+/** Hairline between two profile rows. */
+@Composable
+private fun ProfileDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 62.dp)
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    )
 }
 
 /**
@@ -1820,15 +1955,11 @@ fun HomeTab(
         item {
             val ctx = LocalContext.current
             var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }
+            LaunchedEffect(query) {
+                if (query.isNotBlank()) addRecentSearch(ctx, query)
+                recent = loadRecentSearches(ctx)
+            }
             Column {
-                SearchBar(
-                    query = query,
-                    onQuery = onQuery,
-                    onSubmit = {
-                        addRecentSearch(ctx, query)
-                        recent = loadRecentSearches(ctx)
-                    }
-                )
                 val suggestions = if (query.isBlank()) emptyList() else listings
                     .map { it.title }
                     .distinct()
@@ -2025,7 +2156,7 @@ fun CategoriesTab(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        item { CategoryGrid(category, onCategory) }
+        item { CategoryRows(category, onCategory) }
         item {
             Column {
                 Text("Town", style = MaterialTheme.typography.labelMedium)
@@ -2169,7 +2300,7 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
                     db.collection("savedSearches").document(uid).collection("items")
                         .document(s.id).update("name", name.trim())
                     editing = null
-                }) { Text("Tipigi") }
+                }) { Text("Save") }
             },
             dismissButton = {
                 TextButton(onClick = { editing = null }) { Text("No") }
