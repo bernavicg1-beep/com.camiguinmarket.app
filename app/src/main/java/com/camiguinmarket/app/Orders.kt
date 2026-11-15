@@ -498,7 +498,7 @@ fun SellerActions(
             onClick = onCancel,
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935))
-        ) { Text("I-cancel") }
+        ) { Text("Cancel") }
     }
 }
 

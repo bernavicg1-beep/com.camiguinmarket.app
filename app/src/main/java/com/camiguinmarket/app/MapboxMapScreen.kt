@@ -59,7 +59,7 @@ fun MapboxMapScreen(
                 openDirections(context, LatLng(lat, lng), label)
             },
             routeHandler = { distanceMeters, durationSeconds ->
-                status = "Mapbox ruta: " +
+                status = "Mapbox route: " +
                     formatRouteStats(distanceMeters, durationSeconds)
                 onRouteResult?.invoke(distanceMeters, durationSeconds)
             }
@@ -197,7 +197,7 @@ fun MapboxRouteView(
                 openDirections(context, LatLng(lat, lng), "Seller Pickup Location")
             },
             routeHandler = { distanceMeters, durationSeconds ->
-                status = "Mapbox ruta: " + formatRouteStats(distanceMeters, durationSeconds)
+                status = "Mapbox route: " + formatRouteStats(distanceMeters, durationSeconds)
                 onRouteResult?.invoke(distanceMeters, durationSeconds)
             }
         )

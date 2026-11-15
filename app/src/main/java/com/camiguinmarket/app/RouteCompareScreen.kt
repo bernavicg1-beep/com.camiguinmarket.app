@@ -120,8 +120,8 @@ fun RouteCompareScreen(
                     )
                 }
                 Text(
-                    "A: ${pointA?.let { formatCoordinates(it) } ?: "wala pa"}  •  " +
-                        "B: ${pointB?.let { formatCoordinates(it) } ?: "wala pa"}",
+                    "A: ${pointA?.let { formatCoordinates(it) } ?: "not set yet"}  •  " +
+                        "B: ${pointB?.let { formatCoordinates(it) } ?: "not set yet"}",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -140,7 +140,7 @@ fun RouteCompareScreen(
                 }
                 Text(
                     "Google: " + (googleStats
-                        ?: if (googleLoading) "nagkalkulo…" else "wala pa"),
+                        ?: if (googleLoading) "calculating…" else "not set yet"),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 googleError?.let { error ->
@@ -151,7 +151,7 @@ fun RouteCompareScreen(
                     )
                 }
                 Text(
-                    "Mapbox: " + (mapboxText ?: "wala pa"),
+                    "Mapbox: " + (mapboxText ?: "not set yet"),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 difference?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

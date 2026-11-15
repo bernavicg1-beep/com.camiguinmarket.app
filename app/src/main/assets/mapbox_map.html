@@ -40,25 +40,25 @@
 <body>
 
 <div id="map"></div>
-<div id="setup">Walay Mapbox access token. Idugang ang MAPBOX_ACCESS_TOKEN sa local.properties.</div>
+<div id="setup">No Mapbox access token. Add MAPBOX_ACCESS_TOKEN to local.properties.</div>
 
 <div id="searchPanel" class="panel">
     <div class="row">
-        <input id="searchBox" type="text" placeholder="Pangita og lugar o seller…" />
+        <input id="searchBox" type="text" placeholder="Search for a place or seller…" />
         <button id="searchBtn">🔍</button>
     </div>
     <div id="results"></div>
 </div>
 
 <div id="routePanel" class="panel">
-    <div><b>Ruta A→B</b></div>
-    <div id="routeInfo">A: wala pa ma-set • B: wala pa ma-set</div>
+    <div><b>Route A→B</b></div>
+    <div id="routeInfo">A: not set yet • B: not set yet</div>
     <div class="row">
         <button id="setA" class="ghost">🅰️ Set A</button>
         <button id="setB" class="ghost">🅱️ Set B</button>
     </div>
     <div class="row">
-        <button id="routeBtn">🧭 Ipakita ang Ruta A→B</button>
+        <button id="routeBtn">🧭 Show Route A→B</button>
         <button id="clearBtn" class="ghost">🗑️</button>
     </div>
     <div id="routeStats"></div>
@@ -70,9 +70,9 @@
     var pickMode = false;
     var label = "Seller Pickup Location";
     var accessToken = "";
-    var sellerLocation = null;                 // ang listing/pickup pin
+    var sellerLocation = null;                 // the listing/pickup pin
     var showRoute = false;
-    var sellers = [];                          // tanan listing nga may pin
+    var sellers = [];                          // every listing that has a pin
     var sellerMarkers = {};
     var sellerMarker = null;
     var pickMarker = null;
@@ -83,9 +83,9 @@
     var pointB = null;
     var tapTarget = null;                      // "A" | "B" | null
     var routeReady = false;
-    var pendingRoute = null;                   // A/B nga gipadala sa wala pa ma-load ang mapa
+    var pendingRoute = null;                   // A/B sent before the map finished loading
 
-    // Stub: kon moabot ang setRoute sa wala pa ang initMap, ipundo lang una.
+    // Stub: if setRoute arrives before initMap, buffer it for now.
     window.setRoute = function (aLat, aLng, bLat, bLng) {
         pendingRoute = [aLat, aLng, bLat, bLng];
     };
@@ -94,14 +94,14 @@
         return window.AndroidMap || null;
     }
 
-    // Mensahe kon walay internet o napakyas ang tawag sa Mapbox API.
+    // Message when there is no internet or the Mapbox API call fails.
     function offlineMessage() {
         return (navigator.onLine === false)
-            ? "Walay internet connection. I-check ang data o WiFi."
-            : "Napakyas ang pagkuha sa datos. Sulayi pag-usab.";
+            ? "No internet connection. Check your data or WiFi."
+            : "Failed to load the data. Please try again.";
     }
 
-    // Padaganon ang function kung andam na ang style sa mapa.
+    // Run the function once the map style is ready.
     function whenLoaded(fn) {
         if (!map) { return; }
         if (map.isStyleLoaded()) { fn(); } else { map.once("load", fn); }
@@ -142,8 +142,8 @@
 
     function updateRouteInfo() {
         document.getElementById("routeInfo").textContent =
-            "A: " + (pointA ? fmt(pointA) : "wala pa ma-set") +
-            " • B: " + (pointB ? fmt(pointB) : "wala pa ma-set");
+            "A: " + (pointA ? fmt(pointA) : "not set yet") +
+            " • B: " + (pointB ? fmt(pointB) : "not set yet");
     }
 
     function setRoutePoint(which, lng, lat) {
@@ -182,14 +182,14 @@
     function buildRoute() {
         var stats = document.getElementById("routeStats");
         if (!pointA || !pointB) {
-            stats.textContent = "Kinahanglan ang Point A (start) ug Point B (destination).";
+            stats.textContent = "Point A (start) and Point B (destination) are required.";
             return;
         }
         if (navigator.onLine === false) {
-            stats.textContent = "Walay internet connection. I-check ang data o WiFi.";
+            stats.textContent = "No internet connection. Check your data or WiFi.";
             return;
         }
-        stats.textContent = "Ginakuha ang ruta…";
+        stats.textContent = "Fetching the route…";
         var url = "https://api.mapbox.com/directions/v5/mapbox/driving/" +
             pointA.lng + "," + pointA.lat + ";" + pointB.lng + "," + pointB.lat +
             "?geometries=geojson&overview=full&access_token=" + accessToken;
@@ -197,14 +197,14 @@
         fetch(url)
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                // Kon invalid ang token o may error, ipakita ang mensahe sa Mapbox.
+                // Show the Mapbox message when the token is invalid or the call errors.
                 if (data.message) {
                     stats.textContent = "Mapbox: " + data.message +
-                        " (i-check ang MAPBOX_ACCESS_TOKEN).";
+                        " (check MAPBOX_ACCESS_TOKEN).";
                     return;
                 }
                 if (!data.routes || !data.routes.length) {
-                    stats.textContent = "Walay ruta nga nakit-an.";
+                    stats.textContent = "No route found.";
                     return;
                 }
                 var route = data.routes[0];
@@ -222,7 +222,7 @@
                 var mins = Math.max(1, Math.round(route.duration / 60));
                 stats.textContent = "📏 " + km + " km • ⏱️ " + mins + " min";
 
-                // Ipasa ang numero ngadto sa Android (para itandi sa Google Map).
+                // Pass the numbers to Android (to compare with Google Maps).
                 var bridge = android();
                 if (bridge && typeof bridge.onRoute === "function") {
                     bridge.onRoute(route.distance, route.duration);
@@ -295,7 +295,7 @@
 
         if (navigator.onLine === false) {
             document.getElementById("results").innerHTML =
-                "<div class='result'>Walay internet connection. I-check ang data o WiFi.</div>";
+                "<div class='result'>No internet connection. Check your data or WiFi.</div>";
             return;
         }
 
@@ -309,7 +309,7 @@
                 if (data.message) {
                     document.getElementById("results").innerHTML =
                         "<div class='result'>Mapbox: " + data.message +
-                        " (i-check ang MAPBOX_ACCESS_TOKEN).</div>";
+                        " (check MAPBOX_ACCESS_TOKEN).</div>";
                     return;
                 }
                 var places = (data.features || []).map(function (f) {
@@ -323,7 +323,7 @@
                     showResults(places);
                 } else {
                     document.getElementById("results").innerHTML =
-                        "<div class='result'>Walay nakit-an nga lugar o seller.</div>";
+                        "<div class='result'>No place or seller found.</div>";
                 }
             })
             .catch(function () {
@@ -332,9 +332,9 @@
             });
     }
 
-    // Gitawag gikan sa Android (MapboxMapScreen) pinaagi sa evaluateJavascript.
+    // Called from Android (MapboxMapScreen) via evaluateJavascript.
     window.initMap = function (config) {
-        if (initialized) { return; }              // idempotent: dili mobalik og buhat sa mapa
+        if (initialized) { return; }              // idempotent: do not rebuild the map
         if (!config || !config.token) {
             document.getElementById("setup").classList.add("show");
             return;
@@ -370,13 +370,13 @@
         }), "top-right");
 
         map.on("load", function () {
-            // Pin sa seller / pickup point.
+            // Seller / pickup pin.
             sellerMarker = new mapboxgl.Marker({ color: "#ff4757" })
                 .setLngLat([config.lng, config.lat])
-                .setPopup(showPin(config.lat, config.lng, "Dinhi mokuha ang customer."))
+                .setPopup(showPin(config.lat, config.lng, "The customer picks up here."))
                 .addTo(map);
 
-            // Tanan nga seller nga may pickup pin.
+            // Every seller with a pickup pin.
             sellers.forEach(function (s) {
                 sellerMarkers[s.id] = new mapboxgl.Marker({ color: "#1e90ff" })
                     .setLngLat([s.lng, s.lat])
@@ -384,18 +384,18 @@
                     .addTo(map);
             });
 
-            // Point B default: ang listing nga giablihan (kon naa).
+            // Point B default: the listing that was opened, if any.
             if (showRoute && config.routeB) {
                 setRoutePoint("B", config.routeB.lng, config.routeB.lat);
             }
 
-            // Kon may A ug B na daan (compare mode), ipakita dayon ang ruta.
+            // If A and B are already known (compare mode), show the route right away.
             if (showRoute && config.routeA) {
                 setRoutePoint("A", config.routeA.lng, config.routeA.lat);
                 if (config.autoRoute) { buildRoute(); }
             }
 
-            // A/B nga napundo sa wala pa ma-load ang mapa.
+            // A/B buffered before the map finished loading.
             if (pendingRoute) {
                 window.setRoute(
                     pendingRoute[0], pendingRoute[1], pendingRoute[2], pendingRoute[3]
@@ -407,7 +407,7 @@
             if (bridge) { bridge.onReady(); }
         });
 
-        // Gitawag gikan sa Android aron itakda ang A ug B dayon kuhaon ang ruta.
+        // Called from Android to set A and B and then fetch the route.
         window.setRoute = function (aLat, aLng, bLat, bLng) {
             whenLoaded(function () {
                 setRoutePoint("A", aLng, aLat);
@@ -424,17 +424,17 @@
         document.getElementById("setA").addEventListener("click", function () {
             tapTarget = "A";
             document.getElementById("routeStats").textContent =
-                "Pindota ang mapa aron ibutang ang Point A (start).";
+                "Tap the map to place Point A (start).";
         });
         document.getElementById("setB").addEventListener("click", function () {
             tapTarget = "B";
             document.getElementById("routeStats").textContent =
-                "Pindota ang mapa aron ibutang ang Point B (destination).";
+                "Tap the map to place Point B (destination).";
         });
         document.getElementById("routeBtn").addEventListener("click", buildRoute);
         document.getElementById("clearBtn").addEventListener("click", clearRoute);
 
-        // Tap sa mapa: point A/B, o pickup pin sa pick mode.
+        // Map tap: point A/B, or the pickup pin in pick mode.
         map.on("click", function (e) {
             if (tapTarget) {
                 var which = tapTarget;
@@ -451,7 +451,7 @@
             if (pickMarker) { pickMarker.remove(); }
             pickMarker = new mapboxgl.Marker({ color: "#1e90ff" })
                 .setLngLat([lng, lat])
-                .setPopup(showPin(lat, lng, "Bag-ong pickup point."))
+                .setPopup(showPin(lat, lng, "New pickup point."))
                 .addTo(map);
 
             var bridge = android();

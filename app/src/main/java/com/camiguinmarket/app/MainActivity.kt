@@ -990,7 +990,7 @@ fun MarketScreen(
                     Text("Town: ${l.town}")
                     Text("Contact: ${l.contact}")
                     Spacer(Modifier.height(8.dp))
-                    Text("Pickup location: ${coordinatesLabel(l) ?: "wala pa ma-set"}")
+                    Text("Pickup location: ${coordinatesLabel(l) ?: "not set yet"}")
 
                     if (l.sellerId != uid) {
                         Button(
@@ -1214,7 +1214,7 @@ fun PostDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(title, { title = it }, label = { Text("Product name") })
-                OutlinedTextField(desc, { desc = it }, label = { Text("Deskripsyon") })
+                OutlinedTextField(desc, { desc = it }, label = { Text("Description") })
                 OutlinedTextField(
                     price, { price = it }, label = { Text("Price (₱)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
@@ -1290,7 +1290,7 @@ fun PostDialog(
                 ) { Text("📌 Pick a pickup location on the Map") }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Litrato", style = MaterialTheme.typography.labelMedium)
+                Text("Photos", style = MaterialTheme.typography.labelMedium)
                 when {
                     previews.isNotEmpty() -> Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -1420,10 +1420,10 @@ fun PostDialog(
                         }
                     }
                 }
-            ) { Text(if (existing == null) "I-post" else "I-save") }
+            ) { Text(if (existing == null) "Post" else "Save") }
         },
         dismissButton = {
-            TextButton(onClick = onClose, enabled = !uploading) { Text("Kanselar") }
+            TextButton(onClick = onClose, enabled = !uploading) { Text("Cancel") }
         }
     )
 

@@ -336,7 +336,7 @@ fun CamiguinMarketMapScreen(
         )
     }
 
-    // Ruta A→B.
+    // Route A→B.
     var tapTarget by remember { mutableStateOf(TapTarget.NONE) }
     var pointA by remember { mutableStateOf<LatLng?>(null) }
     var pointB by remember(sellerLocation, showRoute) { mutableStateOf(initialRouteB) }
@@ -500,7 +500,7 @@ fun CamiguinMarketMapScreen(
             routeLoading = false
             result.onSuccess { r ->
                 route = r
-                status = "Ruta A→B (Google): " +
+                status = "Route A→B (Google): " +
                     formatRouteStats(r.distanceMeters.toDouble(), r.durationSeconds.toDouble())
                 val builder = LatLngBounds.Builder()
                 r.points.forEach { builder.include(it) }
@@ -743,10 +743,10 @@ fun CamiguinMarketMapScreen(
                 }
 
                 if (showRoute) {
-                    Text("Ruta A→B", style = MaterialTheme.typography.titleSmall)
+                    Text("Route A→B", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "A: ${pointA?.let { formatCoordinates(it) } ?: "wala pa ma-set"}\n" +
-                            "B: ${pointB?.let { formatCoordinates(it) } ?: "wala pa ma-set"}",
+                        "A: ${pointA?.let { formatCoordinates(it) } ?: "not set yet"}\n" +
+                            "B: ${pointB?.let { formatCoordinates(it) } ?: "not set yet"}",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Row(

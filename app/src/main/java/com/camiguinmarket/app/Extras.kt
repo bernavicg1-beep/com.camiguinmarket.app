@@ -2059,7 +2059,7 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
                             IconButton(onClick = { deleteSavedSearch(db, uid, s.id) }) {
                                 Icon(
                                     Icons.Filled.Delete,
-                                    contentDescription = "Tangtanga",
+                                    contentDescription = "Remove",
                                     tint = Color(0xFFE53935)
                                 )
                             }
