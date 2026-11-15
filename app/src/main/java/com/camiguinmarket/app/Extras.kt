@@ -54,6 +54,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1688,6 +1691,8 @@ fun ProfileScreen(
     uid: String,
     displayName: String,
     email: String,
+    photoUrl: String? = null,
+    onPickPhoto: ((Uri) -> Unit)? = null,
     myListings: List<Listing>,
     isAdmin: Boolean,
     dark: Boolean,
@@ -1705,16 +1710,27 @@ fun ProfileScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { onPickPhoto?.invoke(it) }
+        }
         Box(
-            Modifier.size(72.dp).clip(CircleShape).background(BrandBlue),
+            Modifier.size(80.dp).clip(CircleShape).background(BrandBlue),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                displayName.take(1).uppercase(),
-                color = Color.White,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
-            )
+            if (!photoUrl.isNullOrBlank()) {
+                RemoteImage(photoUrl, Modifier.fillMaxSize())
+            } else {
+                Text(
+                    displayName.take(1).uppercase(),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        TextButton(onClick = { photoPicker.launch("image/*") }, enabled = onPickPhoto != null) {
+            Text(if (photoUrl.isNullOrBlank()) "Add photo" else "Change photo")
         }
         Spacer(Modifier.height(8.dp))
         Text(displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

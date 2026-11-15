@@ -386,15 +386,24 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
                 task.addOnCompleteListener { t ->
                     loading = false
                     if (t.isSuccessful) {
-                        if (isRegister && name.isNotBlank()) {
-                            auth.currentUser?.updateProfile(
-                                com.google.firebase.auth.UserProfileChangeRequest.Builder()
-                                    .setDisplayName(name.trim()).build()
-                            )?.addOnCompleteListener {
-                                auth.currentUser?.sendEmailVerification()
-                                onDone()
-                            } ?: onDone()
-                        } else onDone()
+                        try {
+                            if (isRegister && name.isNotBlank()) {
+                                val u = auth.currentUser
+                                if (u != null) {
+                                    u.updateProfile(
+                                        com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                                            .setDisplayName(name.trim()).build()
+                                    ).addOnCompleteListener {
+                                        try { u.sendEmailVerification() } catch (_: Exception) { }
+                                        onDone()
+                                    }
+                                } else {
+                                    onDone()
+                                }
+                            } else onDone()
+                        } catch (e: Exception) {
+                            error = e.localizedMessage ?: "Account creation failed"
+                        }
                     } else error = t.exception?.localizedMessage ?: "Sign-in failed"
                 }
             }
@@ -475,12 +484,13 @@ fun MarketScreen(
     var editListing by remember { mutableStateOf<Listing?>(null) }
     var selected by remember { mutableStateOf<Listing?>(null) }
     var mapListing by remember { mutableStateOf<Listing?>(null) }
-    var webMapListing by remember { mutableStateOf<Listing?>(null) }
     var showAllMap by remember { mutableStateOf(false) }
     var showCompare by remember { mutableStateOf(false) }
     var showDeleteAccount by remember { mutableStateOf(false) }
     val auth = remember { FirebaseAuth.getInstance() }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var photoUrl by remember { mutableStateOf(auth.currentUser?.photoUrl?.toString()) }
 
     // Navigation and the new features (mockup): tabs, cart, favorites, notifications, chat.
     var tab by remember { mutableStateOf(MarketTab.Home) }
@@ -848,6 +858,37 @@ fun MarketScreen(
                         uid = uid,
                         displayName = displayName,
                         email = auth.currentUser?.email ?: "",
+                        photoUrl = photoUrl,
+                        onPickPhoto = { uri ->
+                            val u = auth.currentUser
+                            if (u != null) {
+                                u.getIdToken(false).addOnSuccessListener { tokenResult ->
+                                    val token = tokenResult.token
+                                    if (token.isNullOrBlank()) {
+                                        Toast.makeText(context, "Couldn't get auth token", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        scope.launch {
+                                            try {
+                                                val url = withContext(Dispatchers.IO) {
+                                                    uploadListingImage(context, BuildConfig.R2_UPLOAD_URL, token, uri)
+                                                }
+                                                u.updateProfile(
+                                                    com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                                                        .setPhotoUri(android.net.Uri.parse(url)).build()
+                                                ).addOnCompleteListener {
+                                                    photoUrl = url
+                                                    Toast.makeText(context, "Photo updated", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, e.localizedMessage ?: "Upload failed", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                }.addOnFailureListener { e ->
+                                    Toast.makeText(context, e.localizedMessage ?: "Auth failed", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
                         myListings = listings.filter { it.sellerId == uid },
                         onFavorites = { overlay = "favorites" },
                         isAdmin = isAdmin,
@@ -1136,7 +1177,7 @@ fun MarketScreen(
                                     onClick = { selected = null; mapListing = l },
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.weight(1f)
-                                ) { Text("View Map") }
+                                ) { Text("View on map") }
                             } else if (l.sellerId == uid) {
                                 OutlinedButton(
                                     onClick = { selected = null; mapListing = l },
@@ -1158,9 +1199,6 @@ fun MarketScreen(
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.weight(1f)
                                 ) { Text("Directions") }
-                                TextButton(onClick = { selected = null; webMapListing = l }) {
-                                    Text("Full map")
-                                }
                             }
                         }
                         if (l.sellerId != uid) {
@@ -1183,7 +1221,6 @@ fun MarketScreen(
                 saveListingLocation(db, l.id, point) { }
                 mapListing = null
             },
-            onOpenWebMap = { mapListing = null; webMapListing = l }
         )
     }
 
@@ -1218,16 +1255,6 @@ fun MarketScreen(
         )
     }
 
-    // Full-screen Leaflet map (OpenStreetMap) for one listing.
-    webMapListing?.let { l ->
-        LeafletMapDialog(
-            latitude = l.latitude ?: CamiguinCenter.latitude,
-            longitude = l.longitude ?: CamiguinCenter.longitude,
-            label = l.title.ifBlank { "Seller Pickup Location" },
-            sellers = filtered,
-            onDismiss = { webMapListing = null }
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

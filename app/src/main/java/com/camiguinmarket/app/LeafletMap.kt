@@ -773,8 +773,7 @@ fun PickupLocationPickerDialog(
 fun SellerMapDialog(
     listing: Listing,
     onDismiss: () -> Unit,
-    onSaveLocation: ((LatLng) -> Unit)? = null,
-    onOpenWebMap: (() -> Unit)? = null
+    onSaveLocation: ((LatLng) -> Unit)? = null
 ) {
     val lat = listing.latitude
     val lng = listing.longitude
@@ -803,11 +802,6 @@ fun SellerMapDialog(
                     onBack = onDismiss,
                     modifier = Modifier.weight(1f)
                 )
-                onOpenWebMap?.let { open ->
-                    TextButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
-                        Text("🌐 Open the full web map")
-                    }
-                }
             }
         }
     }
