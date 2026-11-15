@@ -134,6 +134,16 @@ jobs:
           -PMAPBOX_ACCESS_TOKEN="${{ secrets.MAPBOX_ACCESS_TOKEN }}"
           -PR2_UPLOAD_URL="${{ secrets.R2_UPLOAD_URL }}"
 
+      # Proves the APK really carries the release key: an unsigned or wrongly
+      # signed build would fail here instead of surfacing on a phone.
+      - name: Verify the release signature
+        if: steps.secrets.outputs.signing == 'true'
+        run: |
+          apk=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          test -n "$apk"
+          signer=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -n 1)
+          "$signer" verify --print-certs "$apk"
+
       - name: Upload release APK
         if: steps.secrets.outputs.available == 'true'
         uses: actions/upload-artifact@v7
