@@ -28,6 +28,35 @@ Set it in the app:
 - **Local:** `local.properties` → `R2_UPLOAD_URL=https://…workers.dev`
 - **CI:** GitHub → Settings → Secrets → Actions → `R2_UPLOAD_URL`
 
+## Deploying
+
+Manual deploy (as in the setup above):
+
+```bash
+cd worker
+wrangler deploy
+```
+
+Automated deploys run through `.github/workflows/deploy-worker.yml` on every
+push to `main` that touches `worker/**` (and on `workflow_dispatch`):
+
+1. Runs `npm test` — a failing suite blocks the deploy.
+2. `wrangler deploy`.
+3. Reads the workers.dev address from wrangler's output and checks
+   `/health`, failing the run unless it answers with `ok` and `bucket`.
+
+Two repository secrets are required (Settings → Secrets and variables →
+Actions); without them the job fails early with a message naming the missing
+secret:
+
+- `CLOUDFLARE_API_TOKEN` — an API token with the Workers Scripts:Edit permission
+  for the account that owns the Worker.
+- `CLOUDFLARE_ACCOUNT_ID` — the account id shown in the Workers & Pages dashboard.
+
+A `concurrency` group keeps two deploys from racing for the same script. The
+Worker secrets (`FIREBASE_WEB_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`) are already
+on the deployed Worker and are untouched by a deploy.
+
 ## Endpoints
 
 | Method | Path | Auth | Description |
