@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.location.Location
 import android.location.LocationManager
@@ -381,7 +383,24 @@ fun LeafletMapView(
             WebView(ctx).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                webViewClient = WebViewClient()
+                // Android 11+ disables file:// access by default, which would
+                // block loading the bundled Leaflet assets from /android_asset.
+                settings.allowFileAccess = true
+                settings.allowFileAccessFromFileURLs = true
+                settings.allowUniversalAccessFromFileURLs = true
+                webViewClient = object : WebViewClient() {
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        android.util.Log.e(
+                            "LeafletMap",
+                            "WebView error: ${error?.description} for ${request?.url}"
+                        )
+                    }
+                }
                 addJavascriptInterface(bridge, "AndroidMap")
                 loadUrl("file:///android_asset/leaflet_map.html")
             }.also { web = it }
