@@ -324,6 +324,12 @@ fun addToCart(
     }.addOnFailureListener { onResult(it.localizedMessage ?: "Failed to add to cart.") }
 }
 
+fun userDisplayName(): String =
+    FirebaseAuth.getInstance().currentUser
+        ?.displayName
+        ?.takeIf { it.isNotBlank() }
+        ?: "Bernavic Gamo"
+
 fun updateCartQuantity(db: FirebaseFirestore, uid: String, itemId: String, quantity: Long) {
     val ref = db.collection("carts").document(uid).collection("items").document(itemId)
     if (quantity <= 0) ref.delete() else ref.update("quantity", quantity)
@@ -446,6 +452,7 @@ fun sendChatMessage(
     ensureChat(db, uid, otherUid, otherName, listingTitle)
     val id = chatIdFor(uid, otherUid)
     val chatRef = db.collection("chats").document(id)
+    val senderName = userDisplayName()
     chatRef.collection("messages").add(ChatMessage(from = uid, text = text.trim(), createdAt = System.currentTimeMillis()))
     chatRef.update(
         mapOf(
@@ -464,12 +471,13 @@ fun sendChatMessage(
                 db = db,
                 toUid = other,
                 fromUid = uid,
-                fromName = FirebaseAuth.getInstance().currentUser?.displayName ?: "User",
+                fromName = senderName,
                 message = text.trim()
             )
         }
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // UI components
@@ -1118,6 +1126,10 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             Spacer(Modifier.width(6.dp))
             Text(otherName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
+        Text(
+            "by Bernavic Gamo",
+            style = MaterialTheme.typography.labelSmall
+        )
         if (listingTitle.isNotBlank()) {
             Text("About: $listingTitle", style = MaterialTheme.typography.labelSmall)
         }
@@ -1132,29 +1144,38 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         Spacer(Modifier.height(8.dp))
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(messages, key = { it.id }) { m ->
+                val mine = m.from == uid
+                val senderName = if (mine) userDisplayName() else otherName
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (m.from == uid) Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
                 ) {
                     Surface(
-                        color = if (m.from == uid) MaterialTheme.colorScheme.primary
+                        color = if (mine) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
                             Text(
                                 m.text,
-                                color = if (m.from == uid) Color.White
+                                color = if (mine) Color.White
                                 else MaterialTheme.colorScheme.onSurface
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     chatTime(m.createdAt),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (m.from == uid) Color.White.copy(alpha = 0.8f)
+                                    color = if (mine) Color.White.copy(alpha = 0.8f)
                                     else Color.Gray
                                 )
-                                if (m.from == uid) {
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    senderName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (mine) Color.White.copy(alpha = 0.8f)
+                                    else Color.Gray
+                                )
+                                if (mine) {
                                     Spacer(Modifier.width(4.dp))
                                     val seen = m.createdAt <= otherRead
                                     Text(
@@ -1173,7 +1194,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 text, { text = it },
-                placeholder = { Text("Mensahe…") },
+                placeholder = { Text("Message…") },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(20.dp)
             )
@@ -1310,6 +1331,10 @@ fun ProfileScreen(
         Spacer(Modifier.height(16.dp))
         Text(
             "Camiguin Market • Buy Local. Support Local!",
+            style = MaterialTheme.typography.labelSmall
+        )
+        Text(
+            "by Bernavic Gamo",
             style = MaterialTheme.typography.labelSmall
         )
         Text(
