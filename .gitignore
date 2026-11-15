@@ -4,6 +4,7 @@ local.properties
 *.keystore
 keystore.properties
 *.jks.b64
+.secrets/
 
 # Gradle / Android build outputs
 .gradle/
