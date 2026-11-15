@@ -380,6 +380,17 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             onClick = {
                 loading = true; error = null
+                // Validate before calling Firebase: blank fields make
+                // createUserWithEmailAndPassword throw (not return a Task).
+                val validationError = when {
+                    isRegister && name.isBlank() -> "Name is required."
+                    email.isBlank() -> "Email is required."
+                    password.isBlank() -> "Password is required."
+                    isRegister && password.length < 6 -> "Password must be at least 6 characters."
+                    else -> null
+                }
+                if (validationError != null) { loading = false; error = validationError }
+                else try {
                 val task = if (isRegister)
                     auth.createUserWithEmailAndPassword(email.trim(), password)
                 else auth.signInWithEmailAndPassword(email.trim(), password)
@@ -405,6 +416,10 @@ fun LoginScreen(auth: FirebaseAuth, onDone: () -> Unit) {
                             error = e.localizedMessage ?: "Account creation failed"
                         }
                     } else error = t.exception?.localizedMessage ?: "Sign-in failed"
+                }
+                } catch (e: Exception) {
+                    loading = false
+                    error = e.localizedMessage ?: "Account creation failed"
                 }
             }
         ) { Text(if (isRegister) "Create account" else "Log in") }
