@@ -417,6 +417,51 @@ push to `main` and uploads it as an artifact. When both map secrets are set it a
 builds the release variant and uploads it as `CamiguinMarket-release-apk` (APK) and
 `CamiguinMarket-release-aab` (AAB for the Play Store).
 
+### Signing the release build
+
+Every update must be signed with the same key, so create the keystore once and
+keep it safe — it is the app's identity, and a lost key means the app can never be
+updated again unless Google Play App Signing is enabled.
+
+```bash
+# Once, on your own machine (not in this repo — *.jks is gitignored):
+keytool -genkeypair -v -keystore camiguin-release.jks -alias camiguin \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=Camiguin Market, O=Camiguin Market, C=PH"
+
+# One line, no wrapping (Linux):
+base64 -w0 camiguin-release.jks > camiguin-release.jks.b64
+
+# macOS:
+base64 -i camiguin-release.jks | tr -d '\n' > camiguin-release.jks.b64
+```
+
+Add four repository secrets under Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | the contents of `camiguin-release.jks.b64` |
+| `KEYSTORE_PASSWORD` | the store password |
+| `KEY_ALIAS` | `camiguin` |
+| `KEY_PASSWORD` | the key password |
+
+The workflow decodes the keystore into the runner's temp directory (never the
+repo), builds `assembleRelease` + `bundleRelease`, and runs `apksigner verify
+--print-certs` so a build that is unsigned or signed with another key fails the
+run instead of reaching a phone. The keystore is never committed: `*.jks`,
+`*.keystore`, `*.jks.b64` and `keystore.properties` are gitignored.
+
+To sign locally, put the same values in `local.properties` (it is gitignored):
+
+```properties
+RELEASE_KEYSTORE_FILE=/absolute/path/to/camiguin-release.jks
+RELEASE_KEYSTORE_PASSWORD=…
+RELEASE_KEY_ALIAS=camiguin
+RELEASE_KEY_PASSWORD=…
+```
+
+Never send these values in chat, a commit or a screenshot.
+
 ## Not tested yet
 
 There is no device/emulator in the development environment, so **runtime behaviour

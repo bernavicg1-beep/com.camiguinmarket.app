@@ -1,5 +1,9 @@
-# Sekreto: MAPS_API_KEY ug MAPBOX_ACCESS_TOKEN
+# Secrets: MAPS_API_KEY, MAPBOX_ACCESS_TOKEN and the release signing key
 local.properties
+*.jks
+*.keystore
+keystore.properties
+*.jks.b64
 
 # Gradle / Android build outputs
 .gradle/
