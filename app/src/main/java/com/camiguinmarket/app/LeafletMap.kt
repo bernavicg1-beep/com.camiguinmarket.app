@@ -350,10 +350,7 @@ fun LeafletMapView(
     zoom: Int = 13
 ) {
     val url = remember(latitude, longitude, zoom) {
-        val d = 0.02
-        "https://www.openstreetmap.org/export/embed.html" +
-            "?bbox=${longitude - d},${latitude - d},${longitude + d},${latitude + d}" +
-            "&layer=mapnik&marker=$latitude,$longitude"
+        "https://www.openstreetmap.org/?mlat=$latitude&mlon=$longitude#map=13/$latitude/$longitude"
     }
     AndroidView(
         modifier = modifier.defaultMinSize(minHeight = 280.dp),
@@ -362,6 +359,9 @@ fun LeafletMapView(
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
                 setBackgroundColor(android.graphics.Color.WHITE)
                 webViewClient = object : WebViewClient() {
                     override fun onReceivedError(
