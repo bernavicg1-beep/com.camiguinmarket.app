@@ -376,6 +376,15 @@ fun LeafletMapView(
                 setMultiTouchControls(true)
                 controller.setZoom(zoom)
                 controller.setCenter(org.osmdroid.util.GeoPoint(latitude, longitude))
+                // "You are here" blue dot (osmdroid), independent of the pin.
+                try {
+                    val myLoc = org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay(
+                        org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider(ctx), this
+                    )
+                    myLoc.enableMyLocation()
+                    overlays.add(myLoc)
+                } catch (_: Exception) { }
+
                 // Marker for the seller/pin.
                 if (showMarker) {
                     val marker = org.osmdroid.views.overlay.Marker(this).apply {

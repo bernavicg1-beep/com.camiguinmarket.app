@@ -41,8 +41,8 @@ android {
         applicationId = "com.camiguinmarket.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 27
-        versionName = "0.27"
+        versionCode = 28
+        versionName = "0.28"
 
         // The Worker that stores photos in Cloudflare R2 (no secret here).
         buildConfigField("String", "R2_UPLOAD_URL", "\"$r2UploadUrl\"")
