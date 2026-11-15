@@ -242,8 +242,8 @@ fun AppRoot(
 private fun WelcomeScreen(onStart: () -> Unit, onSignIn: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         Image(
-            painter = painterResource(R.drawable.ic_launcher_island),
-            contentDescription = null,
+            painter = painterResource(R.drawable.welcome_ocean),
+            contentDescription = "Turquoise lagoon in Camiguin",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
@@ -252,9 +252,9 @@ private fun WelcomeScreen(onStart: () -> Unit, onSignIn: () -> Unit) {
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color(0x400B3D91),
-                        0.55f to Color(0x990B3D91),
-                        0.78f to Color.White,
+                        0f to Color(0x400A2B52),
+                        0.5f to Color(0x8C0A2B52),
+                        0.74f to Color(0xF7FFFFFF),
                         1f to Color.White
                     )
                 )
