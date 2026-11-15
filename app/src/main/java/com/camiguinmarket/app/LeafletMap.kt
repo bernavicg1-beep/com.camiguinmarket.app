@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -388,6 +389,12 @@ fun LeafletMapView(
                 settings.allowFileAccess = true
                 settings.allowFileAccessFromFileURLs = true
                 settings.allowUniversalAccessFromFileURLs = true
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
+                        android.util.Log.d("LeafletMap", "JS: ${msg?.message()} (${msg?.sourceId()}:${msg?.lineNumber()})")
+                        return true
+                    }
+                }
                 webViewClient = object : WebViewClient() {
                     override fun onReceivedError(
                         view: WebView?,
@@ -647,40 +654,6 @@ fun LeafletMapScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = BrandMuted
                 )
-                if (showRoute) {
-                    Text(
-                        "A: ${pointA?.let { formatCoordinates(it) } ?: "not set yet"}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        "B: ${pointB?.let { formatCoordinates(it) } ?: "not set yet"}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { pointA = marker },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Set A") }
-                        OutlinedButton(
-                            onClick = { pointB = marker },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Set B") }
-                    }
-                    Button(
-                        enabled = pointA != null && pointB != null && !busy,
-                        onClick = { buildRoute() },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (busy) "Fetching the route…" else "Show the A→B Route") }
-                    route?.let { r ->
-                        Text("📏 ${r.distanceText} • ${r.durationText}")
-                        TextButton(onClick = { route = null; status = "Route cleared." }) {
-                            Text("Clear route")
-                        }
-                    }
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = { openDirections(context, marker, label) },
