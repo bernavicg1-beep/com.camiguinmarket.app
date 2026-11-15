@@ -343,111 +343,32 @@ private fun leafletConfig(
 @SuppressLint("JavascriptInterface", "SetJavaScriptEnabled")
 @Composable
 fun LeafletMapView(
-    config: String,
+    latitude: Double,
+    longitude: Double,
     modifier: Modifier = Modifier,
-    onReady: () -> Unit = {},
-    onPick: (Double, Double) -> Unit = { _, _ -> },
-    onMarker: (String) -> Unit = {},
-    onMyLocation: () -> Unit = {}
+    zoom: Int = 13
 ) {
-    val context = LocalContext.current
-    var web by remember { mutableStateOf<WebView?>(null) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            fetchAndFocusLocation(context, web)
-        } else {
-            Toast.makeText(context, "Location permission denied.", Toast.LENGTH_SHORT).show()
-        }
+    val url = remember(latitude, longitude, zoom) {
+        val d = 0.02
+        "https://www.openstreetmap.org/export/embed.html" +
+            "?bbox=${longitude - d},${latitude - d},${longitude + d},${latitude + d}" +
+            "&layer=mapnik&marker=$latitude,$longitude"
     }
-
-    val requestMyLocation: () -> Unit = {
-        if (ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.ACCESS_FINE_LOCATION
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            fetchAndFocusLocation(context, web)
-        } else {
-            permissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-    }
-
-    val bridge = remember(onReady, onPick, onMarker, onMyLocation) {
-        LeafletBridge(onReady, onPick, onMarker) { requestMyLocation(); onMyLocation() }
-    }
-
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
             WebView(ctx).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                // Android 11+ disables file:// access by default, which would
-                // block loading the bundled Leaflet assets from /android_asset.
                 settings.allowFileAccess = true
-                settings.allowFileAccessFromFileURLs = true
-                settings.allowUniversalAccessFromFileURLs = true
-                webChromeClient = object : WebChromeClient() {
-                    override fun onConsoleMessage(msg: android.webkit.ConsoleMessage?): Boolean {
-                        android.util.Log.d("LeafletMap", "JS: ${msg?.message()} (${msg?.sourceId()}:${msg?.lineNumber()})")
-                        return true
-                    }
-                }
-                webViewClient = object : WebViewClient() {
-                    override fun onReceivedError(
-                        view: WebView?,
-                        request: WebResourceRequest?,
-                        error: WebResourceError?
-                    ) {
-                        super.onReceivedError(view, request, error)
-                        android.util.Log.e(
-                            "LeafletMap",
-                            "WebView error: ${error?.description} for ${request?.url}"
-                        )
-                    }
-                }
-                addJavascriptInterface(bridge, "AndroidMap")
-                loadUrl("file:///android_asset/leaflet_map.html")
-            }.also { web = it }
-        }
-    )
-
-    LaunchedEffect(web, config) {
-        web?.evaluateJavascript("window.initMap($config);", null)
-    }
-}
-
-private fun fetchAndFocusLocation(context: Context, web: WebView?) {
-    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-    if (manager == null) {
-        Toast.makeText(context, "Location service unavailable.", Toast.LENGTH_SHORT).show()
-        return
-    }
-    val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-    var best: Location? = null
-    for (provider in providers) {
-        try {
-            val loc = manager.getLastKnownLocation(provider)
-            if (loc != null && (best == null || loc.accuracy < best.accuracy)) {
-                best = loc
+                webViewClient = WebViewClient()
+                loadUrl(url)
             }
-        } catch (_: SecurityException) {
-        }
-    }
-    if (best != null) {
-        web?.evaluateJavascript(
-            "window.focusPoint(${best.latitude}, ${best.longitude}, 15);", null
-        )
-    } else {
-        Toast.makeText(
-            context,
-            "Location not available yet. Try again in a moment.",
-            Toast.LENGTH_SHORT
-        ).show()
-    }
+        },
+        update = { wv -> wv.loadUrl(url) }
+    )
 }
+
 
 // ---------------------------------------------------------------------------
 // Full-screen map
@@ -479,6 +400,7 @@ fun LeafletMapScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
     var marker by remember { mutableStateOf(LatLng(latitude, longitude)) }
     var pointA by remember { mutableStateOf(routeA) }
     var pointB by remember { mutableStateOf(routeB) }
@@ -490,6 +412,24 @@ fun LeafletMapScreen(
             else formatCoordinates(LatLng(latitude, longitude))
         )
     }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            var best: Location? = null
+            for (p in providers) {
+                try {
+                    val l = manager?.getLastKnownLocation(p)
+                    if (l != null && (best == null || l.accuracy < best.accuracy)) best = l
+                } catch (_: SecurityException) { }
+            }
+            best?.let { marker = LatLng(it.latitude, it.longitude); status = formatCoordinates(marker) }
+        }
+    }
+
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
 
@@ -546,20 +486,6 @@ fun LeafletMapScreen(
                 .onFailure { status = friendlyMapError(it) }
             busy = false
         }
-    }
-
-    val config = remember(
-        marker, pointA, pointB, route, pickMode, label, sellers, showSearch
-    ) {
-        leafletConfig(
-            latitude = marker.latitude,
-            longitude = marker.longitude,
-            label = label,
-            pickMode = pickMode,
-            sellers = sellers,
-            route = route?.points,
-            zoom = if (pickMode) FOCUS_ZOOM else ISLAND_ZOOM
-        )
     }
 
     Scaffold(
@@ -632,17 +558,9 @@ fun LeafletMapScreen(
             }
 
             LeafletMapView(
-                config = config,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                onPick = { lat, lng ->
-                    marker = LatLng(lat, lng)
-                    if (showRoute && pointA == null) pointA = marker
-                    status = formatCoordinates(marker)
-                    onPicked?.invoke(marker)
-                },
-                onMarker = { id ->
-                    sellers.firstOrNull { it.id == id }?.let { onSellerClick?.invoke(it) }
-                }
+                latitude = marker.latitude,
+                longitude = marker.longitude,
+                modifier = Modifier.weight(1f).fillMaxWidth()
             )
 
             Column(
@@ -656,10 +574,28 @@ fun LeafletMapScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { openDirections(context, marker, label) },
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(
+                                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                                var best: Location? = null
+                                for (p in providers) {
+                                    try {
+                                        val l = manager?.getLastKnownLocation(p)
+                                        if (l != null && (best == null || l.accuracy < best.accuracy)) best = l
+                                    } catch (_: SecurityException) { }
+                                }
+                                best?.let { marker = LatLng(it.latitude, it.longitude); status = formatCoordinates(marker) }
+                            } else {
+                                locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            }
+                        },
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f)
-                    ) { Text("Directions") }
+                    ) { Text("My location") }
                     OutlinedButton(
                         onClick = { openMapPreview(context, marker, label) },
                         shape = RoundedCornerShape(14.dp),
