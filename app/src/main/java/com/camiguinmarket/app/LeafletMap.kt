@@ -352,11 +352,14 @@ fun LeafletMapView(
     latitude: Double,
     longitude: Double,
     modifier: Modifier = Modifier,
-    zoom: Double = 14.0
+    zoom: Double = 14.0,
+    showMarker: Boolean = true,
+    onTap: ((Double, Double) -> Unit)? = null
 ) {
     // osmdroid: native OpenStreetMap view with pan/zoom and a marker.
     val context = LocalContext.current
     var mapView by remember { mutableStateOf<org.osmdroid.views.MapView?>(null) }
+    var markerRef by remember { mutableStateOf<org.osmdroid.views.overlay.Marker?>(null) }
     DisposableEffect(mapView) {
         mapView?.onResume()
         onDispose { mapView?.onPause() }
@@ -364,9 +367,9 @@ fun LeafletMapView(
     AndroidView(
         modifier = modifier.defaultMinSize(minHeight = 280.dp),
         factory = { ctx ->
-            org.osmdroid.config.Configuration.getInstance().load(
-                ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE)
-            )
+            val cfg = org.osmdroid.config.Configuration.getInstance()
+            cfg.load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+            cfg.userAgentValue = "CamiguinMarket/1.0 (Android)"
             org.osmdroid.views.MapView(ctx).apply {
                 mapView = this
                 setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
@@ -374,16 +377,44 @@ fun LeafletMapView(
                 controller.setZoom(zoom)
                 controller.setCenter(org.osmdroid.util.GeoPoint(latitude, longitude))
                 // Marker for the seller/pin.
-                val marker = org.osmdroid.views.overlay.Marker(this).apply {
-                    position = org.osmdroid.util.GeoPoint(latitude, longitude)
-                    setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
-                    title = "Location"
+                if (showMarker) {
+                    val marker = org.osmdroid.views.overlay.Marker(this).apply {
+                        position = org.osmdroid.util.GeoPoint(latitude, longitude)
+                        setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                        title = "Location"
+                        isDraggable = onTap != null
+                    }
+                    if (onTap != null) {
+                        marker.setOnMarkerDragListener(object : org.osmdroid.views.overlay.Marker.OnMarkerDragListener {
+                            override fun onMarkerDrag(m: org.osmdroid.views.overlay.Marker?) { }
+                            override fun onMarkerDragEnd(m: org.osmdroid.views.overlay.Marker?) {
+                                m?.position?.let { gp -> onTap(gp.latitude, gp.longitude) }
+                            }
+                            override fun onMarkerDragStart(m: org.osmdroid.views.overlay.Marker?) { }
+                        })
+                    }
+                    overlays.add(marker)
+                    markerRef = marker
                 }
-                overlays.add(marker)
+                // Tap to move the pin (used by the location picker).
+                if (onTap != null) {
+                    val tapOverlay = object : org.osmdroid.views.overlay.Overlay() {
+                        override fun onSingleTapConfirmed(e: android.view.MotionEvent?, mv: org.osmdroid.views.MapView?): Boolean {
+                            if (e != null && mv != null) {
+                                val gp = mv.projection.fromPixels(e.x.toInt(), e.y.toInt()) as org.osmdroid.util.GeoPoint
+                                onTap(gp.latitude, gp.longitude)
+                            }
+                            return true
+                        }
+                    }
+                    overlays.add(tapOverlay)
+                }
             }
         },
         update = { mv ->
             mv.controller.setCenter(org.osmdroid.util.GeoPoint(latitude, longitude))
+            markerRef?.position = org.osmdroid.util.GeoPoint(latitude, longitude)
+            mv.invalidate()
         }
     )
 }
@@ -579,7 +610,12 @@ fun LeafletMapScreen(
             LeafletMapView(
                 latitude = marker.latitude,
                 longitude = marker.longitude,
-                modifier = Modifier.weight(1f).fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                onTap = if (pickMode) { { lat, lng ->
+                    marker = LatLng(lat, lng)
+                    status = formatCoordinates(marker)
+                    onPicked?.invoke(marker)
+                } } else null
             )
 
             Column(
