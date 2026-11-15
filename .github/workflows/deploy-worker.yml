@@ -36,6 +36,7 @@ jobs:
         run: npm test
 
       - name: Deploy to Cloudflare
+        id: deploy
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -43,4 +44,35 @@ jobs:
         run: |
           : "${CLOUDFLARE_API_TOKEN:?Add a repository secret named CLOUDFLARE_API_TOKEN with the Workers Scripts:Edit permission.}"
           : "${CLOUDFLARE_ACCOUNT_ID:?Add a repository secret named CLOUDFLARE_ACCOUNT_ID with the account id that owns the Worker.}"
-          npx --yes wrangler@4 deploy
+          output=$(npx --yes wrangler@4 deploy 2>&1)
+          printf '%s\n' "$output"
+          # Wrangler prints the deployed address; the app needs the same host, so
+          # the health check uses it rather than guessing a workers.dev name.
+          url=$(printf '%s\n' "$output" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -n 1)
+          if [ -z "$url" ]; then
+            echo "::error::Could not find the deployed URL in the wrangler output."
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # A deploy that returns success still serves nothing if the script cannot
+      # start or its R2 binding is wrong, so ask the live Worker.
+      - name: Check that the Worker answers /health
+        env:
+          WORKER_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if body=$(curl -fsS --max-time 10 "$WORKER_URL/health" 2>/dev/null); then
+              printf '%s\n' "$body"
+              if printf '%s' "$body" | python3 -c 'import json, sys; health = json.load(sys.stdin); sys.exit(0 if health.get("ok") and health.get("bucket") else 1)'; then
+                echo "::notice::Worker is live at $WORKER_URL"
+                exit 0
+              fi
+              echo "::error::$WORKER_URL/health answered without ok and bucket: $body"
+              exit 1
+            fi
+            echo "Attempt $attempt: no answer yet, retrying in 5s"
+            sleep 5
+          done
+          echo "::error::$WORKER_URL/health did not answer after the deploy."
+          exit 1
