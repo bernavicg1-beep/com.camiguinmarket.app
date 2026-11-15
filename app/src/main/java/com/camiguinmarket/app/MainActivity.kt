@@ -59,6 +59,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -1638,9 +1639,10 @@ private fun decodeDownsampled(bytes: ByteArray, targetPx: Int): ImageBitmap? {
 @Composable
 fun RemoteImage(url: String, modifier: Modifier = Modifier, targetPx: Int = 512) {
     val key = "$targetPx|$url"
-    var bitmap by remember(key) { mutableStateOf(imageCache.get(key)) }
+    var retry by remember(key) { mutableStateOf(0) }
+    var bitmap by remember(key, retry) { mutableStateOf(imageCache.get(key)) }
 
-    LaunchedEffect(key) {
+    LaunchedEffect(key, retry) {
         if (url.isBlank()) {
             bitmap = null
             return@LaunchedEffect
@@ -1658,8 +1660,17 @@ fun RemoteImage(url: String, modifier: Modifier = Modifier, targetPx: Int = 512)
                 decodeDownsampled(bytes, targetPx)
             }.getOrNull()
         }
-        if (loaded != null) imageCache.put(key, loaded)
-        bitmap = loaded
+        if (loaded != null) {
+            imageCache.put(key, loaded)
+            bitmap = loaded
+        } else if (retry < 3) {
+            // Retry a few times so a transient server failure (e.g. the image
+            // service was briefly unavailable) recovers without an app restart.
+            delay(1500)
+            retry++
+        } else {
+            bitmap = null
+        }
     }
 
     bitmap?.let {
