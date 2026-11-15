@@ -64,8 +64,8 @@ jobs:
           node-version: 22
 
       # Secrets cannot be used directly in `if`, so check them here.
-      # Wala gayud i-print ang value niini.
-      - name: Check kon unsang credential ang naa
+      # Their values are never printed.
+      - name: Check which credential is available
         id: creds
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -73,22 +73,22 @@ jobs:
         run: |
           if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "method=service_account" >> "$GITHUB_OUTPUT"
-            echo '✅ Ang FIREBASE_SERVICE_ACCOUNT naka-set — service account ang gamiton.' >> "$GITHUB_STEP_SUMMARY"
+            echo '✅ FIREBASE_SERVICE_ACCOUNT is set — the service account will be used.' >> "$GITHUB_STEP_SUMMARY"
           elif [ -n "$FIREBASE_TOKEN" ]; then
             echo "method=token" >> "$GITHUB_OUTPUT"
-            echo '✅ Ang FIREBASE_TOKEN naka-set — token ang gamiton (legasiya).' >> "$GITHUB_STEP_SUMMARY"
+            echo '✅ FIREBASE_TOKEN is set — the token will be used (legacy).' >> "$GITHUB_STEP_SUMMARY"
           else
             echo "method=none" >> "$GITHUB_OUTPUT"
-            echo "::notice::Wala ma-set ang FIREBASE_SERVICE_ACCOUNT o FIREBASE_TOKEN — gilaktawan ang deploy."
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT and FIREBASE_TOKEN are not set — the deploy was skipped."
             {
-              echo "## ⚠️ Gilaktawan ang deploy sa Firestore rules"
+              echo "## ⚠️ Firestore rules deploy skipped"
               echo ""
-              echo "Idugang ang **Settings → Secrets and variables → Actions**:"
+              echo "Add these in **Settings → Secrets and variables → Actions**:"
               echo ""
-              echo "| Secret | Giunsa pagkuha |"
+              echo "| Secret | How to get it |"
               echo "|---|---|"
-              echo "| \`FIREBASE_SERVICE_ACCOUNT\` | Firebase Console → Project settings → Service accounts → Generate new private key (ang tibuok sulod sa JSON) |"
-              echo "| \`FIREBASE_TOKEN\` | \`firebase login:ci\` (legasiya) |"
+              echo "| \`FIREBASE_SERVICE_ACCOUNT\` | Firebase Console → Project settings → Service accounts → Generate new private key (the whole JSON) |"
+              echo "| \`FIREBASE_TOKEN\` | \`firebase login:ci\` (legacy) |"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 

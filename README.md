@@ -469,10 +469,11 @@ stops early if the four signing secrets are missing, and verifies the APK with
 ## Not tested yet
 
 There is no device/emulator in the development environment, so **runtime behaviour
-is unverified**: GPS location, tapping the map, the WebView bridge (`onRoute`),
+is unverified**: tapping and dragging the Leaflet pin, the WebView bridge
+(`onPick` / `onMarker`), the live OSRM route and Nominatim search responses,
 photo upload to R2 (photos are downscaled to 1600 px / JPEG 80 before upload,
-so a listing photo is a few hundred KB instead of several MB), SMS phone verification (needs Firebase **Phone** sign-in
-enabled plus the app's SHA-1 fingerprint registered), and the real
-Google/Mapbox API responses. What is confirmed:
-`gradle assembleDebug` and `gradle assembleRelease` compile, and the JavaScript in
-the HTML page is correct.
+so a listing photo is a few hundred KB instead of several MB), and SMS phone
+verification (needs Firebase **Phone** sign-in enabled plus the app's SHA-1
+fingerprint registered). What is confirmed: `gradle assembleDebug` and
+`gradle assembleRelease` compile, the Worker tests pass (`node --test`), and the
+JavaScript in `leaflet_map.html` parses.

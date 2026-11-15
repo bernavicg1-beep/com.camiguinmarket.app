@@ -15,7 +15,7 @@
 
         <!-- Maps are Leaflet + OpenStreetMap in a WebView: no SDK key needed. -->
 
-        <!-- Para makapakigbahin og CSV (orders export). -->
+        <!-- Lets the app share a CSV export of the orders. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -97,7 +97,7 @@ def app_listing(seller, pickup=False):
     return {"fields": fields}
 
 
-def listing(seller, title="Saging", price=25):
+def listing(seller, title="Banana", price=25):
     return {
         "fields": {
             "sellerId": {"stringValue": seller},
@@ -182,7 +182,7 @@ check("app: owner can delete the listing", "DELETE", "/listings/appdoc1", 200, u
 # --- cart --------------------------------------------------------------------
 cart_doc = {"fields": {
     "listingId": {"stringValue": "appdoc1"},
-    "title": {"stringValue": "Saging"},
+    "title": {"stringValue": "Banana"},
     "price": {"doubleValue": 25.5},
     "sellerId": {"stringValue": "u2"},
     "quantity": {"integerValue": "1"},
@@ -197,7 +197,7 @@ check("cart: others cannot write", "POST", "/carts/u1/items", 403,
 # --- paborito ----------------------------------------------------------------
 fav_doc = {"fields": {
     "listingId": {"stringValue": "appdoc1"},
-    "title": {"stringValue": "Saging"},
+    "title": {"stringValue": "Banana"},
     "price": {"doubleValue": 25.5},
     "createdAt": {"integerValue": "1"},
 }}
@@ -209,7 +209,7 @@ check("favorites: others cannot read", "GET", "/favorites/u1/items", 403, uid="u
 notif_doc = lambda sender: {"fields": {
     "fromUid": {"stringValue": sender},
     "fromName": {"stringValue": "Nena"},
-    "message": {"stringValue": "Nena nagdugang sa cart: Saging"},
+    "message": {"stringValue": "Nena added to cart: Banana"},
     "createdAt": {"integerValue": "1"},
     "read": {"booleanValue": False},
 }}
@@ -229,7 +229,7 @@ chat_doc = {"fields": {
 }}
 msg_doc = lambda sender: {"fields": {
     "from": {"stringValue": sender},
-    "text": {"stringValue": "Pila ang saging?"},
+    "text": {"stringValue": "How much is the banana?"},
     "createdAt": {"integerValue": "1"},
 }}
 check("chat: can create their own thread", "POST", "/chats", 200,
@@ -249,7 +249,7 @@ def order_doc(buyer, seller, status="pending"):
         "buyerId": {"stringValue": buyer},
         "buyerName": {"stringValue": "Nena"},
         "sellerId": {"stringValue": seller},
-        "listingTitle": {"stringValue": "Saging"},
+        "listingTitle": {"stringValue": "Banana"},
         "price": {"doubleValue": 25.5},
         "quantity": {"integerValue": "2"},
         "total": {"doubleValue": 51.0},
@@ -359,13 +359,13 @@ check("worker: a user cannot make themselves an admin", "POST", "/admins", 403,
 def report_doc(listing_id, reporter, reason="Scam o pangilad"):
     return {"fields": {
         "listingId": {"stringValue": listing_id},
-        "listingTitle": {"stringValue": "Saging"},
+        "listingTitle": {"stringValue": "Banana"},
         "sellerId": {"stringValue": "u2"},
         "sellerName": {"stringValue": "Nena"},
         "reporterUid": {"stringValue": reporter},
         "reporterName": {"stringValue": "Juan"},
         "reason": {"stringValue": reason},
-        "note": {"stringValue": "Dili tinuod ang presyo."},
+        "note": {"stringValue": "The price is not real."},
         "status": {"stringValue": "open"},
         "createdAt": {"integerValue": "1"},
     }}
@@ -470,7 +470,7 @@ check("fcm: others cannot read the token", "GET", "/users/u1/tokens", 403, uid="
 
 # --- saved searches ----------------------------------------------------------
 saved_doc = {"fields": {
-    "query": {"stringValue": "saging"},
+    "query": {"stringValue": "banana"},
     "category": {"stringValue": "Tanan"},
     "town": {"stringValue": "Tanan"},
     "createdAt": {"integerValue": "1"},
