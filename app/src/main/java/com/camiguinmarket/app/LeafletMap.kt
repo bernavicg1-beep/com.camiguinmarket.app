@@ -9,6 +9,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.location.Location
 import android.location.LocationManager
@@ -355,13 +356,33 @@ fun LeafletMapView(
             "&layer=mapnik&marker=$latitude,$longitude"
     }
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.defaultMinSize(minHeight = 280.dp),
         factory = { ctx ->
             WebView(ctx).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = true
-                webViewClient = WebViewClient()
+                setBackgroundColor(android.graphics.Color.WHITE)
+                webViewClient = object : WebViewClient() {
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
+                        android.util.Log.e("LeafletMap", "ERR ${error?.errorCode} ${error?.description} ${request?.url}")
+                    }
+                    override fun onReceivedHttpError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        errorResponse: WebResourceResponse?
+                    ) {
+                        android.util.Log.e("LeafletMap", "HTTP ${errorResponse?.statusCode} ${request?.url}")
+                    }
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        android.util.Log.d("LeafletMap", "FINISHED $url")
+                    }
+                }
+                android.util.Log.d("LeafletMap", "LOADING $url")
                 loadUrl(url)
             }
         },
