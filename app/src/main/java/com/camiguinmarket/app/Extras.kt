@@ -589,7 +589,6 @@ fun BrandLogo(size: Dp = 40.dp, modifier: Modifier = Modifier, ring: Boolean = f
         modifier
             .size(size)
             .clip(RoundedCornerShape(size * 0.3f))
-            .background(Brush.verticalGradient(listOf(Color(0xFF4FA3F7), Color(0xFF0B4AA2))))
             .then(
                 if (ring) Modifier.border(
                     1.5.dp,
@@ -599,22 +598,11 @@ fun BrandLogo(size: Dp = 40.dp, modifier: Modifier = Modifier, ring: Boolean = f
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            Icons.Filled.ShoppingCart,
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_island),
             contentDescription = "Camiguin Market",
-            tint = Color.White,
-            modifier = Modifier
-                .size(size * 0.44f)
-                .offset(x = -size * 0.1f, y = -size * 0.08f)
-        )
-        Icon(
-            Icons.Filled.Park,
-            contentDescription = null,
-            tint = Color(0xFF7CE38B),
-            modifier = Modifier
-                .size(size * 0.42f)
-                .align(Alignment.BottomEnd)
-                .offset(x = -size * 0.06f, y = -size * 0.06f)
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
         )
     }
 }
@@ -1082,7 +1070,7 @@ fun ListingCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = onFavorite, modifier = Modifier.size(28.dp)) {
+                    IconButton(onClick = onFavorite, modifier = Modifier.size(36.dp)) {
                         Icon(
                             if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                             contentDescription = "Favorites",

@@ -3,6 +3,8 @@ package com.camiguinmarket.app
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.pm.PackageManager
+import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
@@ -13,10 +15,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.BorderStroke
@@ -51,6 +54,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Query
 import java.net.HttpURLConnection
 import java.net.URL
@@ -498,6 +502,7 @@ fun MarketScreen(
     // The listing being edited by the owner (null = none).
     var editListing by remember { mutableStateOf<Listing?>(null) }
     var selected by remember { mutableStateOf<Listing?>(null) }
+    var sellerInfoListing by remember { mutableStateOf<Listing?>(null) }
     var mapListing by remember { mutableStateOf<Listing?>(null) }
     var showAllMap by remember { mutableStateOf(false) }
     var showCompare by remember { mutableStateOf(false) }
@@ -506,6 +511,31 @@ fun MarketScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var photoUrl by remember { mutableStateOf(auth.currentUser?.photoUrl?.toString()) }
+
+    // Ask for notification permission (Android 13+) so chat/order pushes can pop up.
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Keep a public profile document so other users (e.g. buyers) can view
+    // the seller's name, photo, phone and email from a listing.
+    LaunchedEffect(uid, displayName, photoUrl) {
+        db.collection("users").document(uid).set(
+            mapOf(
+                "uid" to uid,
+                "name" to displayName,
+                "email" to (auth.currentUser?.email ?: ""),
+                "photoUrl" to (photoUrl ?: "")
+            ),
+            SetOptions.merge()
+        )
+    }
 
     // Navigation and the new features (mockup): tabs, cart, favorites, notifications, chat.
     var tab by remember { mutableStateOf(MarketTab.Home) }
@@ -1007,11 +1037,11 @@ fun MarketScreen(
                             }
                             context.startActivity(Intent.createChooser(share, "Share listing"))
                         }) {
-                            Text("↗", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                            Text("↗", color = Color.White, style = MaterialTheme.typography.headlineSmall)
                         }
                         if (l.sellerId == uid) {
                             IconButton(onClick = { selected = null; editListing = l }) {
-                                Text("✏️", style = MaterialTheme.typography.titleMedium)
+                                Text("✏️", style = MaterialTheme.typography.headlineSmall)
                             }
                             IconButton(onClick = {
                                 // Photos are removed only after the document is gone,
@@ -1022,7 +1052,7 @@ fun MarketScreen(
                                     .addOnSuccessListener { deleteListingImages(photos) }
                                 selected = null
                             }) {
-                                Text("🗑", style = MaterialTheme.typography.titleMedium)
+                                Text("🗑", style = MaterialTheme.typography.headlineSmall)
                             }
                         }
                     }
@@ -1116,7 +1146,10 @@ fun MarketScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { sellerInfoListing = l }
+                            ) {
                                     Box(
                                         Modifier
                                             .size(40.dp)
@@ -1137,6 +1170,11 @@ fun MarketScreen(
                                             "Seller • ${l.contact}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = BrandMuted
+                                        )
+                                        Text(
+                                            "Tap to view seller info",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BrandBlue
                                         )
                                     }
                                     SellerRatingSummary(l.sellerId)
@@ -1225,6 +1263,15 @@ fun MarketScreen(
                 }
             }
         }
+    }
+
+    sellerInfoListing?.let { l ->
+        SellerInfoDialog(
+            sellerId = l.sellerId,
+            fallbackName = l.sellerName,
+            fallbackContact = l.contact,
+            onDismiss = { sellerInfoListing = null }
+        )
     }
 
     // Option A: native Google Map inside the app.
@@ -1678,6 +1725,67 @@ private fun decodeDownsampled(bytes: ByteArray, targetPx: Int): ImageBitmap? {
  * edge) and kept in an in-memory cache, so a 5 MB phone photo never becomes a
  * full-size bitmap inside a small row, and scrolling back is instant.
  */
+@Composable
+fun SellerInfoDialog(
+    sellerId: String,
+    fallbackName: String,
+    fallbackContact: String,
+    onDismiss: () -> Unit
+) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var name by remember { mutableStateOf(fallbackName.ifBlank { "Seller" }) }
+    var photoUrl by remember { mutableStateOf<String?>(null) }
+    var phone by remember { mutableStateOf<String?>(null) }
+    var email by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(sellerId) {
+        if (sellerId.isBlank()) return@LaunchedEffect
+        db.collection("users").document(sellerId).get()
+            .addOnSuccessListener { d ->
+                d.getString("name")?.takeIf { it.isNotBlank() }?.let { name = it }
+                photoUrl = d.getString("photoUrl")?.takeIf { it.isNotBlank() }
+                phone = d.getString("phone")?.takeIf { it.isNotBlank() }
+                email = d.getString("email")?.takeIf { it.isNotBlank() }
+            }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(name, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(BrandSky),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!photoUrl.isNullOrBlank()) {
+                        RemoteImage(photoUrl!!, Modifier.fillMaxSize())
+                    } else {
+                        Text(
+                            name.take(1).uppercase(),
+                            color = BrandBlue,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (!phone.isNullOrBlank()) Text("Phone: $phone")
+                if (!email.isNullOrBlank()) Text("Email: $email")
+                if (fallbackContact.isNotBlank()) Text("Contact: $fallbackContact")
+                if (phone.isNullOrBlank() && email.isNullOrBlank() && fallbackContact.isBlank()) {
+                    Text("No contact details available.", color = BrandMuted)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
+    )
+}
+
 @Composable
 fun RemoteImage(url: String, modifier: Modifier = Modifier, targetPx: Int = 512) {
     val key = "$targetPx|$url"
