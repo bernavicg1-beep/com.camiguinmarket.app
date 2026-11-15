@@ -8,6 +8,11 @@ compatibility_date = "2026-11-01"
 binding = "IMAGES"
 bucket_name = "camiguinmarket-images"
 
+# Delete expired perishable listings 4 times an hour.
+# Needs FIREBASE_SERVICE_ACCOUNT (same secret as push notifications).
+[triggers]
+crons = ["*/15 * * * *"]
+
 [vars]
 # The Firebase Web API key (public — it is already in google-services.json).
 # Set it as a secret: wrangler secret put FIREBASE_WEB_API_KEY

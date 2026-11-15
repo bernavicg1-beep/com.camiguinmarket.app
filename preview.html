@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Camiguin Market — Theme Preview</title>
+  <link rel="stylesheet" href="app/src/main/assets/camiguin-theme.css" />
+  <style>
+    /* Sparse page chrome so the app theme is the star. */
+    .preview-shell { max-width: 480px; margin: 0 auto; }
+    .demo-body { display: flex; flex-direction: column; min-height: 100vh; }
+    .demo-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .demo-nav { padding-bottom: 64px; }
+    .demo-header { padding-bottom: 12px; }
+    .demo-footer { padding: 12px; border-top: 1px solid var(--border-color); }
+    .demo-spacer { flex: 1; }
+    .demo-note { font-size: 12px; color: var(--text-secondary); }
+  </style>
+</head>
+<body class="demo-body">
+  <div class="preview-shell">
+
+    <div class="hero-island-screen demo-header">
+      <div>
+        <div class="app-header">
+          <span>Camiguin Market</span>
+          <span>🛒</span>
+        </div>
+        <div class="search-bar" style="margin-top: 12px;">
+          <span>🔍</span>
+          <input type="text" placeholder="Search a place or seller…" />
+        </div>
+      </div>
+      <div class="demo-spacer"></div>
+      <div style="font-size: 12px; max-width: 320px; text-align: right;">
+        Shop Local. Support Camiguin.
+      </div>
+    </div>
+
+    <div class="card" style="margin: 12px;">
+      <div class="demo-note">Featured Products</div>
+      <div class="demo-card-grid" style="margin-top: 8px;">
+        <div class="card">
+          <div style="font-weight: 600;">Fresh Catch 🐟</div>
+          <div class="badge-pending" style="margin-top: 6px;">Pending</div>
+          <div style="font-size: 14px; color: var(--text-secondary);">Mambajao • ₱180</div>
+        </div>
+        <div class="card">
+          <div style="font-weight: 600;">Coconut Oil</div>
+          <div class="badge-confirmed" style="margin-top: 6px;">Confirmed</div>
+          <div style="font-size: 14px; color: var(--text-secondary);">Guinsiliban • ₱250</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-spacer"></div>
+
+    <nav class="bottom-nav demo-nav">
+      <a class="nav-item active" href="#">Home</a>
+      <a class="nav-item" href="#">Categories</a>
+      <a class="nav-item" href="#">Sell</a>
+      <a class="nav-item" href="#">Cart</a>
+      <a class="nav-item" href="#">Profile</a>
+    </nav>
+
+    <div class="demo-footer">
+      <button class="btn-secondary" id="toggleTheme" style="margin-bottom: 8px;">
+        Switch to dark mode
+      </button>
+      <div class="demo-note">
+        If you use this in a hybrid app, point
+        <code>--island-bg-image</code> at a real Camiguin photo.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const btn = document.getElementById('toggleTheme');
+    btn.addEventListener('click', () => {
+      const html = document.documentElement;
+      const nextDark = html.getAttribute('data-theme') !== 'dark';
+      html.setAttribute('data-theme', nextDark ? 'dark' : 'light');
+      btn.textContent = nextDark
+        ? 'Switch to light mode'
+        : 'Switch to dark mode';
+    });
+  </script>
+</body>
+</html>

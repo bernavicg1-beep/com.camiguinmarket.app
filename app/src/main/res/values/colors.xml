@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary -->
+    <color name="market_primary">#0052CC</color>
+    <color name="market_primary_variant">#003A99</color>
+    <color name="market_on_primary">#FFFFFF</color>
+
+    <!-- Secondary / brand accent -->
+    <color name="market_secondary">#F2A900</color>
+    <color name="market_on_secondary">#2A1E00</color>
+
+    <!-- Tertiary / sky -->
+    <color name="market_tertiary">#E6F0FF</color>
+    <color name="market_on_tertiary">#003A99</color>
+
+    <!-- Background / surface (white island) -->
+    <color name="market_background">#FFFFFF</color>
+    <color name="market_surface">#FFFFFF</color>
+    <color name="market_surface_variant">#F2F5FA</color>
+    <color name="market_on_background">#1F2430</color>
+    <color name="market_on_surface">#1F2430</color>
+    <color name="market_surface_content">#1F2430</color>
+    <color name="market_surface_content_example">#FFFFFF</color>
+    <color name="market_outline">#9AA7B8</color>
+
+    <!-- Semantic -->
+    <color name="market_error">#D92D20</color>
+    <color name="market_on_error">#FFFFFF</color>
+    <color name="market_success">#00875A</color>
+    <color name="market_on_success">#FFFFFF</color>
+    <color name="market_info">#0052CC</color>
+    <color name="market_on_info">#FFFFFF</color>
+
+    <!-- Elevation -->
+    <color name="market_surface_dim">#00000000</color>
+    <color name="market_outline_variant">#E3E8F0</color>
+</resources>

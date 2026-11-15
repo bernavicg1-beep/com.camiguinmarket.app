@@ -142,7 +142,12 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
             },
             confirmButton = {
                 TextButton(onClick = {
+                    // Admins may delete another seller's photos; the Worker
+                    // checks `admins/{uid}`. Only after the document is gone.
+                    val photos = l.imageUrls.takeIf { it.isNotEmpty() }
+                        ?: listOfNotNull(l.imageUrl.takeIf { !it.isNullOrBlank() })
                     db.collection("listings").document(l.id).delete()
+                        .addOnSuccessListener { deleteListingImages(photos) }
                     notifyUser(
                         db = db,
                         toUid = l.sellerId,
@@ -193,7 +198,7 @@ fun ReportsList(uid: String) {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text("Rason: ${r.reason}", style = MaterialTheme.typography.labelSmall)
+                    Text("Reason: ${r.reason}", style = MaterialTheme.typography.labelSmall)
                     if (r.note.isNotBlank()) {
                         Text("\"${r.note}\"", style = MaterialTheme.typography.bodySmall)
                     }
@@ -204,7 +209,22 @@ fun ReportsList(uid: String) {
                     if (r.status == "open") {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = {
-                                db.collection("listings").document(r.listingId).delete()
+                                val listingRef =
+                                    db.collection("listings").document(r.listingId)
+                                // Read the photos first: they are removed after the
+                                // listing is deleted (the Worker allows admins).
+                                listingRef.get().addOnCompleteListener { task ->
+                                    val listing = task.result
+                                        ?.toObject(Listing::class.java)
+                                    val photos = listing?.let { l ->
+                                        l.imageUrls.takeIf { it.isNotEmpty() }
+                                            ?: listOfNotNull(
+                                                l.imageUrl.takeIf { !it.isNullOrBlank() }
+                                            )
+                                    } ?: emptyList()
+                                    listingRef.delete()
+                                        .addOnSuccessListener { deleteListingImages(photos) }
+                                }
                                 db.collection("reports").document(r.id)
                                     .update("status", "resolved")
                                 notifyUser(

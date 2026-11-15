@@ -1,0 +1,34 @@
+name: Worker tests
+
+# The Worker holds the rules the app relies on for photo storage: who may
+# delete which photo, and how moderator access is decided.
+on:
+  push:
+    branches: [main]
+    paths:
+      - worker/**
+      - .github/workflows/worker-test.yml
+  pull_request:
+    paths:
+      - worker/**
+      - .github/workflows/worker-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Worker tests (node:test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # No dependencies: the tests use node:test and stub every network call.
+      - name: Run the Worker tests
+        working-directory: worker
+        run: npm test

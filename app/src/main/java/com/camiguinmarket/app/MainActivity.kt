@@ -1,5 +1,7 @@
 package com.camiguinmarket.app
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -47,6 +49,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,8 +94,56 @@ data class Listing(
     // Number of cart adds.
     val cartAdds: Long = 0L,
     // Views kada adlaw: {"2026-11-14": 5}
-    val viewsByDay: Map<String, Long> = emptyMap()
+    val viewsByDay: Map<String, Long> = emptyMap(),
+    // Perishable listings leave the market once `expiresAt` passes.
+    // 0 means the listing never expires.
+    val isPerishable: Boolean = false,
+    val expiresAt: Long = 0L
 )
+
+/** True once a perishable listing has reached its expiration time. */
+fun Listing.isExpired(now: Long = System.currentTimeMillis()): Boolean =
+    isPerishable && expiresAt in 1..now
+
+/** Expiration shown as "Nov 15, 6:00 PM". */
+fun formatExpiry(ts: Long): String =
+    SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(ts))
+
+/**
+ * Ask for the expiration date, then the time, and hand back the timestamp.
+ * A perishable listing cannot be posted without this.
+ */
+fun pickExpiryDateTime(context: Context, initial: Long, onPicked: (Long) -> Unit) {
+    val start = Calendar.getInstance().apply {
+        if (initial > 0) timeInMillis = initial
+    }
+    DatePickerDialog(
+        context,
+        { _, year, month, day ->
+            TimePickerDialog(
+                context,
+                { _, hour, minute ->
+                    val picked = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, year)
+                        set(Calendar.MONTH, month)
+                        set(Calendar.DAY_OF_MONTH, day)
+                        set(Calendar.HOUR_OF_DAY, hour)
+                        set(Calendar.MINUTE, minute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    onPicked(picked.timeInMillis)
+                },
+                start.get(Calendar.HOUR_OF_DAY),
+                start.get(Calendar.MINUTE),
+                false
+            ).show()
+        },
+        start.get(Calendar.YEAR),
+        start.get(Calendar.MONTH),
+        start.get(Calendar.DAY_OF_MONTH)
+    ).show()
+}
 
 class MainActivity : ComponentActivity() {
     // Notification tap target: "order:<id>" or "chat:<id>".
@@ -457,11 +511,13 @@ fun MarketScreen(
         val reg = db.collection("listings")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .addSnapshotListener { snap, _ ->
+                // Expired perishable listings are dropped here, so they are
+                // gone from the home feed, categories, map and profile.
                 listings = snap?.documents?.mapNotNull { d ->
                     d.toObject(Listing::class.java)?.let { l ->
                         l.copy(id = d.id, category = normalizeCategory(l.category))
                     }
-                } ?: emptyList()
+                }?.filterNot { it.isExpired() } ?: emptyList()
             }
         onDispose { reg.remove() }
     }
@@ -753,10 +809,17 @@ fun MarketScreen(
                         Text("Ipakigbahin")
                     }
                     if (l.sellerId == uid) {
-                        TextButton(onClick = { selected = null; editListing = l }) { Text("I-edit") }
+                        TextButton(onClick = { selected = null; editListing = l }) { Text("Edit") }
                         TextButton(
                             onClick = {
+                                // Photos are removed only after the document is gone,
+                                // so a failed delete keeps a reachable listing.
+                                val photos = l.imageUrls.takeIf { it.isNotEmpty() }
+                                    ?: listOfNotNull(
+                                        l.imageUrl.takeIf { !it.isNullOrBlank() }
+                                    )
                                 db.collection("listings").document(l.id).delete()
+                                    .addOnSuccessListener { deleteListingImages(photos) }
                                 selected = null
                             }
                         ) { Text("Delete") }
@@ -975,6 +1038,10 @@ fun PostDialog(
     }
     var showPicker by remember { mutableStateOf(false) }
 
+    // Perishable items must carry an expiration; the listing is hidden after it.
+    var isPerishable by remember { mutableStateOf(existing?.isPerishable ?: false) }
+    var expiresAt by remember { mutableStateOf(existing?.expiresAt ?: 0L) }
+
     // Listing photo: picked from the gallery, uploaded to the Worker.
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1018,9 +1085,15 @@ fun PostDialog(
                     ?: System.currentTimeMillis(),
                 latitude = pickup?.latitude, longitude = pickup?.longitude,
                 imageUrl = imageUrls.firstOrNull() ?: "",
-                imageUrls = imageUrls
+                imageUrls = imageUrls,
+                isPerishable = isPerishable,
+                expiresAt = if (isPerishable) expiresAt else 0L
             )
-        )
+        ).addOnSuccessListener {
+            // Replaced photos are no longer referenced: drop them from R2.
+            // Only after the save, so a failed update never loses a photo.
+            if (existing != null) deleteListingImages(existingPhotos - imageUrls.toSet())
+        }
         onClose()
     }
 
@@ -1043,6 +1116,56 @@ fun PostDialog(
                 ChipRow(categories.drop(1), category) { category = it }
                 Text("Lugar", style = MaterialTheme.typography.labelMedium)
                 ChipRow(towns, town) { town = it }
+
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = isPerishable,
+                        onCheckedChange = { checked ->
+                            isPerishable = checked
+                            if (!checked) expiresAt = 0L
+                        }
+                    )
+                    Text("Perishable (spoils quickly)")
+                }
+                if (isPerishable) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(
+                                "Expiration date and time (required)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (expiresAt > 0) "Expires: ${formatExpiry(expiresAt)}"
+                                else "No expiration set yet.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    pickExpiryDateTime(context, expiresAt) { expiresAt = it }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("🗓️ Set expiration") }
+                            if (expiresAt in 1..System.currentTimeMillis()) {
+                                Text(
+                                    "Choose a time in the future.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                            Text(
+                                "The listing leaves the market automatically " +
+                                    "once this time is reached.",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
 
                 Spacer(Modifier.height(8.dp))
                 Text("Pickup location", style = MaterialTheme.typography.labelMedium)
@@ -1130,7 +1253,8 @@ fun PostDialog(
         confirmButton = {
             TextButton(
                 enabled = !uploading && title.isNotBlank() &&
-                    price.toDoubleOrNull() != null && contact.isNotBlank(),
+                    price.toDoubleOrNull() != null && contact.isNotBlank() &&
+                    (!isPerishable || expiresAt > System.currentTimeMillis()),
                 onClick = {
                     val picked = imageUris
                     val baseUrl = BuildConfig.R2_UPLOAD_URL
@@ -1392,10 +1516,10 @@ fun DeleteAccountDialog(
                         if (result == null) onDeleted() else error = result
                     }
                 }
-            ) { Text(if (deleting) "Ginapas…" else "Delete") }
+            ) { Text(if (deleting) "Deleting…" else "Delete") }
         },
         dismissButton = {
-            TextButton(enabled = !deleting, onClick = onDismiss) { Text("Kanselar") }
+            TextButton(enabled = !deleting, onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
@@ -1426,22 +1550,37 @@ fun deleteAccountAndData(
                     }
                 }
             }
-            if (snapshot.documents.isEmpty()) {
-                deleteUser()
-            } else {
-                val batch = db.batch()
-                snapshot.documents.forEach { batch.delete(it.reference) }
-                batch.commit().addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        deleteUser()
-                    } else {
-                        onResult(
-                            "Failed to delete your listings: " +
-                                (task.exception?.localizedMessage ?: "unknown error")
-                        )
+
+            val deleteListings = {
+                if (snapshot.documents.isEmpty()) {
+                    deleteUser()
+                } else {
+                    val batch = db.batch()
+                    snapshot.documents.forEach { batch.delete(it.reference) }
+                    batch.commit().addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            deleteUser()
+                        } else {
+                            onResult(
+                                "Failed to delete your listings: " +
+                                    (task.exception?.localizedMessage ?: "unknown error")
+                            )
+                        }
                     }
                 }
             }
+
+            // Photos first: the Worker needs the ID token, and it is gone once
+            // the account is deleted. Best effort, so a failure still lets the
+            // account go (the cron purge cleans up what is left).
+            val photos = snapshot.documents
+                .mapNotNull { it.toObject(Listing::class.java) }
+                .flatMap { l ->
+                    l.imageUrls.takeIf { it.isNotEmpty() }
+                        ?: listOfNotNull(l.imageUrl.takeIf { !it.isNullOrBlank() })
+                }
+                .distinct()
+            deleteListingImages(photos) { deleteListings() }
         }
         .addOnFailureListener { e ->
             onResult(

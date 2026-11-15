@@ -92,6 +92,73 @@ async function handleUpload(request, env) {
   return json({ url: `${publicBase(request, env)}/i/${key}`, key }, 200);
 }
 
+/**
+ * POST /delete-images
+ *   Header: Authorization: Bearer <Firebase ID token>
+ *   Body:   { "urls": ["https://<worker>/i/listing_images/<uid>/<file>.jpg", ...] }
+ *   Response: { "deleted": n, "skipped": n }
+ *
+ * Used by the app when a seller deletes a listing or replaces its photos.
+ * Only keys inside `listing_images/<uid>/` are removed, so a user cannot
+ * delete another seller's photos; unknown URLs count as skipped.
+ *
+ * An admin (`admins/{uid}` exists) may also delete photos in any
+ * `listing_images/` folder, which is how moderator removals clean up after a
+ * listing that belongs to someone else.
+ */
+async function handleDeleteImages(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!token) return json({ error: "unauthorized" }, 401);
+
+  const uid = await verifyIdToken(token, env);
+  if (!uid) return json({ error: "unauthorized" }, 401);
+
+  if (!env.IMAGES) return json({ error: "storage_not_configured" }, 503);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "bad_json" }, 400);
+  }
+
+  const urls = Array.isArray(body.urls) ? body.urls.slice(0, 30).map(String) : [];
+  const prefix = `listing_images/${uid}/`;
+  let deleted = 0;
+  let skipped = 0;
+
+  // Whether the caller is a moderator; only needed for keys outside their own
+  // folder, so it is looked up at most once and only when necessary.
+  let admin = null;
+  const callerIsAdmin = async () => {
+    if (admin !== null) return admin;
+    admin = false;
+    const sa = serviceAccount(env);
+    if (!sa) return admin;
+    const access = await accessToken(env);
+    if (!access) return admin;
+    admin = Boolean(await readDoc(sa, access, `admins/${uid}`));
+    return admin;
+  };
+
+  for (const url of urls) {
+    const key = photoKey(url);
+    if (!key || (!key.startsWith(prefix) && !(await callerIsAdmin()))) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      await env.IMAGES.delete(key);
+      deleted += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+
+  return json({ deleted, skipped }, 200);
+}
+
 async function handleImage(key, env, request, ctx) {
   // Serve repeat views from the Cloudflare edge instead of R2 every time.
   const cache = caches.default;
@@ -403,7 +470,180 @@ async function handlePush(request, env) {
   return json({ error: "unknown_kind" }, 400);
 }
 
+// ---------------------------------------------------------------------------
+// Scheduled cleanup: delete perishable listings after their expiration.
+//
+// The app already hides expired listings, but the documents stay in Firestore
+// until they are removed here. The query only touches documents whose
+// `expiresAt` is in the past, so non-perishable listings (expiresAt = 0) and
+// older documents without the field are never selected.
+// ---------------------------------------------------------------------------
+
+const PURGE_BATCH = 200;
+// Bound the work of a single cron run (batches × PURGE_BATCH documents).
+const PURGE_MAX_BATCHES = 10;
+
+/** List perishable listings whose expiration has already passed. */
+async function queryExpiredListings(sa, token, now, limit) {
+  const res = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${sa.project_id}` +
+      `/databases/(default)/documents:runQuery`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "listings" }],
+          where: {
+            // Range on a single field: 0 < expiresAt <= now.
+            compositeFilter: {
+              op: "AND",
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "expiresAt" },
+                    op: "GREATER_THAN",
+                    value: { integerValue: "0" },
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "expiresAt" },
+                    op: "LESS_THAN_OR_EQUAL",
+                    value: { integerValue: String(now) },
+                  },
+                },
+              ],
+            },
+          },
+          limit,
+        },
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`runQuery ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
+
+  const rows = await res.json();
+  const out = [];
+  for (const row of rows) {
+    // Rows with no match come back as `{ readTime }` only.
+    if (!row.document) continue;
+    const fields = row.document.fields || {};
+    out.push({
+      id: row.document.name.split("/").pop(),
+      isPerishable: fieldValue(fields.isPerishable) === true,
+      expiresAt: Number(fieldValue(fields.expiresAt) || 0),
+      imageUrl: fieldValue(fields.imageUrl) || "",
+      imageUrls: fieldValue(fields.imageUrls) || [],
+    });
+  }
+  return out;
+}
+
+async function deleteListing(sa, token, id) {
+  const res = await fetch(docUrl(sa, `listings/${id}`), {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // 404 means it was already removed by another run: that is fine.
+  return res.ok || res.status === 404;
+}
+
+/** R2 key behind a photo URL: https://host/i/listing_images/<uid>/<file>. */
+function photoKey(url) {
+  if (!url) return null;
+  const at = String(url).indexOf("/i/");
+  if (at === -1) return null;
+  const key = decodeURIComponent(String(url).slice(at + 3));
+  return key.startsWith("listing_images/") ? key : null;
+}
+
+/**
+ * Delete the photos of listings that are gone. Called only after the document
+ * was deleted, so a listing is never left pointing at a missing photo.
+ */
+async function deletePhotos(env, docs) {
+  if (!env.IMAGES) return { photosDeleted: 0, photoFailures: 0 };
+
+  const keys = new Set();
+  for (const doc of docs) {
+    const single = photoKey(doc.imageUrl);
+    if (single) keys.add(single);
+    for (const url of doc.imageUrls || []) {
+      const key = photoKey(url);
+      if (key) keys.add(key);
+    }
+  }
+
+  let photosDeleted = 0;
+  let photoFailures = 0;
+  for (const key of keys) {
+    try {
+      await env.IMAGES.delete(key);
+      photosDeleted += 1;
+    } catch {
+      photoFailures += 1;
+    }
+  }
+  return { photosDeleted, photoFailures };
+}
+
+/** Remove every expired perishable listing (bounded per run). */
+async function purgeExpiredListings(env) {
+  const sa = serviceAccount(env);
+  if (!sa) return { deleted: 0, skipped: "no_service_account" };
+
+  const access = await accessToken(env);
+  if (!access) return { deleted: 0, skipped: "no_access_token" };
+
+  let deleted = 0;
+  let failures = 0;
+  let photosDeleted = 0;
+  let photoFailures = 0;
+
+  for (let batch = 0; batch < PURGE_MAX_BATCHES; batch++) {
+    const now = Date.now();
+    const expired = (await queryExpiredListings(sa, access, now, PURGE_BATCH))
+      .filter((doc) => doc.isPerishable && doc.expiresAt > 0 && doc.expiresAt <= now);
+    if (expired.length === 0) break;
+
+    const results = await Promise.all(
+      expired.map((doc) => deleteListing(sa, access, doc.id)),
+    );
+    const removedDocs = expired.filter((_, index) => results[index]);
+    deleted += removedDocs.length;
+    failures += expired.length - removedDocs.length;
+
+    // Drop the photos of the listings that are really gone, so R2 does not
+    // keep orphaned images after the document is deleted.
+    const photos = await deletePhotos(env, removedDocs);
+    photosDeleted += photos.photosDeleted;
+    photoFailures += photos.photoFailures;
+
+    // Stop when nothing could be removed, so a failure cannot spin the loop.
+    if (removedDocs.length === 0) break;
+    if (expired.length < PURGE_BATCH) break;
+  }
+
+  return { deleted, failures, photosDeleted, photoFailures };
+}
+
 export default {
+  /** Cron trigger: delete expired perishable listings. */
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(
+      purgeExpiredListings(env)
+        .then((result) => console.log("purgeExpired", JSON.stringify(result)))
+        .catch((error) => console.log("purgeExpired failed", error.message)),
+    );
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
@@ -427,6 +667,11 @@ export default {
     if (url.pathname === "/upload") {
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
       return handleUpload(request, env);
+    }
+
+    if (url.pathname === "/delete-images") {
+      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      return handleDeleteImages(request, env);
     }
 
     if (url.pathname.startsWith("/i/")) {
