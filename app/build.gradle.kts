@@ -42,8 +42,8 @@ android {
         applicationId = "com.camiguinmarket.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.6"
+        versionCode = 7
+        versionName = "0.7"
 
         // Used by AndroidManifest.xml: ${MAPS_API_KEY}
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey

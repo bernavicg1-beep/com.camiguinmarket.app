@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -653,18 +654,22 @@ fun SearchBar(query: String, onQuery: (String) -> Unit, onSubmit: () -> Unit = {
     )
 }
 
-/** Hero banner from the poster: the island photo under the market slogan. */
+/**
+ * Hero banner from the poster: an aerial ocean photo (Unsplash, free licence —
+ * photo by Bernd Dittrich, El Nido, Palawan) under the market slogan.
+ */
 @Composable
 fun HeroBanner() {
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = BrandBlueDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(Modifier.fillMaxWidth().height(168.dp)) {
+        Box(Modifier.fillMaxWidth().height(178.dp)) {
             Image(
-                painter = painterResource(R.drawable.ic_launcher_island),
-                contentDescription = null,
+                painter = painterResource(R.drawable.hero_ocean),
+                contentDescription = "Turquoise lagoon in Camiguin",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -673,7 +678,9 @@ fun HeroBanner() {
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0x1A000000), Color(0x4D04224A), Color(0xE604224A))
+                            0f to Color(0x10001A33),
+                            0.45f to Color(0x4D06264A),
+                            1f to Color(0xE60A2B52)
                         )
                     )
             )
@@ -686,14 +693,16 @@ fun HeroBanner() {
                     "Shop Local.",
                     color = Color.White,
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontStyle = FontStyle.Italic
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "Support Camiguin",
                         color = Color.White,
                         style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontStyle = FontStyle.Italic
                     )
                     Text(
                         " ♡",
