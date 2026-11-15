@@ -364,18 +364,21 @@ fun LeafletMapView(
         bitmap = null
         failed = false
         try {
-            val n = 1 shl zoom
-            val latRad = Math.toRadians(latitude)
-            val x = Math.floor((longitude + 180.0) / 360.0 * n).toInt()
-            val y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
-            val url = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
-            val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                setRequestProperty("User-Agent", "CamiguinMarket/1.0 (Android)")
-                connectTimeout = 10000
-                readTimeout = 10000
+            val bmp = withContext(Dispatchers.IO) {
+                val n = 1 shl zoom
+                val latRad = Math.toRadians(latitude)
+                val x = Math.floor((longitude + 180.0) / 360.0 * n).toInt()
+                val y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
+                val url = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
+                val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                    setRequestProperty("User-Agent", "CamiguinMarket/1.0 (Android)")
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                }
+                val result = conn.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
+                conn.disconnect()
+                result
             }
-            val bmp = conn.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
-            conn.disconnect()
             bitmap = bmp
         } catch (e: Exception) {
             android.util.Log.e("LeafletMap", "tile fetch failed: ${e.message}")
