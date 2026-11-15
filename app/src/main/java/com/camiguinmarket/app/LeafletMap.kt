@@ -7,8 +7,13 @@ import android.content.Intent
 import android.net.Uri
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.location.Location
+import android.location.LocationManager
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -269,7 +274,8 @@ fun saveListingLocation(
 class LeafletBridge(
     private val readyHandler: () -> Unit,
     private val pickHandler: (Double, Double) -> Unit,
-    private val markerHandler: (String) -> Unit
+    private val markerHandler: (String) -> Unit,
+    private val myLocationHandler: () -> Unit = {}
 ) {
     @JavascriptInterface
     fun onReady() {
@@ -284,6 +290,11 @@ class LeafletBridge(
     @JavascriptInterface
     fun onMarker(id: String) {
         markerHandler(id)
+    }
+
+    @JavascriptInterface
+    fun onMyLocation() {
+        myLocationHandler()
     }
 }
 
@@ -333,10 +344,36 @@ fun LeafletMapView(
     modifier: Modifier = Modifier,
     onReady: () -> Unit = {},
     onPick: (Double, Double) -> Unit = { _, _ -> },
-    onMarker: (String) -> Unit = {}
+    onMarker: (String) -> Unit = {},
+    onMyLocation: () -> Unit = {}
 ) {
-    val bridge = remember(onReady, onPick, onMarker) { LeafletBridge(onReady, onPick, onMarker) }
+    val context = LocalContext.current
     var web by remember { mutableStateOf<WebView?>(null) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            fetchAndFocusLocation(context, web)
+        } else {
+            Toast.makeText(context, "Location permission denied.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val requestMyLocation: () -> Unit = {
+        if (ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            fetchAndFocusLocation(context, web)
+        } else {
+            permissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    val bridge = remember(onReady, onPick, onMarker, onMyLocation) {
+        LeafletBridge(onReady, onPick, onMarker) { requestMyLocation(); onMyLocation() }
+    }
 
     AndroidView(
         modifier = modifier,
@@ -353,6 +390,36 @@ fun LeafletMapView(
 
     LaunchedEffect(web, config) {
         web?.evaluateJavascript("window.initMap($config);", null)
+    }
+}
+
+private fun fetchAndFocusLocation(context: Context, web: WebView?) {
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+    if (manager == null) {
+        Toast.makeText(context, "Location service unavailable.", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+    var best: Location? = null
+    for (provider in providers) {
+        try {
+            val loc = manager.getLastKnownLocation(provider)
+            if (loc != null && (best == null || loc.accuracy < best.accuracy)) {
+                best = loc
+            }
+        } catch (_: SecurityException) {
+        }
+    }
+    if (best != null) {
+        web?.evaluateJavascript(
+            "window.focusPoint(${best.latitude}, ${best.longitude}, 15);", null
+        )
+    } else {
+        Toast.makeText(
+            context,
+            "Location not available yet. Try again in a moment.",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 }
 

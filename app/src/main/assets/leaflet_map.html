@@ -3,23 +3,47 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="leaflet/leaflet.css" />
+  <script src="leaflet/leaflet.js"></script>
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; background: #eef4fc; }
     .leaflet-popup-content { font: 13px system-ui, sans-serif; color: #10233F; }
     .leaflet-container { font: 13px system-ui, sans-serif; }
+    .leaflet-control-mylocation a {
+      font-size: 18px; line-height: 30px; text-align: center;
+      width: 30px; height: 30px; display: block; text-decoration: none; color: #10233F;
+    }
   </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-  // Leaflet + OpenStreetMap: no API key, no Google, no Mapbox.
+  // Leaflet + OpenStreetMap: library bundled offline, no Google, no Mapbox.
+  // Tiles still load from OpenStreetMap (network required for map imagery).
   var map = L.map('map', { zoomControl: true }).setView([9.1732, 124.7290], 11);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
+
+  // "My location" control: asks Android to fetch the device GPS fix.
+  var MyLocationControl = L.Control.extend({
+    onAdd: function (m) {
+      var container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      var btn = L.DomUtil.create('a', '', container);
+      btn.href = '#';
+      btn.title = 'My location';
+      btn.innerHTML = '&#128205;';
+      L.DomEvent.on(btn, 'click', function (e) {
+        L.DomEvent.stopPropagation(e);
+        L.DomEvent.preventDefault(e);
+        var b = window.AndroidMap;
+        if (b && b.onMyLocation) { b.onMyLocation(); }
+      });
+      return container;
+    }
+  });
+  new MyLocationControl({ position: 'bottomright' }).addTo(map);
 
   var mainMarker = null;
   var routeLine = null;
@@ -98,6 +122,7 @@
 
   window.focusPoint = function (lat, lng, zoom) {
     map.setView([lat, lng], zoom || 15);
+    if (mainMarker) { mainMarker.setLatLng([lat, lng]); }
   };
 
   window.setPickMode = function (on) {
