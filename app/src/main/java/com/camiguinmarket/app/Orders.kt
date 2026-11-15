@@ -561,7 +561,7 @@ fun OrderDetailScreen(
                 Text("Buyer: ${order.buyerName}", style = MaterialTheme.typography.bodySmall)
                 Text("Seller: ${order.sellerName}", style = MaterialTheme.typography.bodySmall)
                 if (order.town.isNotBlank()) {
-                    Text("Lugar: ${order.town}", style = MaterialTheme.typography.bodySmall)
+                    Text("Town: ${order.town}", style = MaterialTheme.typography.bodySmall)
                 }
                 if (order.contact.isNotBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

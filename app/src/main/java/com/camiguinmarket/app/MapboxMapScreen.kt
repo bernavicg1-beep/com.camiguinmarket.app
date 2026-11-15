@@ -126,7 +126,7 @@ fun MapboxMapScreen(
             if (token.isBlank()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Walay Mapbox access token.\n" +
+                        "No Mapbox access token.\n" +
                             "Add MAPBOX_ACCESS_TOKEN to local.properties " +
                             "and rebuild the app.",
                         modifier = Modifier.padding(24.dp)
