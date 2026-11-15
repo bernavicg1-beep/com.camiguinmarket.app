@@ -18,13 +18,18 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardOptions
@@ -347,48 +352,63 @@ fun LeafletMapView(
     latitude: Double,
     longitude: Double,
     modifier: Modifier = Modifier,
-    zoom: Int = 13
+    zoom: Int = 14
 ) {
-    val url = remember(latitude, longitude, zoom) {
-        "https://www.openstreetmap.org/?mlat=$latitude&mlon=$longitude#map=13/$latitude/$longitude"
-    }
-    AndroidView(
-        modifier = modifier.defaultMinSize(minHeight = 280.dp),
-        factory = { ctx ->
-            WebView(ctx).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.allowFileAccess = true
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
-                setBackgroundColor(android.graphics.Color.WHITE)
-                setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
-                webViewClient = object : WebViewClient() {
-                    override fun onReceivedError(
-                        view: WebView?,
-                        request: WebResourceRequest?,
-                        error: WebResourceError?
-                    ) {
-                        android.util.Log.e("LeafletMap", "ERR ${error?.errorCode} ${error?.description} ${request?.url}")
-                    }
-                    override fun onReceivedHttpError(
-                        view: WebView?,
-                        request: WebResourceRequest?,
-                        errorResponse: WebResourceResponse?
-                    ) {
-                        android.util.Log.e("LeafletMap", "HTTP ${errorResponse?.statusCode} ${request?.url}")
-                    }
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        android.util.Log.d("LeafletMap", "FINISHED $url")
-                    }
-                }
-                android.util.Log.d("LeafletMap", "LOADING $url")
-                loadUrl(url)
+    // Fetch a single OSM tile for this location and show it as an image,
+    // with a red marker dot on top. This avoids WebView entirely, which kept
+    // rendering blank on device.
+    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var failed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(latitude, longitude, zoom) {
+        bitmap = null
+        failed = false
+        try {
+            val n = 1 shl zoom
+            val latRad = Math.toRadians(latitude)
+            val x = Math.floor((longitude + 180.0) / 360.0 * n).toInt()
+            val y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
+            val url = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
+            val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                setRequestProperty("User-Agent", "CamiguinMarket/1.0 (Android)")
+                connectTimeout = 10000
+                readTimeout = 10000
             }
-        },
-        update = { wv -> wv.loadUrl(url) }
-    )
+            val bmp = conn.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
+            conn.disconnect()
+            bitmap = bmp
+        } catch (e: Exception) {
+            android.util.Log.e("LeafletMap", "tile fetch failed: ${e.message}")
+            failed = true
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .defaultMinSize(minHeight = 280.dp)
+            .background(androidx.compose.ui.graphics.Color(0xFFEAF1FB)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap!!.asImageBitmap(),
+                contentDescription = "Map",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Red marker dot in the centre.
+            Box(
+                Modifier
+                    .size(18.dp)
+                    .background(androidx.compose.ui.graphics.Color.Red, CircleShape)
+                    .border(2.dp, androidx.compose.ui.graphics.Color.White, CircleShape)
+            )
+        } else if (failed) {
+            Text("Map unavailable. Tap 'Open map' below.", color = BrandMuted)
+        } else {
+            CircularProgressIndicator()
+        }
+    }
 }
 
 
