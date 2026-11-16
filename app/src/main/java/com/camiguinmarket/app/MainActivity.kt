@@ -550,6 +550,9 @@ fun MarketScreen(
     var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
     var chatWith by remember { mutableStateOf<Pair<String, String>?>(null) }
     var chatListing by remember { mutableStateOf<Listing?>(null) }
+    var chatListingId by remember { mutableStateOf("") }
+    var chatListingTitle by remember { mutableStateOf("") }
+    var chatSellerUid by remember { mutableStateOf("") }
     var reportListing by remember { mutableStateOf<Listing?>(null) }
     var ratingOrder by remember { mutableStateOf<Order?>(null) }
     var reviewsSeller by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -602,6 +605,9 @@ fun MarketScreen(
                     if (other != null) {
                         val names = d.get("names") as? Map<*, *>
                         chatListing = null
+                        chatListingId = d.getString("listingId") ?: ""
+                        chatListingTitle = d.getString("listingTitle") ?: ""
+                        chatSellerUid = other
                         chatWith = other to (names?.get(other) as? String ?: "User")
                         overlay = "chat"
                         if (BuildConfig.DEBUG) {
@@ -817,6 +823,9 @@ fun MarketScreen(
                         uid = uid,
                         onChat = { otherId, otherName ->
                             chatListing = null
+                            chatListingId = ""
+                            chatListingTitle = ""
+                            chatSellerUid = otherId
                             chatWith = otherId to otherName
                             overlay = "chat"
                         },
@@ -826,12 +835,15 @@ fun MarketScreen(
 
                 "inbox" -> InboxScreen(uid) { thread ->
                     chatListing = null
+                    chatListingId = thread.listingId
+                    chatListingTitle = thread.listingTitle
+                    chatSellerUid = thread.otherUid
                     chatWith = thread.otherUid to thread.otherName
                     overlay = "chat"
                 }
 
                 "chat" -> chatWith?.let { (otherId, otherName) ->
-                    ChatScreen(uid, otherId, otherName, chatListing?.title ?: "", chatListing?.sellerId ?: "")
+                    ChatScreen(uid, otherId, otherName, chatListingTitle, chatSellerUid, chatListingId)
                 }
 
                 else -> when (tab) {
@@ -1221,6 +1233,9 @@ fun MarketScreen(
                                 OutlinedButton(
                                     onClick = {
                                         chatListing = l
+                                        chatListingId = l.id
+                                        chatListingTitle = l.title
+                                        chatSellerUid = l.sellerId
                                         chatWith = l.sellerId to l.sellerName
                                         selected = null
                                         overlay = "chat"
@@ -1737,10 +1752,14 @@ fun SellerInfoDialog(
     onDismiss: () -> Unit
 ) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val ctx = LocalContext.current
     var name by remember { mutableStateOf(fallbackName.ifBlank { "Seller" }) }
     var photoUrl by remember { mutableStateOf<String?>(null) }
     var phone by remember { mutableStateOf<String?>(null) }
     var email by remember { mutableStateOf<String?>(null) }
+    var telegram by remember { mutableStateOf<String?>(null) }
+    var messenger by remember { mutableStateOf<String?>(null) }
+    var whatsapp by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(sellerId) {
         if (sellerId.isBlank()) return@LaunchedEffect
         db.collection("users").document(sellerId).get()
@@ -1749,6 +1768,9 @@ fun SellerInfoDialog(
                 photoUrl = d.getString("photoUrl")?.takeIf { it.isNotBlank() }
                 phone = d.getString("phone")?.takeIf { it.isNotBlank() }
                 email = d.getString("email")?.takeIf { it.isNotBlank() }
+                telegram = d.getString("telegram")?.takeIf { it.isNotBlank() }
+                messenger = d.getString("messenger")?.takeIf { it.isNotBlank() }
+                whatsapp = d.getString("whatsapp")?.takeIf { it.isNotBlank() }
             }
     }
     AlertDialog(
@@ -1781,7 +1803,28 @@ fun SellerInfoDialog(
                 if (!phone.isNullOrBlank()) Text("Phone: $phone")
                 if (!email.isNullOrBlank()) Text("Email: $email")
                 if (fallbackContact.isNotBlank()) Text("Contact: $fallbackContact")
-                if (phone.isNullOrBlank() && email.isNullOrBlank() && fallbackContact.isBlank()) {
+                if (!telegram.isNullOrBlank()) {
+                    TextButton(onClick = {
+                        val u = "https://t.me/${telegram!!.trim().removePrefix("@")}"
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                    }) { Text("Open Telegram") }
+                }
+                if (!messenger.isNullOrBlank()) {
+                    TextButton(onClick = {
+                        val u = "https://m.me/${messenger!!.trim()}"
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                    }) { Text("Open Messenger") }
+                }
+                if (!whatsapp.isNullOrBlank()) {
+                    TextButton(onClick = {
+                        val num = whatsapp!!.trim().replace("+", "").replace(" ", "")
+                        val u = "https://wa.me/$num"
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                    }) { Text("Open WhatsApp") }
+                }
+                if (phone.isNullOrBlank() && email.isNullOrBlank() && fallbackContact.isBlank() &&
+                    telegram.isNullOrBlank() && messenger.isNullOrBlank() && whatsapp.isNullOrBlank()
+                ) {
                     Text("No contact details available.", color = BrandMuted)
                 }
             }

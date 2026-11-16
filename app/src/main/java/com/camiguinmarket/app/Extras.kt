@@ -514,20 +514,24 @@ data class ChatMessage(
     val createdAt: Long = 0L
 )
 
-fun chatIdFor(a: String, b: String): String = if (a < b) "${a}_$b" else "${b}_$a"
+fun chatIdFor(a: String, b: String, listingId: String = ""): String {
+    val base = if (a < b) "${a}_$b" else "${b}_$a"
+    return if (listingId.isBlank()) base else "${base}__${listingId}"
+}
 
 /** Message time, for example "7:42 PM". */
 fun chatTime(ts: Long): String =
     SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(ts))
 
-fun ensureChat(db: FirebaseFirestore, uid: String, otherUid: String, otherName: String, listingTitle: String) {
-    val id = chatIdFor(uid, otherUid)
+fun ensureChat(db: FirebaseFirestore, uid: String, otherUid: String, otherName: String, listingTitle: String, listingId: String = "") {
+    val id = chatIdFor(uid, otherUid, listingId)
     // Field paths only: writing the whole `names` map let one device overwrite
     // the other participant's name (that is where "Me" came from).
     val fields = mutableMapOf<String, Any>(
         "participants" to listOf(uid, otherUid),
         "names.$uid" to userDisplayName(),
         "listingTitle" to listingTitle,
+        "listingId" to listingId,
         "updatedAt" to System.currentTimeMillis()
     )
     val knownName = chatPartnerName(otherName)
@@ -542,11 +546,12 @@ fun sendChatMessage(
     otherUid: String,
     otherName: String,
     text: String,
-    listingTitle: String
+    listingTitle: String,
+    listingId: String = ""
 ) {
     if (text.isBlank()) return
-    ensureChat(db, uid, otherUid, otherName, listingTitle)
-    val id = chatIdFor(uid, otherUid)
+    ensureChat(db, uid, otherUid, otherName, listingTitle, listingId)
+    val id = chatIdFor(uid, otherUid, listingId)
     val chatRef = db.collection("chats").document(id)
     val senderName = userDisplayName()
     chatRef.collection("messages").add(ChatMessage(from = uid, fromName = senderName, text = text.trim(), createdAt = System.currentTimeMillis()))
@@ -1090,6 +1095,15 @@ fun ListingCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (listing.description.isNotBlank()) {
+                    Text(
+                        listing.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = BrandMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 if (listing.isPerishable && listing.expiresAt > 0) {
                     Text(
                         "⏳ Expires ${formatExpiry(listing.expiresAt)}",
@@ -1484,7 +1498,7 @@ fun NotificationsScreen(uid: String) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: String, sellerUid: String = "") {
+fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: String, sellerUid: String = "", listingId: String = "") {
     val db = remember { FirebaseFirestore.getInstance() }
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var text by remember { mutableStateOf("") }
@@ -1494,7 +1508,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     var otherTypingAt by remember { mutableStateOf(0L) }
     var lastTypingWrite by remember { mutableStateOf(0L) }
     var tick by remember { mutableStateOf(0L) }
-    val chatId = remember(otherUid) { chatIdFor(uid, otherUid) }
+    val chatId = remember(otherUid, listingId) { chatIdFor(uid, otherUid, listingId) }
     val partner = remember(otherName) { chatPartnerName(otherName) }
     // The seller is always shown on the right and the buyer on the left.
     // When no seller id is known (inbox/orders) the chat partner is treated as
@@ -1506,7 +1520,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
     val partnerLabel = if (partnerIsSeller) "$partner \u2022 Seller" else partner
 
     LaunchedEffect(chatId) {
-        ensureChat(db, uid, otherUid, partner, listingTitle)
+        ensureChat(db, uid, otherUid, partner, listingTitle, listingId)
         // Repair threads where an older build saved my own name as "Me".
         db.collection("chats").document(chatId).update("names.$uid", userDisplayName())
     }
@@ -1684,7 +1698,7 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             )
             Button(
                 onClick = {
-                    sendChatMessage(db, uid, otherUid, partner, text, listingTitle)
+                    sendChatMessage(db, uid, otherUid, partner, text, listingTitle, listingId)
                     text = ""
                     db.collection("chats").document(chatId).update("typing.$uid", 0L)
                 },
@@ -1751,6 +1765,8 @@ fun ProfileScreen(
         Text(email, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
         PhoneVerifySection(uid)
+        Spacer(Modifier.height(12.dp))
+        ContactLinksSection(uid)
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2071,6 +2087,66 @@ fun normalizePhone(raw: String): String {
         digits.length == 10 && digits.startsWith("9") -> "+63$digits"
         digits.length == 12 && digits.startsWith("63") -> "+$digits"
         else -> "+$digits"
+    }
+}
+
+@Composable
+fun ContactLinksSection(uid: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var telegram by remember { mutableStateOf("") }
+    var messenger by remember { mutableStateOf("") }
+    var whatsapp by remember { mutableStateOf("") }
+    var info by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uid) {
+        db.collection("users").document(uid).get().addOnSuccessListener { d ->
+            telegram = d.getString("telegram") ?: ""
+            messenger = d.getString("messenger") ?: ""
+            whatsapp = d.getString("whatsapp") ?: ""
+        }
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Text("Contact links (optional)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(telegram, { telegram = it }, label = { Text("Telegram username") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(messenger, { messenger = it }, label = { Text("Facebook Messenger username") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number (with country code)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    busy = true
+                    db.collection("users").document(uid).set(
+                        mapOf(
+                            "telegram" to telegram.trim(),
+                            "messenger" to messenger.trim(),
+                            "whatsapp" to whatsapp.trim()
+                        ),
+                        SetOptions.merge()
+                    ).addOnSuccessListener {
+                        busy = false
+                        info = "Saved."
+                    }.addOnFailureListener { e ->
+                        busy = false
+                        info = e.localizedMessage ?: "Failed."
+                    }
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (busy) "Saving…" else "Save links") }
+            info?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 

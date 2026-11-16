@@ -709,6 +709,7 @@ data class ChatThread(
     val otherUid: String = "",
     val otherName: String = "",
     val listingTitle: String = "",
+    val listingId: String = "",
     val lastMessage: String = "",
     val updatedAt: Long = 0L,
     // My unread in this thread (from the `unread.<uid>` map).
@@ -733,6 +734,7 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
                         otherUid = other,
                         otherName = chatPartnerName(names?.get(other) as? String),
                         listingTitle = d.getString("listingTitle") ?: "",
+                        listingId = d.getString("listingId") ?: "",
                         lastMessage = d.getString("lastMessage") ?: "",
                         updatedAt = d.getLong("updatedAt") ?: 0L,
                         unread = ((d.get("unread") as? Map<*, *>)?.get(uid) as? Number)
