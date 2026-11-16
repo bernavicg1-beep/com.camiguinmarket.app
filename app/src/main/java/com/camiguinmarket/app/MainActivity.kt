@@ -1124,6 +1124,7 @@ fun MarketScreen(
                                 )
                                 if (l.description.isNotBlank()) {
                                     Spacer(Modifier.height(8.dp))
+                                    Text("Description", fontWeight = FontWeight.Bold)
                                     Text(l.description)
                                 }
                                 Spacer(Modifier.height(8.dp))

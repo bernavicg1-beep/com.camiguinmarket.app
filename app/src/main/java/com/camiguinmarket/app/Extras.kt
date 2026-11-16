@@ -1590,6 +1590,21 @@ fun ChatScreen(uid: String, otherUid: String, otherName: String, listingTitle: S
             }
         }
         Spacer(Modifier.height(8.dp))
+        if (listingTitle.isNotBlank()) {
+            Surface(
+                color = BrandSky,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+            ) {
+                Text(
+                    "About: $listingTitle",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandBlue,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+        }
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(messages, key = { it.id }) { m ->
                 val fromSeller = m.from == sellerResolved
