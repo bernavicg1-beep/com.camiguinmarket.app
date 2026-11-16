@@ -655,6 +655,78 @@ async function purgeExpiredListings(env) {
   return { deleted, failures, photosDeleted, photoFailures };
 }
 
+async function handleTelegramLogin(request, env, url) {
+  const botUsername = env.TELEGRAM_BOT_USERNAME || "CamiguinMarketBot";
+  const token = url.searchParams.get("token") || "";
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connect Telegram</title>
+<style>body{font-family:sans-serif;padding:24px;text-align:center;}h2{margin-bottom:16px;}</style>
+</head><body>
+<h2>Connect your Telegram account</h2>
+<p>Tap the button below and approve the login.</p>
+<div id="tg"></div>
+<script>
+  const TOKEN = ${JSON.stringify(token)};
+  function onTelegramAuth(user) {
+    fetch('/telegram/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify(user)
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.ok) { window.Android && window.Android.onVerified(d.username || ''); }
+      else { window.Android && window.Android.onError((d && d.error) || 'Verification failed'); }
+    }).catch(function (e) { window.Android && window.Android.onError(String(e)); });
+  }
+</script>
+<script async src="https://telegram.org/js/telegram-widget.js?22"
+  data-telegram-login="${botUsername.replace(/^@/, '')}"
+  data-size="large"
+  data-onauth="onTelegramAuth(user)"
+  data-request-access="write"></script>
+</body></html>`;
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+async function handleTelegramVerify(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const idToken = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!idToken) return json({ error: 'unauthorized' }, 401);
+  const uid = await verifyIdToken(idToken, env);
+  if (!uid) return json({ error: 'unauthorized' }, 401);
+
+  const botToken = env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return json({ error: 'telegram_not_configured' }, 503);
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'bad_json' }, 400); }
+
+  const hash = String(body.hash || '');
+  if (!hash) return json({ error: 'missing_hash' }, 400);
+
+  // Build the data-check string from all fields except hash, sorted.
+  const fields = Object.keys(body).filter((k) => k !== 'hash').sort();
+  const dataCheckString = fields.map((k) => `${k}=${body[k]}`).join('\n');
+
+  const enc = new TextEncoder();
+  const secretKey = await crypto.subtle.digest('SHA-256', enc.encode(botToken));
+  const cryptoKey = await crypto.subtle.importKey('raw', secretKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(dataCheckString));
+  const computed = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  if (computed.toLowerCase() !== hash.toLowerCase()) {
+    return json({ error: 'invalid_hash' }, 403);
+  }
+
+  const authDate = Number(body.auth_date);
+  if (!Number.isFinite(authDate) || Math.floor(Date.now() / 1000) - authDate > 86400) {
+    return json({ error: 'expired' }, 403);
+  }
+
+  const username = body.username || body.first_name || '';
+  return json({ ok: true, uid, username });
+}
+
 export default {
   /** Cron trigger: delete expired perishable listings. */
   async scheduled(event, env, ctx) {
@@ -675,8 +747,9 @@ export default {
     if (url.pathname === "/health") {
       return json({
         ok: true,
-        bucket: Boolean(env.IMAGES),
-        push: Boolean(env.FIREBASE_SERVICE_ACCOUNT),
+              bucket: Boolean(env.IMAGES),
+      push: Boolean(env.FIREBASE_SERVICE_ACCOUNT),
+      telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
       });
     }
 
@@ -693,6 +766,16 @@ export default {
     if (url.pathname === "/delete-images") {
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
       return handleDeleteImages(request, env);
+    }
+
+    if (url.pathname === "/telegram/login") {
+      if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+      return handleTelegramLogin(request, env, url);
+    }
+
+    if (url.pathname === "/telegram/verify") {
+      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      return handleTelegramVerify(request, env);
     }
 
     if (url.pathname.startsWith("/i/")) {

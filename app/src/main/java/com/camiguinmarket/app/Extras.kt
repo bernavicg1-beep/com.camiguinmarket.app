@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.Image
@@ -2134,11 +2135,56 @@ fun normalizeWhatsAppLink(input: String): String {
 @Composable
 fun ContactLinksSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val ctx = LocalContext.current
     var telegram by remember { mutableStateOf("") }
     var messenger by remember { mutableStateOf("") }
     var whatsapp by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var fbBusy by remember { mutableStateOf(false) }
+    var fbInfo by remember { mutableStateOf<String?>(null) }
+    var tgToken by remember { mutableStateOf<String?>(null) }
+    var tgDialogOpen by remember { mutableStateOf(false) }
+    var tgInfo by remember { mutableStateOf<String?>(null) }
+    val callbackManager = remember { com.facebook.CallbackManager.Factory.create() }
+    DisposableEffect(Unit) {
+        com.facebook.login.LoginManager.getInstance().registerCallback(
+            callbackManager,
+            object : com.facebook.FacebookCallback<com.facebook.login.LoginResult> {
+                override fun onSuccess(result: com.facebook.login.LoginResult) {
+                    val token = result.accessToken
+                    val request = com.facebook.GraphRequest.newMeRequest(token) { obj, _ ->
+                        val name = obj?.optString("name")?.takeIf { it.isNotBlank() }
+                            ?: obj?.optString("id")
+                        if (!name.isNullOrBlank()) {
+                            messenger = name
+                            db.collection("users").document(uid).set(
+                                mapOf("messenger" to name, "messengerVerified" to true),
+                                com.google.firebase.firestore.SetOptions.merge()
+                            )
+                            fbInfo = "Connected: $name"
+                        } else {
+                            fbInfo = "Facebook login succeeded but no name returned."
+                        }
+                        fbBusy = false
+                    }
+                    val params = android.os.Bundle()
+                    params.putString("fields", "id,name")
+                    request.parameters = params
+                    request.executeAsync()
+                }
+                override fun onCancel() {
+                    fbBusy = false
+                    fbInfo = "Facebook login cancelled."
+                }
+                override fun onError(error: com.facebook.FacebookException) {
+                    fbBusy = false
+                    fbInfo = error.localizedMessage ?: "Facebook login failed."
+                }
+            }
+        )
+        onDispose { com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager) }
+    }
 
     LaunchedEffect(uid) {
         db.collection("users").document(uid).get().addOnSuccessListener { d ->
@@ -2161,6 +2207,91 @@ fun ContactLinksSection(uid: String) {
             OutlinedTextField(messenger, { messenger = it }, label = { Text("Messenger username (or m.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    fbBusy = true
+                    fbInfo = null
+                    val act = ctx as? android.app.Activity
+                    if (act == null) {
+                        fbBusy = false
+                        fbInfo = "Cannot open Facebook login."
+                    } else {
+                        com.facebook.login.LoginManager.getInstance()
+                            .logInWithReadPermissions(act, listOf("public_profile"))
+                    }
+                },
+                enabled = !fbBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (fbBusy) "Connecting…" else "Connect Facebook (Messenger)") }
+            fbInfo?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.labelSmall)
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    tgInfo = null
+                    val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                    if (u == null) {
+                        tgInfo = "Sign in to your account first."
+                    } else {
+                        u.getIdToken(true)
+                            .addOnSuccessListener { res ->
+                                tgToken = res.token
+                                tgDialogOpen = true
+                            }
+                            .addOnFailureListener { e -> tgInfo = e.localizedMessage }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Connect Telegram") }
+            tgInfo?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.labelSmall)
+            }
+            if (tgDialogOpen && !tgToken.isNullOrBlank()) {
+                AlertDialog(
+                    onDismissRequest = { tgDialogOpen = false },
+                    title = { Text("Connect Telegram") },
+                    text = {
+                        AndroidView(
+                            factory = { c ->
+                                android.webkit.WebView(c).apply {
+                                    settings.javaScriptEnabled = true
+                                    addJavascriptInterface(object {
+                                        @android.webkit.JavascriptInterface
+                                        fun onVerified(username: String) {
+                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                if (username.isNotBlank()) {
+                                                    telegram = username
+                                                    db.collection("users").document(uid).set(
+                                                        mapOf("telegram" to username, "telegramVerified" to true),
+                                                        com.google.firebase.firestore.SetOptions.merge()
+                                                    )
+                                                    tgInfo = "Connected: $username"
+                                                }
+                                                tgDialogOpen = false
+                                            }
+                                        }
+                                        @android.webkit.JavascriptInterface
+                                        fun onError(msg: String) {
+                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                tgInfo = msg
+                                                tgDialogOpen = false
+                                            }
+                                        }
+                                    }, "Android")
+                                    webViewClient = object : android.webkit.WebViewClient() {}
+                                    loadUrl("${BuildConfig.R2_UPLOAD_URL}/telegram/login?token=${tgToken}")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(360.dp)
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { tgDialogOpen = false }) { Text("Close") } }
+                )
+            }
             Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {

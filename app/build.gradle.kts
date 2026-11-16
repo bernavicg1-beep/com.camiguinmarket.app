@@ -41,8 +41,8 @@ android {
         applicationId = "com.camiguinmarket.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 39
-        versionName = "0.39"
+        versionCode = 40
+        versionName = "0.40"
 
         // The Worker that stores photos in Cloudflare R2 (no secret here).
         buildConfigField("String", "R2_UPLOAD_URL", "\"$r2UploadUrl\"")
@@ -95,4 +95,5 @@ dependencies {
 
     // Maps use osmdroid (OpenStreetMap) natively: pan/zoom/markers, no API key.
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("com.facebook.android:facebook-login:16.3.0")
 }
