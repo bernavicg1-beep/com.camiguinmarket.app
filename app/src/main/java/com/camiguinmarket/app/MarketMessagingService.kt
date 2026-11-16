@@ -46,13 +46,19 @@ class MarketMessagingService : FirebaseMessagingService() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "market_updates"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    channelId,
-                    "Camiguin Market updates",
-                    NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(
+                channelId,
+                "Camiguin Market updates",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Messages and order updates"
+                enableVibration(true)
+                setSound(
+                    android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                    null
                 )
-            )
+            }
+            manager.createNotificationChannel(channel)
         }
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") !=
@@ -78,6 +84,9 @@ class MarketMessagingService : FirebaseMessagingService() {
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
             .setContentIntent(tap)
             .build()
         manager.notify(System.currentTimeMillis().toInt(), notification)

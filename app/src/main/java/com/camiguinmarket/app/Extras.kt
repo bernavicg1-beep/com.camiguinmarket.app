@@ -2090,6 +2090,47 @@ fun normalizePhone(raw: String): String {
     }
 }
 
+fun normalizeTelegramLink(input: String): String {
+    val t = input.trim()
+    if (t.isBlank()) return ""
+    val lower = t.lowercase()
+    val marker = when {
+        lower.contains("t.me/") -> "t.me/"
+        lower.contains("telegram.me/") -> "telegram.me/"
+        else -> null
+    }
+    val raw = if (marker != null) t.substringAfter(marker, t).substringBefore("?").substringBefore("/")
+    else t
+    return raw.trim().removePrefix("@").trim()
+}
+
+fun normalizeMessengerLink(input: String): String {
+    val t = input.trim()
+    if (t.isBlank()) return ""
+    val lower = t.lowercase()
+    val marker = when {
+        lower.contains("m.me/") -> "m.me/"
+        lower.contains("facebook.com/") -> "facebook.com/"
+        lower.contains("messenger.com/") -> "messenger.com/"
+        else -> null
+    }
+    val raw = if (marker != null) t.substringAfter(marker, t).substringBefore("?").substringBefore("/")
+    else t
+    return raw.trim().trimStart('@')
+}
+
+fun normalizeWhatsAppLink(input: String): String {
+    val t = input.trim()
+    if (t.isBlank()) return ""
+    val lower = t.lowercase()
+    val raw = when {
+        lower.contains("wa.me/") -> t.substringAfter("wa.me/", t)
+        lower.contains("phone=") -> t.substringAfter("phone=", t)
+        else -> t
+    }
+    return raw.substringBefore("?").substringBefore("/").filter { it.isDigit() || it == '+' }.trim()
+}
+
 @Composable
 fun ContactLinksSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
@@ -2115,20 +2156,20 @@ fun ContactLinksSection(uid: String) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Text("Contact links (optional)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            OutlinedTextField(telegram, { telegram = it }, label = { Text("Telegram username") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(telegram, { telegram = it }, label = { Text("Telegram username (or t.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(6.dp))
-            OutlinedTextField(messenger, { messenger = it }, label = { Text("Facebook Messenger username") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(messenger, { messenger = it }, label = { Text("Messenger username (or m.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(6.dp))
-            OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number (with country code)") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {
                     busy = true
                     db.collection("users").document(uid).set(
                         mapOf(
-                            "telegram" to telegram.trim(),
-                            "messenger" to messenger.trim(),
-                            "whatsapp" to whatsapp.trim()
+                            "telegram" to normalizeTelegramLink(telegram),
+                            "messenger" to normalizeMessengerLink(messenger),
+                            "whatsapp" to normalizeWhatsAppLink(whatsapp)
                         ),
                         SetOptions.merge()
                     ).addOnSuccessListener {

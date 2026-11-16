@@ -1805,19 +1805,19 @@ fun SellerInfoDialog(
                 if (fallbackContact.isNotBlank()) Text("Contact: $fallbackContact")
                 if (!telegram.isNullOrBlank()) {
                     TextButton(onClick = {
-                        val u = "https://t.me/${telegram!!.trim().removePrefix("@")}"
+                        val u = "https://t.me/${normalizeTelegramLink(telegram!!)}"
                         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
                     }) { Text("Open Telegram") }
                 }
                 if (!messenger.isNullOrBlank()) {
                     TextButton(onClick = {
-                        val u = "https://m.me/${messenger!!.trim()}"
+                        val u = "https://m.me/${normalizeMessengerLink(messenger!!)}"
                         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
                     }) { Text("Open Messenger") }
                 }
                 if (!whatsapp.isNullOrBlank()) {
                     TextButton(onClick = {
-                        val num = whatsapp!!.trim().replace("+", "").replace(" ", "")
+                        val num = normalizeWhatsAppLink(whatsapp!!)
                         val u = "https://wa.me/$num"
                         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
                     }) { Text("Open WhatsApp") }

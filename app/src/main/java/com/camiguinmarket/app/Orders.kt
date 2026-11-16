@@ -776,8 +776,17 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(thread.otherName, fontWeight = FontWeight.Bold)
+                                if (thread.listingTitle.isNotBlank()) {
+                                    Text(
+                                        "About: ${thread.listingTitle}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = BrandBlue,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 Text(
-                                    thread.lastMessage.ifBlank { thread.listingTitle },
+                                    thread.lastMessage.ifBlank { "No messages yet" },
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = if (thread.unread > 0) FontWeight.Bold
                                     else FontWeight.Normal,
