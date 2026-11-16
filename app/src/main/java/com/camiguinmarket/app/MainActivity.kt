@@ -922,6 +922,9 @@ fun MarketScreen(
                                                         .setPhotoUri(android.net.Uri.parse(url)).build()
                                                 ).addOnCompleteListener {
                                                     photoUrl = url
+                                                    db.collection("users").document(uid).set(
+                                                        mapOf("photoUrl" to url), SetOptions.merge()
+                                                    )
                                                     Toast.makeText(context, "Photo updated", Toast.LENGTH_SHORT).show()
                                                 }
                                             } catch (e: Exception) {
