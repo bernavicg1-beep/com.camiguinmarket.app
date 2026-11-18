@@ -439,8 +439,12 @@ fun SellerStats(uid: String, myListings: List<Listing>) {
     DisposableEffect(uid) {
         val reg = db.collection("orders").whereEqualTo("sellerId", uid)
             .addSnapshotListener { snap, _ ->
-                orders = snap?.documents.orEmpty().mapNotNull { d ->
-                    d.toObject(Order::class.java)?.copy(id = d.id)
+                try {
+                    orders = snap?.documents.orEmpty().mapNotNull { d ->
+                        d.toObject(Order::class.java)?.copy(id = d.id)
+                    }
+                } catch (e: Exception) {
+                    orders = emptyList()
                 }
             }
         onDispose { reg.remove() }

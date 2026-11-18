@@ -1770,9 +1770,13 @@ fun ProfileScreen(
         Text(displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(email, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
-        PhoneVerifySection(uid)
+        try { PhoneVerifySection(uid) } catch (e: Exception) {
+            Text("Phone verification unavailable: ${e.localizedMessage ?: "error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+        }
         Spacer(Modifier.height(12.dp))
-        ContactLinksSection(uid)
+        try { ContactLinksSection(uid) } catch (e: Exception) {
+            Text("Contact links unavailable: ${e.localizedMessage ?: "error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+        }
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1785,7 +1789,9 @@ fun ProfileScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        SellerStats(uid, myListings)
+        try { SellerStats(uid, myListings) } catch (e: Exception) {
+            Text("Seller stats unavailable: ${e.localizedMessage ?: "error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+        }
 
         Spacer(Modifier.height(16.dp))
 
@@ -1986,10 +1992,14 @@ fun PhoneVerifySection(uid: String) {
     }
 
     LaunchedEffect(uid) {
-        db.collection("users").document(uid).get().addOnSuccessListener { d ->
-            savedPhone = d.getString("phone")
-            verified = d.getBoolean("phoneVerified") ?: false
-            if (!verified) editing = true
+        try {
+            db.collection("users").document(uid).get().addOnSuccessListener { d ->
+                savedPhone = d.getString("phone")
+                verified = d.getBoolean("phoneVerified") ?: false
+                if (!verified) editing = true
+            }
+        } catch (e: Exception) {
+            info = e.localizedMessage ?: "Failed to load phone info."
         }
     }
 
@@ -2195,10 +2205,14 @@ fun ContactLinksSection(uid: String) {
     }
 
     LaunchedEffect(uid) {
-        db.collection("users").document(uid).get().addOnSuccessListener { d ->
-            telegram = d.getString("telegram") ?: ""
-            messenger = d.getString("messenger") ?: ""
-            whatsapp = d.getString("whatsapp") ?: ""
+        try {
+            db.collection("users").document(uid).get().addOnSuccessListener { d ->
+                telegram = d.getString("telegram") ?: ""
+                messenger = d.getString("messenger") ?: ""
+                whatsapp = d.getString("whatsapp") ?: ""
+            }
+        } catch (e: Exception) {
+            info = e.localizedMessage ?: "Failed to load contact links."
         }
     }
 
