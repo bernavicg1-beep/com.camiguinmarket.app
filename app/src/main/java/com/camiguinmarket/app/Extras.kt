@@ -1443,7 +1443,7 @@ fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun NotificationsScreen(uid: String) {
+fun NotificationsScreen(uid: String, onOpen: (String, String, String, String) -> Unit = { _, _, _, _ -> }) {
     val db = remember { FirebaseFirestore.getInstance() }
     var items by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
 
@@ -1479,13 +1479,18 @@ fun NotificationsScreen(uid: String) {
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(items, key = { it.id }) { n ->
-                    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        onClick = { onOpen(n.fromUid, n.fromName, n.listingTitle, n.listingId) },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(n.message, style = MaterialTheme.typography.bodyMedium)
                             if (n.listingTitle.isNotBlank()) {
                                 Text("Listing: ${n.listingTitle}", style = MaterialTheme.typography.labelSmall)
                             }
                             Text("from ${n.fromName}", style = MaterialTheme.typography.labelSmall)
+                            Text("Tap to open chat", style = MaterialTheme.typography.labelSmall, color = BrandBlue)
                         }
                     }
                 }
@@ -2146,10 +2151,12 @@ fun ContactLinksSection(uid: String) {
     var tgToken by remember { mutableStateOf<String?>(null) }
     var tgDialogOpen by remember { mutableStateOf(false) }
     var tgInfo by remember { mutableStateOf<String?>(null) }
-    val callbackManager = remember { com.facebook.CallbackManager.Factory.create() }
-    DisposableEffect(Unit) {
+    val fbAvailable = remember { runCatching { com.facebook.FacebookSdk.isInitialized() }.getOrDefault(false) }
+    val callbackManager = if (fbAvailable) remember { com.facebook.CallbackManager.Factory.create() } else null
+    if (fbAvailable && callbackManager != null) {
+        DisposableEffect(Unit) {
         com.facebook.login.LoginManager.getInstance().registerCallback(
-            callbackManager,
+            callbackManager!!,
             object : com.facebook.FacebookCallback<com.facebook.login.LoginResult> {
                 override fun onSuccess(result: com.facebook.login.LoginResult) {
                     val token = result.accessToken
@@ -2183,7 +2190,8 @@ fun ContactLinksSection(uid: String) {
                 }
             }
         )
-        onDispose { com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager) }
+        onDispose { com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager!!) }
+    }
     }
 
     LaunchedEffect(uid) {
@@ -2208,25 +2216,27 @@ fun ContactLinksSection(uid: String) {
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    fbBusy = true
-                    fbInfo = null
-                    val act = ctx as? android.app.Activity
-                    if (act == null) {
-                        fbBusy = false
-                        fbInfo = "Cannot open Facebook login."
-                    } else {
-                        com.facebook.login.LoginManager.getInstance()
-                            .logInWithReadPermissions(act, listOf("public_profile"))
-                    }
-                },
-                enabled = !fbBusy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (fbBusy) "Connecting…" else "Connect Facebook (Messenger)") }
-            fbInfo?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.labelSmall)
+            if (fbAvailable) {
+                OutlinedButton(
+                    onClick = {
+                        fbBusy = true
+                        fbInfo = null
+                        val act = ctx as? android.app.Activity
+                        if (act == null) {
+                            fbBusy = false
+                            fbInfo = "Cannot open Facebook login."
+                        } else {
+                            com.facebook.login.LoginManager.getInstance()
+                                .logInWithReadPermissions(act, listOf("public_profile"))
+                        }
+                    },
+                    enabled = !fbBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (fbBusy) "Connecting…" else "Connect Facebook (Messenger)") }
+                fbInfo?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(it, style = MaterialTheme.typography.labelSmall)
+                }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(

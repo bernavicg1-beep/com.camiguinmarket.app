@@ -781,7 +781,14 @@ fun MarketScreen(
                     listings.firstOrNull { it.id == id }?.let { selected = it }
                 }
 
-                "notifications" -> NotificationsScreen(uid)
+                "notifications" -> NotificationsScreen(uid) { otherUid, otherName, listingTitle, listingId ->
+                    chatListing = null
+                    chatListingId = listingId
+                    chatListingTitle = listingTitle
+                    chatSellerUid = otherUid
+                    chatWith = otherUid to otherName
+                    overlay = "chat"
+                }
 
                 "orders" -> OrdersScreen(
                     uid = uid,
@@ -823,8 +830,8 @@ fun MarketScreen(
                         uid = uid,
                         onChat = { otherId, otherName ->
                             chatListing = null
-                            chatListingId = ""
-                            chatListingTitle = ""
+                            chatListingId = order.listingId
+                            chatListingTitle = order.listingTitle
                             chatSellerUid = otherId
                             chatWith = otherId to otherName
                             overlay = "chat"
