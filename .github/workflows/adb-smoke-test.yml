@@ -1,0 +1,20 @@
+name: Adb smoke test
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fake-adb:
+    name: Fake-adb smoke test (no device)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # The fake adb and no-op sleep keep this self-test offline: no Android
+      # SDK, connected device, emulator, or repository secrets are needed.
+      - name: Run the fake-adb self-test
+        run: bash scripts/test-adb-smoke-test.sh
