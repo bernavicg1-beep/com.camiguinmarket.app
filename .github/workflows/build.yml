@@ -122,9 +122,9 @@ jobs:
       - name: Verify the release signature
         if: steps.secrets.outputs.signing == 'true'
         run: |
-          apk=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          apk=$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)
           test -n "$apk"
-          signer=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -n 1)
+          signer=$(find "$ANDROID_SDK_ROOT"/build-tools -name apksigner -type f | sort -V | tail -n 1)
           "$signer" verify --print-certs "$apk"
 
       - name: Upload release APK
