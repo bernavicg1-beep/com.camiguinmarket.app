@@ -135,6 +135,11 @@ check("owner: save contact links", "PATCH", "/users/u1", 200, uid="u1",
 check("owner: save telegramVerified flag", "PATCH", "/users/u1", 200, uid="u1",
       body={"fields": {"telegram": {"stringValue": "tmeuser"},
                        "telegramVerified": {"booleanValue": True}}})
+check("owner: save messengerVerified flag (legacy Facebook flow)", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"messenger": {"stringValue": "bern.gamo"},
+                       "messengerVerified": {"booleanValue": True}}})
+check("owner: wrong type for messengerVerified (string)", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"messengerVerified": {"stringValue": "yes"}}})
 check("other: write someone else's contact links", "PATCH", "/users/u1", 403, uid="u2",
       body={"fields": {"telegram": {"stringValue": "hacker"},
                        "messenger": {"stringValue": "hacker"},

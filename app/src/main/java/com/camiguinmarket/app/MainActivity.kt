@@ -807,10 +807,7 @@ fun MarketScreen(
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Tailwind-style ghost icon button (rounded-full bg-white/15):
-                    // a 44dp circle with a faint white tint behind the arrow. A plain
-                    // clickable Box keeps the circle at exactly 44dp (IconButton would
-                    // raise its layout to the 48dp minimum touch target).
+                    // 44dp circular ghost back button (IconButton would inflate to 48dp).
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
