@@ -3,7 +3,7 @@ name: Live push integration
 on:
   workflow_dispatch:
   push:
-    branches: [main, freebuff/camiguin-market-map-kotlin-script]
+    branches: [main]
     paths:
       - "worker/**"
       - "!worker/test/**"
@@ -44,17 +44,3 @@ jobs:
           REQUIRE_TOKEN: ${{ github.event_name == 'push' }}
         run: node scripts/live-push-check.mjs
 
-      - name: Expect failure without a token (temporary)
-        env:
-          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_ADMIN_EMAIL }}
-          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_ADMIN_PASSWORD }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          WORKER_URL: https://site-428436804b0946699db3b56b1b69fd96.freebuff.page
-          REQUIRE_TOKEN: "true"
-        run: |
-          set +e
-          node scripts/live-push-check.mjs > no-token.log 2>&1
-          status=$?
-          cat no-token.log
-          test "$status" -ne 0
-          grep -q "has no registered FCM token" no-token.log
