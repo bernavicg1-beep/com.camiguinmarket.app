@@ -3,7 +3,17 @@ name: Fake-adb smoke test
 on:
   push:
     branches: [main]
+    paths:
+      - scripts/adb-smoke-test.sh
+      - scripts/fake-adb.sh
+      - scripts/test-adb-smoke-test.sh
+      - .github/workflows/fake-adb-smoke.yml
   pull_request:
+    paths:
+      - scripts/adb-smoke-test.sh
+      - scripts/fake-adb.sh
+      - scripts/test-adb-smoke-test.sh
+      - .github/workflows/fake-adb-smoke.yml
   workflow_dispatch:
 
 permissions:
@@ -13,11 +23,9 @@ jobs:
   fake-adb-smoke:
     name: Fake-adb smoke test (no device)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
       - name: Run the fake-adb self-test
-        run: |
-          set -e
-          bash scripts/test-adb-smoke-test.sh
+        run: bash scripts/test-adb-smoke-test.sh

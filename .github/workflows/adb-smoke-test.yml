@@ -14,27 +14,33 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: ludeeus/action-shellcheck@v2.0.0
-        with:
-          version: v0.11.0
+      - name: Install ShellCheck (pinned)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o /tmp/shellcheck.tar.xz https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  /tmp/shellcheck.tar.xz" | sha256sum -c -
+          tar -xf /tmp/shellcheck.tar.xz -C /tmp
+          install /tmp/shellcheck-v0.11.0/shellcheck "$HOME/.local/bin/shellcheck"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          shellcheck --version
+
+      - name: ShellCheck scripts
+        run: shellcheck scripts/*.sh
 
       - uses: raven-actions/actionlint@v2.2.0
         with:
-          version: 1.7.12
-          shellcheck: false
+          actionlint_version: 1.7.12
 
   fake-adb:
     name: Fake-adb smoke test (no device)
     needs: lint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
       - name: Run the fake-adb self-test
-        run: |
-          set -e
-          bash scripts/test-adb-smoke-test.sh
+        run: bash scripts/test-adb-smoke-test.sh
 
   emulator-smoke:
     name: Emulator smoke tests
@@ -51,7 +57,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-34.0 build-tools;34.0.0"
+          packages: "platforms;android-34 build-tools;34.0.0"
 
       - uses: gradle/actions/setup-gradle@v6
         with:
@@ -86,6 +92,56 @@ jobs:
           path: smoke-failure-artifacts
           if-no-files-found: warn
 
+  emulator-smoke-quick:
+    name: Emulator smoke tests (quick)
+    needs: [lint, fake-adb]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-34 build-tools;34.0.0"
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 9.9.1
+
+      - name: Check smoke-test credentials
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+        run: |
+          test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
+          test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          script: |
+            set +e
+            export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
+            export SMOKE_TEST_PASSWORD="${{ secrets.SMOKE_TEST_PASSWORD }}"
+            gradle :app:connectedDebugAndroidTest --no-daemon               -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL"               -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD"               -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              bash scripts/collect-smoke-artifacts.sh smoke-quick-failure-artifacts
+            fi
+            exit "$status"
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: smoke-quick-failure-diagnostics
+          path: smoke-quick-failure-artifacts
+          if-no-files-found: warn
+
   emulator-smoke-subset:
     name: Emulator smoke tests (subset)
     needs: [lint, fake-adb]
@@ -101,7 +157,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-34.0 build-tools;34.0.0"
+          packages: "platforms;android-34 build-tools;34.0.0"
 
       - uses: gradle/actions/setup-gradle@v6
         with:
@@ -125,7 +181,7 @@ jobs:
             gradle :app:connectedDebugAndroidTest --no-daemon \
               -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" \
               -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#savedSearchWorkerIsScheduledAndRuns
+              -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders
             status=$?
             if [ "$status" -ne 0 ]; then
               bash scripts/collect-smoke-artifacts.sh smoke-subset-failure-artifacts
@@ -156,7 +212,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-34.0 build-tools;34.0.0"
+          packages: "platforms;android-34 build-tools;34.0.0"
 
       - uses: gradle/actions/setup-gradle@v6
         with:

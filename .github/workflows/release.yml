@@ -69,19 +69,21 @@ jobs:
       - name: Verify the release signature
         run: |
           apk=app/build/outputs/apk/release/app-release.apk
-          signer=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -n 1)
+          signer=$(find "$ANDROID_SDK_ROOT"/build-tools -name apksigner -type f | sort -V | tail -n 1)
           "$signer" verify --print-certs "$apk"
 
       - name: Read the version from the APK
         id: version
         run: |
-          aapt2=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/aapt2 | sort -V | tail -n 1)
+          aapt2=$(find "$ANDROID_SDK_ROOT"/build-tools -name aapt2 -type f | sort -V | tail -n 1)
           line=$("$aapt2" dump badging app/build/outputs/apk/release/app-release.apk | head -n 1)
           name=$(echo "$line" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
           code=$(echo "$line" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          {
+            echo "name=$name"
+            echo "code=$code"
+            echo "tag=v$name"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Publish the GitHub Release
         env:

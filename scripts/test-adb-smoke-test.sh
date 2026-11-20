@@ -39,6 +39,13 @@ init_state() {
     printf '0\n' > "$STATE/nearby"
     printf '0\n' > "$STATE/offline"
     printf '0\n' > "$STATE/share"
+    if [ "$delay" = 1 ]; then
+        printf '5
+' > "$STATE/worker"
+    else
+        printf '1
+' > "$STATE/worker"
+    fi
 }
 
 
@@ -144,7 +151,8 @@ run_case "delayed-exhaustion" "all" 1 3 \
     "PASS: cached listings render with the network off" \
     "FAIL: location prompt is not visible without a fix" \
     "FAIL: share card PNG was not created" \
-    "Summary: 10 passed, 2 failed, 0 skipped"
+    "FAIL: saved_search_check was not found in WorkManager" \
+    "Summary: 9 passed, 3 failed, 0 skipped"
 
 # Unique path not covered by the aggregate runs.
 FAIL_ALL=0; DELAY=0; WIRELESS=1

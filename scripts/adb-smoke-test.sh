@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2329
 # Physical-device smoke checks over adb.
 #
 # Usage:
@@ -67,7 +68,6 @@ cleanup() {
     restore_network
     restore_location
     restore_language
-    "${ADB[@]}" shell rm -f /data/local/tmp/camiguin-window.xml >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
