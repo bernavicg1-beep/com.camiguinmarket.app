@@ -2,8 +2,6 @@ name: Live push integration (manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [freebuff/camiguin-market-map-kotlin-script]
 
 permissions:
   contents: read
@@ -20,36 +18,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Delete the admin doc (temporary)
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node scripts/admin-doc.mjs delete wIIqLKGuTXWsuIW3oJiudQjWIw12
-
-      - name: Expect failure while admins/{uid} is missing
-        env:
-          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
-          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
-          SMOKE_TEST_ADMIN_EMAIL: ${{ secrets.SMOKE_TEST_ADMIN_EMAIL }}
-          SMOKE_TEST_ADMIN_PASSWORD: ${{ secrets.SMOKE_TEST_ADMIN_PASSWORD }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          WORKER_URL: https://site-428436804b0946699db3b56b1b69fd96.freebuff.page
-        run: |
-          if node scripts/live-push-check.mjs > check.log 2>&1; then
-            echo "::error::the check passed without admins/{uid}"
-            exit 1
-          fi
-          cat check.log
-          grep -q "moderation was not tested" check.log
-
-      - name: Restore the admin doc
-        if: always()
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node scripts/admin-doc.mjs create wIIqLKGuTXWsuIW3oJiudQjWIw12
-
       # SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD are optional: when
-      # set, moderation is delivered to the test account and asserted too;
-      # otherwise the job skips moderation cleanly.
+      # set, moderation is delivered and asserted, and a missing admins/{uid}
+      # fails the job; otherwise the job skips moderation cleanly.
       - name: Check token, seed listing/rating, assert sent >= 1
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
