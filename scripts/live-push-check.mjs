@@ -1,10 +1,15 @@
 /**
  * Live integration check for the deployed Worker's /push endpoint.
  *
- * Requires SMOKE_TEST_EMAIL, SMOKE_TEST_PASSWORD and FIREBASE_SERVICE_ACCOUNT
- * (the same secrets the smoke tests and Worker use). The test account must
- * have at least one registered FCM token (open the app on a device and sign
- * in as that account). Everything else is seeded and cleaned up here.
+ * Requires WORKER_URL, SMOKE_TEST_EMAIL, SMOKE_TEST_PASSWORD and
+ * FIREBASE_SERVICE_ACCOUNT (the same secrets the smoke tests and Worker use).
+ * The test account must have at least one registered FCM token (open the app on
+ * a device and sign in as that account).
+ *
+ * Optional SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD add the
+ * moderation send; without them, or without an admins/{uid} document, it is
+ * skipped. Seeded documents and the throwaway buyer are removed on every
+ * outcome.
  */
 
 import { readFileSync } from "node:fs";
@@ -15,28 +20,22 @@ const EMAIL = process.env.SMOKE_TEST_EMAIL;
 const PASSWORD = process.env.SMOKE_TEST_PASSWORD;
 const SA_JSON = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-if (!WORKER) {
-  console.error("::error::WORKER_URL is not set");
-  process.exit(1);
-}
-if (!EMAIL || !PASSWORD) {
-  console.error("::error::SMOKE_TEST_EMAIL / SMOKE_TEST_PASSWORD are not set");
-  process.exit(1);
-}
-if (!SA_JSON) {
-  console.error("::error::FIREBASE_SERVICE_ACCOUNT is not set");
+const missing = Object.entries({
+  WORKER_URL: WORKER,
+  SMOKE_TEST_EMAIL: EMAIL,
+  SMOKE_TEST_PASSWORD: PASSWORD,
+  FIREBASE_SERVICE_ACCOUNT: SA_JSON,
+})
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+if (missing.length) {
+  console.error(`::error::missing ${missing.join(", ")}`);
   process.exit(1);
 }
 
 const sa = JSON.parse(SA_JSON);
 const apiKey = JSON.parse(readFileSync("app/google-services.json", "utf8"))
   .client[0].api_key[0].current_key;
-
-// Thrown by the helpers; the top-level catch prints it as ::error:: after the
-// seeded data has been cleaned up.
-const fail = (message) => {
-  throw new Error(message);
-};
 
 const b64url = (value) =>
   (Buffer.isBuffer(value) ? value : Buffer.from(value))
@@ -69,7 +68,7 @@ async function serviceToken() {
       assertion,
     }),
   });
-  if (!res.ok) fail(`service token failed: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`service token failed: ${(await res.text()).slice(0, 200)}`);
   return (await res.json()).access_token;
 }
 
@@ -81,8 +80,7 @@ async function listDocs(token, path) {
   const res = await fetch(docUrl(path), {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (res.status === 404) return [];
-  if (!res.ok) fail(`list ${path} failed: ${res.status}`);
+  if (!res.ok) throw new Error(`list ${path} failed: ${res.status}`);
   return (await res.json()).documents || [];
 }
 
@@ -107,7 +105,9 @@ async function writeDoc(token, path, fields) {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ fields }),
   });
-  if (!res.ok) fail(`write ${path} failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    throw new Error(`write ${path} failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
 }
 
 async function deleteDoc(token, path) {
@@ -127,7 +127,7 @@ async function signIn(email = EMAIL, password = PASSWORD) {
     },
   );
   const data = await res.json().catch(() => ({}));
-  if (!data.idToken) fail(`sign-in failed: ${JSON.stringify(data).slice(0, 200)}`);
+  if (!data.idToken) throw new Error(`sign-in failed: ${JSON.stringify(data).slice(0, 200)}`);
   return data;
 }
 
@@ -146,7 +146,9 @@ async function signUp() {
     },
   );
   const data = await res.json().catch(() => ({}));
-  if (!data.idToken) fail(`throwaway buyer sign-up failed: ${JSON.stringify(data).slice(0, 200)}`);
+  if (!data.idToken) {
+    throw new Error(`throwaway buyer sign-up failed: ${JSON.stringify(data).slice(0, 200)}`);
+  }
   return data;
 }
 
@@ -161,13 +163,18 @@ async function deleteAccount(idToken) {
   ).catch(() => {});
 }
 
-async function push(token, body) {
+// Sends one /push and requires a real delivery, logging the response first.
+async function deliver(kind, token, extra) {
   const res = await fetch(`${WORKER}/push`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ kind, ...extra }),
   });
-  return { status: res.status, body: await res.json().catch(() => ({})) };
+  const body = await res.json().catch(() => ({}));
+  console.log(`${kind}: ${res.status} ${JSON.stringify(body)}`);
+  if (res.status !== 200 || !(body.sent >= 1)) {
+    throw new Error(`${kind} did not deliver (sent >= 1 required)`);
+  }
 }
 
 try {
@@ -202,12 +209,7 @@ try {
       description: { stringValue: "Integration check" },
       createdAt: { integerValue: String(stamp) },
     });
-
-    const cart = await push(buyer.idToken, { kind: "cart", listingId });
-    console.log(`cart: ${cart.status} ${JSON.stringify(cart.body)}`);
-    if (cart.status !== 200 || !(cart.body.sent >= 1)) {
-      fail("cart did not deliver (sent >= 1 required)");
-    }
+    await deliver("cart", buyer.idToken, { listingId });
 
     await writeDoc(service, `ratings/${ratingId}`, {
       buyerId: { stringValue: buyer.localId },
@@ -216,12 +218,7 @@ try {
       rating: { integerValue: "5" },
       createdAt: { integerValue: String(stamp) },
     });
-
-    const rating = await push(buyer.idToken, { kind: "rating", orderId: ratingId });
-    console.log(`rating: ${rating.status} ${JSON.stringify(rating.body)}`);
-    if (rating.status !== 200 || !(rating.body.sent >= 1)) {
-      fail("rating did not deliver (sent >= 1 required)");
-    }
+    await deliver("rating", buyer.idToken, { orderId: ratingId });
 
     const adminEmail = process.env.SMOKE_TEST_ADMIN_EMAIL;
     const adminPassword = process.env.SMOKE_TEST_ADMIN_PASSWORD;
@@ -232,24 +229,16 @@ try {
       );
     } else {
       const admin = await signIn(adminEmail, adminPassword);
-      if (!(await readDoc(service, `admins/${admin.localId}`))) {
+      if (await readDoc(service, `admins/${admin.localId}`)) {
+        await deliver("moderation", admin.idToken, { sellerId: uid, title: "Live check" });
+      } else {
         console.log(
           "::notice::The admin test account is not in admins/; skipping moderation.",
         );
-      } else {
-        const moderation = await push(admin.idToken, {
-          kind: "moderation",
-          sellerId: uid,
-          title: "Live check",
-        });
-        console.log(`moderation: ${moderation.status} ${JSON.stringify(moderation.body)}`);
-        if (moderation.status !== 200 || !(moderation.body.sent >= 1)) {
-          fail("moderation did not deliver (sent >= 1 required)");
-        }
       }
     }
 
-    console.log("live push integration passed");
+    console.log("live push integration check passed");
   } finally {
     await deleteDoc(service, `listings/${listingId}`);
     await deleteDoc(service, `ratings/${ratingId}`);
