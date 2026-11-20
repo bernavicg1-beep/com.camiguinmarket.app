@@ -171,7 +171,7 @@ test("moderation: a missing seller is refused", async () => {
   assert.deepEqual(res.body, { error: "missing_sellerId" });
 });
 
-test("positive path: each kind is delivered to the seller's device", async () => {
+test("positive path: each kind is routed to the seller and sent to FCM", async () => {
   const cart = stub();
   const cartRes = await call(cart.env, { kind: "cart", listingId: "l1" }, "buyer-token");
   assert.deepEqual(cartRes.body, { sent: 1 });
