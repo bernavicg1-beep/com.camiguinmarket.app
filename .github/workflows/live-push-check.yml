@@ -2,8 +2,6 @@ name: Live push integration (manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [freebuff/camiguin-market-map-kotlin-script]
 
 permissions:
   contents: read
