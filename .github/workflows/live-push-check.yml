@@ -2,8 +2,6 @@ name: Live push integration (manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [freebuff/camiguin-market-map-kotlin-script]
 
 permissions:
   contents: read
@@ -20,6 +18,9 @@ jobs:
         with:
           node-version: 20
 
+      # SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD are optional: when
+      # set, moderation is delivered to the test account and asserted too;
+      # otherwise the job skips moderation cleanly.
       - name: Check token, seed listing/rating, assert sent >= 1
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
