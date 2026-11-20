@@ -3,7 +3,7 @@ name: Live push integration
 on:
   workflow_dispatch:
   push:
-    branches: [main, freebuff/camiguin-market-map-kotlin-script]
+    branches: [main]
     paths:
       - "worker/**"
       - "!worker/test/**"
@@ -28,11 +28,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Grant admin to the test account (temporary)
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node scripts/admin-doc.mjs tPL9ygJ3ccdWpdUun1aPRnaHETC3
 
       # SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD are optional: when
       # set, moderation is delivered and asserted, and a missing admins/{uid}
