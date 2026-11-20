@@ -808,14 +808,17 @@ fun MarketScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Tailwind-style ghost icon button (rounded-full bg-white/15):
-                    // a 44dp circle with a faint white tint behind the arrow.
-                    IconButton(
-                        onClick = { overlay = null },
+                    // a 44dp circle with a faint white tint behind the arrow. A plain
+                    // clickable Box keeps the circle at exactly 44dp (IconButton would
+                    // raise its layout to the 48dp minimum touch target).
+                    Box(
+                        contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .padding(start = 4.dp)
                             .size(44.dp)
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.15f))
+                            .clickable { overlay = null }
                     ) {
                         Text("←", style = MaterialTheme.typography.titleLarge, color = Color.White)
                     }
