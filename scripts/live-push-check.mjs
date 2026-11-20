@@ -108,13 +108,13 @@ async function deleteDoc(token, path) {
   }).catch(() => {});
 }
 
-async function signIn() {
+async function signIn(email = EMAIL, password = PASSWORD) {
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: EMAIL, password: PASSWORD, returnSecureToken: true }),
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
     },
   );
   const data = await res.json().catch(() => ({}));
@@ -213,19 +213,30 @@ try {
     fail("rating did not deliver (sent >= 1 required)");
   }
 
-  const isAdmin = Boolean(await readDoc(service, `admins/${uid}`));
-  if (isAdmin) {
-    const moderation = await push(account.idToken, {
-      kind: "moderation",
-      sellerId: uid,
-      title: "Live check",
-    });
-    console.log(`moderation: ${moderation.status} ${JSON.stringify(moderation.body)}`);
-    if (moderation.status !== 200 || !(moderation.body.sent >= 1)) {
-      fail("moderation did not deliver (sent >= 1 required)");
-    }
+  const adminEmail = process.env.SMOKE_TEST_ADMIN_EMAIL;
+  const adminPassword = process.env.SMOKE_TEST_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword) {
+    console.log(
+      "::notice::No admin test account (SMOKE_TEST_ADMIN_EMAIL / " +
+        "SMOKE_TEST_ADMIN_PASSWORD); skipping moderation.",
+    );
   } else {
-    console.log("::notice::Test account is not an admin; skipping moderation.");
+    const admin = await signIn(adminEmail, adminPassword);
+    if (!(await readDoc(service, `admins/${admin.localId}`))) {
+      console.log(
+        "::notice::The admin test account is not in admins/; skipping moderation.",
+      );
+    } else {
+      const moderation = await push(admin.idToken, {
+        kind: "moderation",
+        sellerId: uid,
+        title: "Live check",
+      });
+      console.log(`moderation: ${moderation.status} ${JSON.stringify(moderation.body)}`);
+      if (moderation.status !== 200 || !(moderation.body.sent >= 1)) {
+        fail("moderation did not deliver (sent >= 1 required)");
+      }
+    }
   }
 
   console.log("live push integration passed");

@@ -2,6 +2,8 @@ name: Live push integration (manual)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [freebuff/camiguin-market-map-kotlin-script]
 
 permissions:
   contents: read
@@ -22,6 +24,8 @@ jobs:
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          SMOKE_TEST_ADMIN_EMAIL: ${{ secrets.SMOKE_TEST_ADMIN_EMAIL }}
+          SMOKE_TEST_ADMIN_PASSWORD: ${{ secrets.SMOKE_TEST_ADMIN_PASSWORD }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           WORKER_URL: https://site-428436804b0946699db3b56b1b69fd96.freebuff.page
         run: node scripts/live-push-check.mjs
