@@ -188,6 +188,8 @@ To create that account:
    app's `isAdmin()` rule.
 3. Add the two secrets above and run **Live push integration (manual)**.
 
-When the secrets are absent (or the account is not in `admins/`), the job logs a
-notice and skips moderation. A failed service-account read of `admins/{uid}`
-fails the job instead of being mistaken for "not an admin".
+When the secrets are absent, the job logs a notice and skips moderation. When
+they are set, the account must exist in `admins/{uid}`: a missing document fails
+the job with `moderation was not tested`, so a green run means moderation really
+delivered. A failed service-account read of `admins/{uid}` also fails the job
+instead of being mistaken for "not an admin".

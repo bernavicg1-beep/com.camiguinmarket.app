@@ -7,9 +7,9 @@
  * a device and sign in as that account).
  *
  * Optional SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD add the
- * moderation send; without them, or without an admins/{uid} document, it is
- * skipped. Seeded documents and the throwaway buyer are removed on every
- * outcome.
+ * moderation send. Without them it is skipped with a notice; with them the
+ * account must exist in admins/{uid}, otherwise the run fails. Seeded
+ * documents and the throwaway buyer are removed on every outcome.
  */
 
 import { readFileSync } from "node:fs";
@@ -229,13 +229,13 @@ try {
       );
     } else {
       const admin = await signIn(adminEmail, adminPassword);
-      if (await readDoc(service, `admins/${admin.localId}`)) {
-        await deliver("moderation", admin.idToken, { sellerId: uid, title: "Live check" });
-      } else {
-        console.log(
-          "::notice::The admin test account is not in admins/; skipping moderation.",
+      if (!(await readDoc(service, `admins/${admin.localId}`))) {
+        throw new Error(
+          `SMOKE_TEST_ADMIN_* is set but admins/${admin.localId} does not exist; ` +
+            "moderation was not tested",
         );
       }
+      await deliver("moderation", admin.idToken, { sellerId: uid, title: "Live check" });
     }
 
     console.log("live push integration check passed");
