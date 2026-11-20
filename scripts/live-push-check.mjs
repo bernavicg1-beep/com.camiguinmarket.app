@@ -226,17 +226,14 @@ try {
     });
     await deliver("rating", buyer.idToken, { orderId: ratingId });
 
-    // The test account is not an admin, so the moderation branch must refuse it.
-    const refused = await send(account.idToken, {
-      kind: "moderation",
-      sellerId: uid,
-      title: "Live check",
-    });
+    // The test account is not an admin, so moderation must be refused before
+    // the Worker looks at the recipient.
+    const refused = await send(account.idToken, { kind: "moderation" });
     console.log(`moderation as non-admin: ${refused.status} ${JSON.stringify(refused.body)}`);
     if (refused.status !== 403) {
       throw new Error(
-        `non-admin moderation was not refused (expected 403, got ${refused.status}); ` +
-          "the test account must not be an admin",
+        `non-admin moderation got ${refused.status}, expected 403 ` +
+          "(is the test account an admin?)",
       );
     }
 
