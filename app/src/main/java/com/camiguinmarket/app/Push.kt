@@ -84,7 +84,7 @@ fun sendNotification(
     val user = FirebaseAuth.getInstance().currentUser ?: return
     if (user.uid != fromUid) return
 
-    val body = org.json.JSONObject()
+        val body = JSONObject()
         .put("toUid", toUid)
         .put("fromUid", fromUid)
         .put("fromName", fromName)
