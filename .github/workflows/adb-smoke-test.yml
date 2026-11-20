@@ -71,15 +71,19 @@ jobs:
           test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
           test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
 
+      - name: Check KVM availability
+        run: |
+          ls -la /dev/kvm || echo "NO /dev/kvm"
+          if command -v kvm-ok >/dev/null 2>&1; then kvm-ok; fi
+          echo "CPU virtualization flags:"; grep -c -E 'vmx|svm' /proc/cpuinfo || echo "0"
+
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 29
           arch: x86_64
           target: google_apis
-          profile: Nexus 6
-          gpu: swiftshader_indirect
           disable-animations: true
-          boot-timeout: 900000
+          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
@@ -127,15 +131,19 @@ jobs:
           test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
           test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
 
+      - name: Check KVM availability
+        run: |
+          ls -la /dev/kvm || echo "NO /dev/kvm"
+          if command -v kvm-ok >/dev/null 2>&1; then kvm-ok; fi
+          echo "CPU virtualization flags:"; grep -c -E 'vmx|svm' /proc/cpuinfo || echo "0"
+
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 29
           arch: x86_64
           target: google_apis
-          profile: Nexus 6
-          gpu: swiftshader_indirect
           disable-animations: true
-          boot-timeout: 900000
+          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
@@ -183,15 +191,19 @@ jobs:
           test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
           test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
 
+      - name: Check KVM availability
+        run: |
+          ls -la /dev/kvm || echo "NO /dev/kvm"
+          if command -v kvm-ok >/dev/null 2>&1; then kvm-ok; fi
+          echo "CPU virtualization flags:"; grep -c -E 'vmx|svm' /proc/cpuinfo || echo "0"
+
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 29
           arch: x86_64
           target: google_apis
-          profile: Nexus 6
-          gpu: swiftshader_indirect
           disable-animations: true
-          boot-timeout: 900000
+          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
@@ -250,16 +262,21 @@ jobs:
             echo "::notice::SMOKE_TEST_EMAIL/SMOKE_TEST_PASSWORD are not set - skipping the smoke suite."
           fi
 
+      - name: Check KVM availability
+        if: steps.creds.outputs.available == 'true'
+        run: |
+          ls -la /dev/kvm || echo "NO /dev/kvm"
+          if command -v kvm-ok >/dev/null 2>&1; then kvm-ok; fi
+          echo "CPU virtualization flags:"; grep -c -E 'vmx|svm' /proc/cpuinfo || echo "0"
+
       - uses: reactivecircus/android-emulator-runner@v2
         if: steps.creds.outputs.available == 'true'
         with:
-          api-level: 30
+          api-level: 29
           arch: x86_64
           target: google_apis
-          profile: Nexus 6
-          gpu: swiftshader_indirect
           disable-animations: true
-          boot-timeout: 900000
+          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
