@@ -20,7 +20,7 @@ const claims = b64url(
     sub: sa.client_email,
     aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
     iat: now,
-    exp: now + 600,
+    exp: now + 3600,
     uid,
   }),
 );
