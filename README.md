@@ -140,16 +140,19 @@ and any signed-in user can read it.
 - **Manage saved searches:** Profile → **Saved searches** — tap to apply the
   filter, rename (✏️), or remove (🗑️).
 
-### Global search, phone verification, and listing views
+### Global search, contact number, and listing views
 
 - **Search icon in the header** → global search screen: query, category, town,
   price, sort, and history — all in one place.
-- **Phone number (SMS verification):** Profile → **Phone number**. Enter a
-  number, tap **Send code**, then type the 6-digit code that arrives by text.
-  The number is saved as `phone` + `phoneVerified` on `users/{uid}` **only after**
-  Firebase confirms the code, and the rules let only the owner read or write
-  those two fields. Signing up still sends the verification email, but nothing in
-  the app is blocked on it.
+- **Contact number (no SMS):** Profile → **Phone number (optional)**. Type a
+  number and tap **Save number**; it is written to `phone` on `users/{uid}` and
+  shown to buyers in the seller dialog. There is no code and no `phoneVerified`
+  flag any more. `phone` is read-only to buyers, writable by the owner.
+- **Contact links:** Profile → **Contact links** keeps Telegram, Messenger and
+  WhatsApp fields. Values are normalised to a handle or a `t.me` / `m.me` /
+  `wa.me` link and rejected on save when they are a name instead of a link, so
+  the seller dialog never opens a broken link. The Facebook-connect shortcut is
+  gone because Graph no longer returns a Messenger username.
 - Login has **Forgot password?** (`sendPasswordResetEmail`).
 - **Listing views:** every time a detail is opened (not by the owner, once per
   session) the listing's `views` is incremented; it is shown as `👁 12 views`.
