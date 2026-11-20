@@ -73,9 +73,11 @@ jobs:
 
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 30
           arch: x86_64
           target: google_apis
+          profile: Nexus 6
+          gpu: swiftshader_indirect
           disable-animations: true
           boot-timeout: 900000
           script: |
@@ -127,9 +129,11 @@ jobs:
 
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 30
           arch: x86_64
           target: google_apis
+          profile: Nexus 6
+          gpu: swiftshader_indirect
           disable-animations: true
           boot-timeout: 900000
           script: |
@@ -181,9 +185,11 @@ jobs:
 
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 30
           arch: x86_64
           target: google_apis
+          profile: Nexus 6
+          gpu: swiftshader_indirect
           disable-animations: true
           boot-timeout: 900000
           script: |
@@ -247,9 +253,11 @@ jobs:
       - uses: reactivecircus/android-emulator-runner@v2
         if: steps.creds.outputs.available == 'true'
         with:
-          api-level: 34
+          api-level: 30
           arch: x86_64
           target: google_apis
+          profile: Nexus 6
+          gpu: swiftshader_indirect
           disable-animations: true
           boot-timeout: 900000
           script: |
