@@ -90,6 +90,7 @@ restore_language() {
 pass() { printf 'PASS: %s\n' "$*"; PASS=$((PASS + 1)); }
 fail() { printf 'FAIL: %s\n' "$*"; FAIL=$((FAIL + 1)); }
 skip() { printf 'SKIP: %s\n' "$*"; SKIP=$((SKIP + 1)); return 2; }
+note() { printf 'NOTE: %s\n' "$*"; }
 finish() {
     trap - EXIT
     cleanup
@@ -139,12 +140,14 @@ screen_size() {
 }
 
 dump_ui() {
-    local attempt
-    for attempt in 1 2 3; do
-        if "${ADB[@]}" shell uiautomator dump /data/local/tmp/camiguin-window.xml >/dev/null 2>&1; then
-            "${ADB[@]}" exec-out cat /data/local/tmp/camiguin-window.xml 2>/dev/null && return 0
-        fi
+    local xml i=0
+    while [ "$i" -lt 3 ]; do
+        xml="$("${ADB[@]}" exec-out uiautomator dump /dev/tty 2>/dev/null)"
+        case "$xml" in
+            *"<hierarchy"*) printf '%s\n' "$xml"; return 0 ;;
+        esac
         sleep 0.4
+        i=$((i + 1))
     done
     return 1
 }
@@ -357,16 +360,29 @@ check_offline() {
     pass "listings cache exists"
 
     disable_network
+    if "${ADB[@]}" shell dumpsys connectivity 2>/dev/null | grep -Fq "Active default network: none"; then
+        pass "device reports no default network"
+    fi
     restart_app
-    if wait_for_text 30 "Offline"; then
-        pass "offline banner is visible"
+    if wait_for_text 30 "250.00"; then
+        pass "cached listings render with the network off"
+        if wait_for_text 30 "Offline"; then
+            pass "offline banner is visible"
+        else
+            fail "offline banner is not visible"
+            rc=1
+        fi
     else
-        fail "offline banner is not visible"
+        fail "cached listings did not render with the network off"
+        note "offline banner not shown"
         rc=1
     fi
     restore_network
     sleep 2
     restart_app
+    if "${ADB[@]}" shell dumpsys connectivity 2>/dev/null | grep -Fq "Active default network: 100"; then
+        pass "network is back after re-enabling Wi-Fi/data"
+    fi
     return "$rc"
 }
 

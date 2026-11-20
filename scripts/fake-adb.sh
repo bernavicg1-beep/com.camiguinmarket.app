@@ -7,7 +7,7 @@ set -u
 STATE="${FAKE_ADB_STATE:?FAKE_ADB_STATE is required}"
 FAIL_ALL="$(cat "$STATE/fail_all" 2>/dev/null || printf 0)"
 DELAY="$(cat "$STATE/delay" 2>/dev/null || printf 0)"
-DELAY_POLLS=3
+DELAY_POLLS=5
 
 get() { cat "$STATE/$1" 2>/dev/null || printf '%s' "$2"; }
 put() { printf '%s\n' "$2" > "$STATE/$1"; }
@@ -43,7 +43,10 @@ dump_xml() {
                     node "Enable location to filter nearby listings." 10 600 500 700
                 fi
             fi
-            node "₱250.00" 10 700 210 800
+            # Only a healthy app renders a cached listing card.
+            if [ "$FAIL_ALL" = 0 ]; then
+                node "₱250.00" 10 700 210 800
+            fi
             ;;
         profile)
             node "English" 10 900 110 1000
@@ -94,12 +97,10 @@ tap_at() {
         detail)
             case "$x $y" in
                 "950 150")
-                    if [ "$FAIL_ALL" = 0 ]; then
-                        if [ "$DELAY" = 1 ]; then
-                            put share "$DELAY_POLLS"
-                        else
-                            put share 1
-                        fi
+                    if [ "$DELAY" = 1 ]; then
+                        put share "$DELAY_POLLS"
+                    else
+                        put share 1
                     fi
                     ;;
             esac
@@ -180,6 +181,13 @@ shell_cmd() {
             ;;
         dumpsys)
             case "${2:-}" in
+                connectivity)
+                    if [ "$(get offline 0)" = 1 ]; then
+                        echo "Active default network: none"
+                    else
+                        echo "Active default network: 100"
+                    fi
+                    ;;
                 package)
                     local granted=false
                     [ "$(get location 1)" = 1 ] && granted=true
@@ -207,11 +215,8 @@ shell_cmd() {
 
 exec_out() {
     case "${1:-}" in
-        cat)
-            case "${2:-}" in
-                /data/local/tmp/camiguin-window.xml) dump_xml ;;
-            esac
-            ;;
+        # `uiautomator dump /dev/tty` prints the hierarchy to stdout.
+        uiautomator) dump_xml ;;
         run-as)
             case "${3:-}" in
                 cat)
@@ -239,7 +244,7 @@ cmd="${1:-}"
 shift || true
 case "$cmd" in
     get-state) echo "device" ;;
-    get-serialno) echo "FAKE123" ;;
+    get-serialno) if [ "$(get wireless 0)" = 1 ]; then echo "localhost:5555"; else echo "FAKE123"; fi ;;
     shell) shell_cmd "$@" ;;
     exec-out) exec_out "$@" ;;
 esac
