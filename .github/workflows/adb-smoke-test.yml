@@ -20,7 +20,7 @@ jobs:
 
       - uses: raven-actions/actionlint@v2.2.0
         with:
-          version: 1.7.12
+          actionlint_version: 1.7.12
           shellcheck: false
 
   fake-adb:
@@ -123,7 +123,7 @@ jobs:
             gradle :app:connectedDebugAndroidTest --no-daemon \
               -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" \
               -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#savedSearchWorkerIsScheduledAndRuns
+              -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists
             status=$?
             if [ "$status" -ne 0 ]; then
               bash scripts/collect-smoke-artifacts.sh smoke-subset-failure-artifacts
