@@ -82,8 +82,8 @@ jobs:
           api-level: 29
           arch: x86_64
           target: google_apis
+          gpu: swiftshader_indirect
           disable-animations: true
-          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
@@ -142,8 +142,8 @@ jobs:
           api-level: 29
           arch: x86_64
           target: google_apis
+          gpu: swiftshader_indirect
           disable-animations: true
-          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
@@ -202,8 +202,8 @@ jobs:
           api-level: 29
           arch: x86_64
           target: google_apis
+          gpu: swiftshader_indirect
           disable-animations: true
-          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
@@ -275,8 +275,8 @@ jobs:
           api-level: 29
           arch: x86_64
           target: google_apis
+          gpu: swiftshader_indirect
           disable-animations: true
-          emulator-options: -no-snapshot -no-audio -gpu swiftshader_indirect
           script: |
             set +e
             export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
