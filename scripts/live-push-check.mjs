@@ -89,7 +89,15 @@ async function readDoc(token, path) {
   const res = await fetch(docUrl(path), {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return res.ok ? res.json() : null;
+  // A missing document is a real 404; any other failure is a broken read and
+  // must not be reported as "not an admin".
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(
+      `read ${path} failed: ${res.status} ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  return res.json();
 }
 
 async function writeDoc(token, path, fields) {

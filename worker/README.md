@@ -160,3 +160,34 @@ wrangler tail                                # watch the purgeExpired logs
 Photo cleanup is best effort: a failed R2 delete is counted in `photoFailures`
 and does not stop the run, and because the document is already gone that image
 would need manual removal. R2 deletes are free of charge.
+
+## Live push integration check
+
+`.github/workflows/live-push-check.yml` is manual (`workflow_dispatch`) and proves
+the **deployed** `/push` really delivers. It signs in as the test account,
+checks `users/{uid}/tokens` has a registered FCM token, seeds a listing and a
+rating with the service account, then asserts `sent >= 1` for `cart` and
+`rating`. If the test account has no token it logs a notice and skips, so open
+the app on a device signed in as that account first.
+
+Moderation needs an **admin** caller, so it is covered only when these optional
+repository secrets are set (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `SMOKE_TEST_ADMIN_EMAIL` | The admin test account's email |
+| `SMOKE_TEST_ADMIN_PASSWORD` | Its password |
+
+To create that account:
+
+1. Firebase Console → **Authentication → Users → Add user**, with an email and
+   password (the same email/password sign-in the app uses).
+2. Firebase Console → **Firestore → admins**, and create a document whose ID is
+   that account's uid (for example `admins/tPL9ygJ3ccdWpdUun1aPRnaHETC3`). The
+   Worker only checks that the document exists; the same collection backs the
+   app's `isAdmin()` rule.
+3. Add the two secrets above and run **Live push integration (manual)**.
+
+When the secrets are absent (or the account is not in `admins/`), the job logs a
+notice and skips moderation. A failed service-account read of `admins/{uid}`
+fails the job instead of being mistaken for "not an admin".
