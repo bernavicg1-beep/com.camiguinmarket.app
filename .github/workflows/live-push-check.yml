@@ -1,4 +1,4 @@
-name: Live push integration (manual)
+name: Live push integration
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
       - "worker/**"
       - "!worker/test/**"
       - "!worker/README.md"
+      - "scripts/live-push-check.mjs"
 
 permissions:
   contents: read

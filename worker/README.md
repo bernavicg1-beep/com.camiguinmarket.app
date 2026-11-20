@@ -163,8 +163,9 @@ would need manual removal. R2 deletes are free of charge.
 
 ## Live push integration check
 
-`.github/workflows/live-push-check.yml` is manual (`workflow_dispatch`) and proves
-the **deployed** `/push` really delivers. It signs in as the test account,
+`.github/workflows/live-push-check.yml` proves the **deployed** `/push` really
+delivers. It runs on demand (`workflow_dispatch`) and on pushes to `main` that
+touch `worker/**` or `scripts/live-push-check.mjs`. It signs in as the test account,
 checks `users/{uid}/tokens` has a registered FCM token, seeds a listing and a
 rating with the service account, then asserts `sent >= 1` for `cart` and
 `rating`. If the test account has no token it logs a notice and skips, so open
@@ -186,7 +187,7 @@ To create that account:
    that account's uid (for example `admins/tPL9ygJ3ccdWpdUun1aPRnaHETC3`). The
    Worker only checks that the document exists; the same collection backs the
    app's `isAdmin()` rule.
-3. Add the two secrets above and run **Live push integration (manual)**.
+3. Add the two secrets above and run **Live push integration**.
 
 When the secrets are absent, the job logs a notice and skips moderation. When
 they are set, the account must exist in `admins/{uid}`: a missing document fails
@@ -220,6 +221,6 @@ To rotate it:
    with `FIREBASE_SERVICE_ACCOUNT`).
 3. Update `SMOKE_TEST_ADMIN_EMAIL` and `SMOKE_TEST_ADMIN_PASSWORD` under
    **Settings → Secrets and variables → Actions**.
-4. Run **Live push integration (manual)**; a green run proves the new admin
-   really delivers.
+4. Run **Live push integration**; a green run proves the new admin really
+   delivers.
 5. Delete the old `admins/{uid}` document and the old Auth user.
