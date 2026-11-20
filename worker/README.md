@@ -193,3 +193,33 @@ they are set, the account must exist in `admins/{uid}`: a missing document fails
 the job with `moderation was not tested`, so a green run means moderation really
 delivered. A failed service-account read of `admins/{uid}` also fails the job
 instead of being mistaken for "not an admin".
+
+Every run also sends moderation with the **test account's** token and requires
+`403`, so the non-admin path stays covered.
+
+### The CI admin account
+
+The repository currently uses this account:
+
+| | |
+|---|---|
+| Email | `live-admin+1795190870@example.com` |
+| UID | `wIIqLKGuTXWsuIW3oJiudQjWIw12` |
+| Firestore | `admins/wIIqLKGuTXWsuIW3oJiudQjWIw12` |
+
+Its password is random and exists only in the write-only
+`SMOKE_TEST_ADMIN_PASSWORD` secret, so it cannot be read back or displayed, and
+`@example.com` cannot receive a password-reset email. Treat it as CI-only; if
+you need to sign in with it interactively, rotate it to an address you control.
+
+To rotate it:
+
+1. Create a new email/password user (Firebase Console → **Authentication →
+   Users → Add user**, or `accounts:signUp` with the project's web API key).
+2. Create `admins/{newUid}` (Firestore Console → **admins**, or a one-off job
+   with `FIREBASE_SERVICE_ACCOUNT`).
+3. Update `SMOKE_TEST_ADMIN_EMAIL` and `SMOKE_TEST_ADMIN_PASSWORD` under
+   **Settings → Secrets and variables → Actions**.
+4. Run **Live push integration (manual)**; a green run proves the new admin
+   really delivers.
+5. Delete the old `admins/{uid}` document and the old Auth user.

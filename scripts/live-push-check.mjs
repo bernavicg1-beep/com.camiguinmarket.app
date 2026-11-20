@@ -6,10 +6,12 @@
  * The test account must have at least one registered FCM token (open the app on
  * a device and sign in as that account).
  *
- * Optional SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD add the
- * moderation send. Without them it is skipped with a notice; with them the
- * account must exist in admins/{uid}, otherwise the run fails. Seeded
- * documents and the throwaway buyer are removed on every outcome.
+ * The test account itself must not be an admin: moderation sent with its token
+ * is asserted to be refused with 403. Optional SMOKE_TEST_ADMIN_EMAIL /
+ * SMOKE_TEST_ADMIN_PASSWORD add the positive moderation send. Without them it
+ * is skipped with a notice; with them the account must exist in admins/{uid},
+ * otherwise the run fails. Seeded documents and the throwaway buyer are removed
+ * on every outcome.
  */
 
 import { readFileSync } from "node:fs";
@@ -163,16 +165,20 @@ async function deleteAccount(idToken) {
   ).catch(() => {});
 }
 
-// Sends one /push and requires a real delivery, logging the response first.
-async function deliver(kind, token, extra) {
+async function send(token, body) {
   const res = await fetch(`${WORKER}/push`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ kind, ...extra }),
+    body: JSON.stringify(body),
   });
-  const body = await res.json().catch(() => ({}));
-  console.log(`${kind}: ${res.status} ${JSON.stringify(body)}`);
-  if (res.status !== 200 || !(body.sent >= 1)) {
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+// Sends one /push and requires a real delivery, logging the response first.
+async function deliver(kind, token, extra) {
+  const res = await send(token, { kind, ...extra });
+  console.log(`${kind}: ${res.status} ${JSON.stringify(res.body)}`);
+  if (res.status !== 200 || !(res.body.sent >= 1)) {
     throw new Error(`${kind} did not deliver (sent >= 1 required)`);
   }
 }
@@ -219,6 +225,20 @@ try {
       createdAt: { integerValue: String(stamp) },
     });
     await deliver("rating", buyer.idToken, { orderId: ratingId });
+
+    // The test account is not an admin, so the moderation branch must refuse it.
+    const refused = await send(account.idToken, {
+      kind: "moderation",
+      sellerId: uid,
+      title: "Live check",
+    });
+    console.log(`moderation as non-admin: ${refused.status} ${JSON.stringify(refused.body)}`);
+    if (refused.status !== 403) {
+      throw new Error(
+        `non-admin moderation was not refused (expected 403, got ${refused.status}); ` +
+          "the test account must not be an admin",
+      );
+    }
 
     const adminEmail = process.env.SMOKE_TEST_ADMIN_EMAIL;
     const adminPassword = process.env.SMOKE_TEST_ADMIN_PASSWORD;
