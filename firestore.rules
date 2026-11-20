@@ -57,24 +57,16 @@ service cloud.firestore {
         && request.resource.data.sellerId == request.auth.uid
         && validListing(request.resource.data);
 
-      // A listing cannot be transferred to another seller.
+      // Owner may edit their listing; any signed-in user may bump views/cartAdds by
+      // exactly +1 (and nothing else). A listing can never change seller.
       allow update: if request.auth != null
-        && resource.data.sellerId == request.auth.uid
-        && request.resource.data.sellerId == request.auth.uid
-        && validListing(request.resource.data);
-
-      // Any signed-in user can increment views and cartAdds, but
-      // exactly +1 per update and no other field may change.
-      allow update: if request.auth != null
+        && request.resource.data.sellerId == resource.data.sellerId
         && (
-          (
-            request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['views', 'viewsByDay'])
-            && request.resource.data.get('views', 0) == resource.data.get('views', 0) + 1
-          ) || (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cartAdds'])
-            && request.resource.data.get('cartAdds', 0) == resource.data.get('cartAdds', 0) + 1
-          )
+          (resource.data.sellerId == request.auth.uid && validListing(request.resource.data))
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views', 'viewsByDay'])
+             && request.resource.data.get('views', 0) == resource.data.get('views', 0) + 1
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cartAdds'])
+             && request.resource.data.get('cartAdds', 0) == resource.data.get('cartAdds', 0) + 1
         );
 
       // Also used by account deletion (delete all of the user's listings),
@@ -88,8 +80,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // User profile document (phone number and its SMS verification flag).
-    // Only the owner can read or write it, and only these fields.
+    // Checkout idempotency guards: owner only.
+    match /checkouts/{checkoutId} {
+      allow read, write: if request.auth != null
+        && (resource == null || resource.data.uid == request.auth.uid)
+        && request.resource.data.uid == request.auth.uid;
+    }
+
     // User profile document. The owner can read/write their own profile; any
     // signed-in user can read a profile so buyers can view a seller's name,
     // photo, phone and email from a listing.
@@ -147,10 +144,8 @@ service cloud.firestore {
         && request.resource.data.note.size() <= 500
         && request.resource.data.status == "open";
 
-      // Two lines so an admin can run an unfiltered query.
-      allow read: if isAdmin();
-      allow read: if request.auth != null
-        && resource.data.reporterUid == request.auth.uid;
+      allow read: if isAdmin()
+        || (request.auth != null && resource.data.reporterUid == request.auth.uid);
 
       allow update: if isAdmin();
       allow delete: if false;
