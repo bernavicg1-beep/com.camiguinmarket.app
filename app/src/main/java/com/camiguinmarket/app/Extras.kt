@@ -381,6 +381,7 @@ fun addToCart(
             message = "$fromName added to cart: ${listing.title}",
             listing = listing
         )
+        sendPush("cart", listingId = listing.id)
         onResult(null)
     }.addOnFailureListener { onResult(it.localizedMessage ?: "Failed to add to cart.") }
 }

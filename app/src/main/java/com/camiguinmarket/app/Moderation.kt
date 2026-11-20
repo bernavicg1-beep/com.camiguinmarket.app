@@ -155,6 +155,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
                         fromName = "Moderator",
                         message = "A moderator removed the listing: ${l.title}".take(190)
                     )
+                    sendPush("moderation", sellerId = l.sellerId, title = l.title)
                     toDelete = null
                 }) { Text("Delete", color = Color(0xFFE53935)) }
             },
@@ -236,6 +237,7 @@ fun ReportsList(uid: String) {
                                     message = "A moderator removed the listing: ${r.listingTitle}"
                                         .take(190)
                                 )
+                                sendPush("moderation", sellerId = r.sellerId, title = r.listingTitle)
                             }) { Text("Delete listing", color = Color(0xFFE53935)) }
                             TextButton(onClick = {
                                 triageReport(db, r.id, REPORT_STATUS_IN_REVIEW, priority = REPORT_PRIORITY_NORMAL, moderatorUid = uid)

@@ -483,10 +483,33 @@ self-test and the lint job still run without these secrets. The test account's
 data may be mutated by the smoke flows (listings, cart, orders), so use a
 dedicated account rather than a personal one.
 
+### Local emulator run
+
+The `camiguin-a36` AVD (Android 36, `google_apis`, x86_64) boots reliably with
+graphics acceleration disabled, which avoids the `surfaceflinger`
+`hasReadColorBufferDma` crash seen on the Android 37 images:
+
+```bash
+$ANDROID_HOME/emulator/emulator -avd camiguin-a36 \
+  -no-snapshot -no-audio -gpu off -no-window &
+# Wait until both boot and the package service are up:
+#   adb shell getprop sys.boot_completed   -> 1
+#   adb shell pm list packages             -> lists packages
+
+SMOKE_TEST_EMAIL=... SMOKE_TEST_PASSWORD=... \
+  GRADLE_BIN=gradle ANDROID_SERIAL=emulator-5554 \
+  bash scripts/run-smoke-tests.sh
+```
+
+`scripts/run-smoke-tests.sh` builds and installs both APKs, runs the
+instrumentation, and collects artifacts on failure. Without a signed-in session
+and without `SMOKE_TEST_*`, every test is skipped (`assumeTrue`), so pass the
+test-account credentials to actually exercise the flows.
+
 ## Not tested yet
 
-There is no device/emulator in the development environment, so **runtime behaviour
-is unverified**: tapping and dragging the Leaflet pin, the WebView bridge
+Runtime behaviour on a physical device is unverified (the local emulator above
+covers the smoke flows): tapping and dragging the Leaflet pin, the WebView bridge
 (`onPick` / `onMarker`), the live OSRM route and Nominatim search responses,
 photo upload to R2 (photos are downscaled to 1600 px / JPEG 80 before upload,
 so a listing photo is a few hundred KB instead of several MB), and SMS phone
