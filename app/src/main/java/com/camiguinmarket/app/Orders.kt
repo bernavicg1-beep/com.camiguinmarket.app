@@ -53,55 +53,77 @@ data class Order(
     val createdAt: Long = 0L
 )
 
-/** Convert the cart into orders, then empty the cart. */
+/** Convert the cart into orders, then empty the cart.
+ *
+ * Idempotent: a client-generated [checkoutId] guards the create path. If a
+ * checkout with that id already exists (double-tap or retry), no new orders
+ * are created and success is reported.
+ */
 fun checkoutCart(
     db: FirebaseFirestore,
     uid: String,
     buyerName: String,
     items: List<CartItem>,
+    checkoutId: String = java.util.UUID.randomUUID().toString(),
     onResult: (String?) -> Unit
 ) {
     if (items.isEmpty()) {
         onResult("Your cart is empty.")
         return
     }
-    val batch = db.batch()
-    val orders = items.map { item ->
-        val ref = db.collection("orders").document()
-        val order = Order(
-            buyerId = uid,
-            buyerName = buyerName,
-            sellerId = item.sellerId,
-            sellerName = item.sellerName,
-            listingId = item.listingId,
-            listingTitle = item.title,
-            imageUrl = item.imageUrl,
-            price = item.price,
-            quantity = item.quantity,
-            total = item.price * item.quantity,
-            town = item.town,
-            contact = item.contact,
-            status = "pending",
-            createdAt = System.currentTimeMillis()
-        )
-        batch.set(ref, order)
-        batch.delete(db.collection("carts").document(uid).collection("items").document(item.id))
-        order.copy(id = ref.id) to item
-    }
-    batch.commit()
-        .addOnSuccessListener {
-            orders.forEach { (order, item) ->
-                notifyUser(
-                    db = db,
-                    toUid = order.sellerId,
-                    fromUid = uid,
-                    fromName = buyerName,
-                    message = "$buyerName mi-order: ${item.title} ×${item.quantity}"
-                )
-                // Push to the seller through the Worker.
-                sendPush("order", orderId = order.id)
+    val checkoutRef = db.collection("checkouts").document(checkoutId)
+    checkoutRef.get()
+        .addOnSuccessListener { snap ->
+            if (snap.exists()) {
+                // Already processed (double-tap / retry): report success, no dupes.
+                onResult(null)
+                return@addOnSuccessListener
             }
-            onResult(null)
+            val batch = db.batch()
+            val orders = items.map { item ->
+                val ref = db.collection("orders").document()
+                val order = Order(
+                    buyerId = uid,
+                    buyerName = buyerName,
+                    sellerId = item.sellerId,
+                    sellerName = item.sellerName,
+                    listingId = item.listingId,
+                    listingTitle = item.title,
+                    imageUrl = item.imageUrl,
+                    price = item.price,
+                    quantity = item.quantity,
+                    total = item.price * item.quantity,
+                    town = item.town,
+                    contact = item.contact,
+                    status = "pending",
+                    createdAt = System.currentTimeMillis()
+                )
+                batch.set(ref, order)
+                batch.delete(db.collection("carts").document(uid).collection("items").document(item.id))
+                order.copy(id = ref.id) to item
+            }
+            // Guard marker written in the same batch so a partial failure leaves
+            // no marker and the retry can safely re-run.
+            batch.set(checkoutRef, mapOf(
+                "uid" to uid,
+                "createdAt" to System.currentTimeMillis(),
+                "orderCount" to items.size
+            ))
+            batch.commit()
+                .addOnSuccessListener {
+                    orders.forEach { (order, item) ->
+                        notifyUser(
+                            db = db,
+                            toUid = order.sellerId,
+                            fromUid = uid,
+                            fromName = buyerName,
+                            message = "$buyerName mi-order: ${item.title} ×${item.quantity}"
+                        )
+                        sendPush("order", orderId = order.id)
+                    }
+                    onResult(null)
+                }
+                .addOnFailureListener { onResult(it.localizedMessage ?: "Order failed.") }
         }
         .addOnFailureListener { onResult(it.localizedMessage ?: "Order failed.") }
 }

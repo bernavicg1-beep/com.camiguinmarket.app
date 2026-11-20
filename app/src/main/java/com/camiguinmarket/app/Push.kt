@@ -72,10 +72,51 @@ fun deleteListingImages(urls: List<String>, onDone: () -> Unit = {}) {
     }
 }
 
+fun sendNotification(
+    toUid: String,
+    fromUid: String,
+    fromName: String,
+    message: String,
+    listing: Listing? = null
+) {
+    val base = BuildConfig.R2_UPLOAD_URL.trim().trimEnd('/')
+    if (base.isBlank()) return
+    val user = FirebaseAuth.getInstance().currentUser ?: return
+    if (user.uid != fromUid) return
+
+    val body = org.json.JSONObject()
+        .put("toUid", toUid)
+        .put("fromUid", fromUid)
+        .put("fromName", fromName)
+        .put("message", message.take(200))
+        .put("listingId", listing?.id ?: "")
+        .put("listingTitle", listing?.title ?: "")
+
+    user.getIdToken(false).addOnSuccessListener { result ->
+        val token = result.token ?: return@addOnSuccessListener
+        Thread {
+            runCatching {
+                val conn = URL("$base/notify").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 10_000
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                val code = conn.responseCode
+                (if (code in 200..299) conn.inputStream else conn.errorStream)?.close()
+                conn.disconnect()
+            }
+        }.start()
+    }
+}
+
 fun sendPush(
     kind: String,
     orderId: String? = null,
     chatId: String? = null,
+    savedSearchId: String? = null,
     text: String? = null
 ) {
     val base = BuildConfig.R2_UPLOAD_URL.trim().trimEnd('/')
@@ -85,6 +126,7 @@ fun sendPush(
     val body = JSONObject().put("kind", kind)
     orderId?.let { body.put("orderId", it) }
     chatId?.let { body.put("chatId", it) }
+    savedSearchId?.let { body.put("savedSearchId", it) }
     text?.let { body.put("text", it.take(140)) }
 
     user.getIdToken(false).addOnSuccessListener { result ->

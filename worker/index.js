@@ -356,11 +356,18 @@ async function deleteToken(sa, token, uid, fcmToken) {
 /** Send to every device of one user; clean up dead tokens. */
 async function sendToUser(env, sa, token, uid, title, body, data = {}) {
   if (!uid) return 0;
-  const tokens = await readTokens(sa, token, uid);
+  let tokens = [];
+  try {
+    tokens = await readTokens(sa, token, uid);
+  } catch {
+    tokens = [];
+  }
   let sent = 0;
 
   for (const fcmToken of tokens) {
-    const res = await fetch(
+    let res;
+    try {
+      res = await fetch(
       `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
       {
         method: "POST",
@@ -380,6 +387,10 @@ async function sendToUser(env, sa, token, uid, title, body, data = {}) {
         }),
       },
     );
+    } catch {
+      // Transient FCM failure: do not throw; report as not sent.
+      continue;
+    }
     if (res.ok) {
       sent += 1;
       continue;
@@ -394,6 +405,70 @@ async function sendToUser(env, sa, token, uid, title, body, data = {}) {
     }
   }
   return sent;
+}
+
+/**
+ * POST /notify
+ *   Header: Authorization: Bearer <Firebase ID token>
+ *   Body:   { "toUid", "fromUid", "fromName", "message", "listingId"?, "listingTitle"? }
+ *
+ * Writes a notification document into the recipient's inbox from the Worker,
+ * using the service account, so the strict client rule (inbox owner == caller)
+ * stays in place while cross-user notifications still work.
+ */
+async function handleNotify(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  const idToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!idToken) return json({ error: "unauthorized" }, 401);
+
+  const uid = await verifyIdToken(idToken, env);
+  if (!uid) return json({ error: "unauthorized" }, 401);
+
+  const sa = serviceAccount(env);
+  if (!sa) return json({ error: "notify_not_configured" }, 503);
+  const access = await accessToken(env);
+  if (!access) return json({ error: "notify_auth_failed" }, 503);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "bad_json" }, 400);
+  }
+
+  const toUid = String(body.toUid || "");
+  const fromUid = String(body.fromUid || "");
+  const fromName = String(body.fromName || "");
+  const message = String(body.message || "").slice(0, 200);
+  const listingId = String(body.listingId || "");
+  const listingTitle = String(body.listingTitle || "");
+
+  if (!toUid || !fromUid || !message) return json({ error: "missing_fields" }, 400);
+  if (fromUid !== uid) return json({ error: "forbidden" }, 403);
+  // A user may not notify themselves through this path; self notifications
+  // stay client-side (allowed by the rules).
+  if (toUid === uid) return json({ error: "self_not_allowed" }, 400);
+
+  const res = await fetch(docUrl(sa, `notifications/${toUid}/items`), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${access}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fields: {
+        fromUid: { stringValue: fromUid },
+        fromName: { stringValue: fromName },
+        message: { stringValue: message },
+        listingId: { stringValue: listingId },
+        listingTitle: { stringValue: listingTitle },
+        createdAt: { integerValue: String(Date.now()) },
+        read: { booleanValue: false },
+      },
+    }),
+  });
+  if (!res.ok) return json({ error: "write_failed" }, 500);
+  return json({ ok: true }, 200);
 }
 
 /**
@@ -426,6 +501,30 @@ async function handlePush(request, env) {
   }
 
   const kind = body.kind;
+
+  if (kind === "saved") {
+    const savedSearchId = String(body.savedSearchId || "");
+    if (!savedSearchId) return json({ error: "missing_savedSearchId" }, 400);
+
+    const search = await readDoc(sa, access, `savedSearches/${uid}/items/${savedSearchId}`);
+    if (!search) return json({ error: "not_found" }, 404);
+
+    const text = String(body.text || "New listings").slice(0, 140);
+    let sent = 0;
+    try {
+      sent = await sendToUser(
+        env, sa, access, uid,
+        "Saved search 🔔",
+        text || "New listings",
+        { savedSearchId, type: "saved_search" },
+      );
+    } catch {
+      sent = 0;
+    }
+    // Always report success so the client does not retry forever; partial
+    // delivery is reflected in `sent`.
+    return json({ sent }, 200);
+  }
 
   if (kind === "chat") {
     const chatId = String(body.chatId || "");
@@ -756,6 +855,11 @@ export default {
     if (url.pathname === "/push") {
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
       return handlePush(request, env);
+    }
+
+    if (url.pathname === "/notify") {
+      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      return handleNotify(request, env);
     }
 
     if (url.pathname === "/upload") {

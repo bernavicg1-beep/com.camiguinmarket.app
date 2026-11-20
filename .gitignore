@@ -33,3 +33,7 @@ __pycache__/
 *.pyc
 __pycache__/
 *.pyc
+
+# Keystore and credentials (never commit)
+*.jks
+release-keystore-credentials.txt

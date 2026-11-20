@@ -3,11 +3,14 @@ package com.camiguinmarket.app
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
+import android.location.Location
+import android.location.LocationManager
 import android.content.pm.PackageManager
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import java.io.File
 import android.content.Intent
 import android.widget.Toast
 import android.net.Uri
@@ -181,33 +184,52 @@ class MainActivity : ComponentActivity() {
         return target
     }
 
+    /** Read a shared listing deep link (camiguinmarket://listing/{id}) from the intent. */
+    private fun readDeepLinkTarget(intent: Intent?): String? {
+        val uri = intent?.data ?: return null
+        if (uri.scheme != "camiguinmarket" || uri.host != "listing") return null
+        val id = uri.lastPathSegment?.let { android.net.Uri.decode(it) } ?: return null
+        if (id.isBlank()) return null
+        return "listing:$id"
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        pushTarget = readPushTarget(intent)
+        pushTarget = readPushTarget(intent) ?: readDeepLinkTarget(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        pushTarget = readPushTarget(intent)
+        pushTarget = readPushTarget(intent) ?: readDeepLinkTarget(intent)
         // Target SDK 36 enforces edge-to-edge, so enable the window properly
         // so the system bars do not cover the content.
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
             var dark by remember { mutableStateOf(loadDarkMode(context)) }
+            var lang by remember { mutableStateOf(loadLanguage(context)) }
+            val strings = if (lang == "ceb") CebStrings else EnStrings
             MaterialTheme(
                 colorScheme = if (dark) marketDarkColorScheme else marketColorScheme,
                 shapes = marketShapes
             ) {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AppRoot(
-                        dark = dark,
-                        pushTarget = pushTarget,
-                        onPushHandled = { pushTarget = null }
-                    ) { value ->
-                        dark = value
-                        saveDarkMode(context, value)
+                CompositionLocalProvider(LocalStrings provides strings) {
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        AppRoot(
+                            dark = dark,
+                            language = lang,
+                            pushTarget = pushTarget,
+                            onPushHandled = { pushTarget = null },
+                            onToggleDark = { value ->
+                                dark = value
+                                saveDarkMode(context, value)
+                            },
+                            onToggleLanguage = { newLang ->
+                                lang = newLang
+                                saveLanguage(context, newLang)
+                            }
+                        )
                     }
                 }
             }
@@ -218,9 +240,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(
     dark: Boolean,
+    language: String,
     pushTarget: String?,
     onPushHandled: () -> Unit,
-    onToggleDark: (Boolean) -> Unit
+    onToggleDark: (Boolean) -> Unit,
+    onToggleLanguage: (String) -> Unit
 ) {
     val auth = remember { FirebaseAuth.getInstance() }
     var user by remember { mutableStateOf(auth.currentUser) }
@@ -231,9 +255,11 @@ fun AppRoot(
             uid = user!!.uid,
             displayName = user!!.displayName ?: user!!.email ?: "Seller",
             dark = dark,
+            language = language,
             pushTarget = pushTarget,
             onPushHandled = onPushHandled,
-            onToggleDark = onToggleDark
+            onToggleDark = onToggleDark,
+            onToggleLanguage = onToggleLanguage
         ) {
             auth.signOut(); user = null
         }
@@ -488,13 +514,21 @@ fun MarketScreen(
     uid: String,
     displayName: String,
     dark: Boolean,
+    language: String = "en",
     pushTarget: String?,
     onPushHandled: () -> Unit,
     onToggleDark: (Boolean) -> Unit,
+    onToggleLanguage: (String) -> Unit,
     onLogout: () -> Unit
 ) {
     val db = remember { FirebaseFirestore.getInstance() }
-    var listings by remember { mutableStateOf<List<Listing>>(emptyList()) }
+    val context = LocalContext.current
+    val S = LocalStrings.current
+    var listings by remember { mutableStateOf(loadListingsCache(context)) }
+    var offline by remember { mutableStateOf(false) }
+    var nearbyRadius by remember { mutableStateOf<Int?>(null) }
+    var userLat by remember { mutableStateOf<Double?>(null) }
+    var userLng by remember { mutableStateOf<Double?>(null) }
     var category by remember { mutableStateOf(categories[0]) }
     var town by remember { mutableStateOf("All") }
     var query by remember { mutableStateOf("") }
@@ -508,18 +542,28 @@ fun MarketScreen(
     var showCompare by remember { mutableStateOf(false) }
     var showDeleteAccount by remember { mutableStateOf(false) }
     val auth = remember { FirebaseAuth.getInstance() }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var photoUrl by remember { mutableStateOf(auth.currentUser?.photoUrl?.toString()) }
 
-    // Ask for notification permission (Android 13+) so chat/order pushes can pop up.
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    // Notification permission is requested lazily (save search / checkout).
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            manager?.let { m ->
+                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { m.isProviderEnabled(it) }
+                providers.forEach { p ->
+                    try { m.requestSingleUpdate(p, object : android.location.LocationListener {
+                        override fun onLocationChanged(loc: Location) {
+                            userLat = loc.latitude; userLng = loc.longitude
+                            try { m.removeUpdates(this) } catch (_: Exception) { }
+                        }
+                        override fun onProviderEnabled(p: String) { }
+                        override fun onProviderDisabled(p: String) { }
+                        @Deprecated("Deprecated in Java") override fun onStatusChanged(p: String?, s: Int, e: android.os.Bundle?) { }
+                    }, android.os.Looper.getMainLooper()) } catch (_: Exception) { }
+                }
+            }
         }
     }
 
@@ -548,6 +592,7 @@ fun MarketScreen(
     var cartCount by remember { mutableStateOf(0) }
     var unread by remember { mutableStateOf(0) }
     var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val blockedSellers = loadBlockedSellers(db, uid)
     var chatWith by remember { mutableStateOf<Pair<String, String>?>(null) }
     var chatListing by remember { mutableStateOf<Listing?>(null) }
     var chatListingId by remember { mutableStateOf("") }
@@ -597,6 +642,13 @@ fun MarketScreen(
                     }
                 }
 
+            "listing" -> db.collection("listings").document(id).get()
+                .addOnSuccessListener { d ->
+                    d.toObject(Listing::class.java)?.let { l ->
+                        openListing(l.copy(id = d.id, category = normalizeCategory(l.category)))
+                    }
+                }
+
             "chat" -> db.collection("chats").document(id).get()
                 .addOnSuccessListener { d ->
                     val participants = (d.get("participants") as? List<*>)
@@ -643,6 +695,16 @@ fun MarketScreen(
         onDispose { reg.remove() }
     }
 
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     // FCM: save the token so the server can send push notifications.
     LaunchedEffect(uid) {
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
@@ -652,15 +714,7 @@ fun MarketScreen(
             }
     }
 
-    // POST_NOTIFICATIONS (Android 13+) for push and local notifications.
-    val notifPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
+    // Notification permission is requested lazily (save search / checkout).
 
     // Admin when an `admins/{uid}` document exists (created in the Console).
     DisposableEffect(Unit) {
@@ -693,24 +747,32 @@ fun MarketScreen(
     DisposableEffect(Unit) {
         val reg = db.collection("listings")
             .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snap, _ ->
-                // Expired perishable listings are dropped here, so they are
-                // gone from the home feed, categories, map and profile.
-                listings = snap?.documents?.mapNotNull { d ->
-                    d.toObject(Listing::class.java)?.let { l ->
-                        l.copy(id = d.id, category = normalizeCategory(l.category))
-                    }
-                }?.filterNot { it.isExpired() } ?: emptyList()
+            .addSnapshotListener { snap, err ->
+                if (snap != null) {
+                    listings = snap.documents.mapNotNull { d ->
+                        d.toObject(Listing::class.java)?.let { l ->
+                            l.copy(id = d.id, category = normalizeCategory(l.category))
+                        }
+                    }.filterNot { it.isExpired() }
+                    saveListingsCache(context, listings)
+                    offline = false
+                } else {
+                    offline = err != null
+                }
             }
         onDispose { reg.remove() }
     }
 
-    val filtered = listings.filter {
-        (category == "All" || it.category == category) &&
-            (town == "All" || it.town == town) &&
-            matchesPrice(it.price, priceFilter) &&
-            (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true) || it.sellerName.contains(query, true) || it.town.contains(query, true))
-    }.let { list -> sortListings(list, sort) }
+    val filtered = applyNearbyFilter(
+        listings.filter {
+            !isBlocked(blockedSellers.value, it.sellerId) &&
+            (category == "All" || it.category == category) &&
+                (town == "All" || it.town == town) &&
+                matchesPrice(it.price, priceFilter) &&
+                (query.isBlank() || it.title.contains(query, true) || it.description.contains(query, true) || it.sellerName.contains(query, true) || it.town.contains(query, true))
+        },
+        userLat, userLng, nearbyRadius
+    ).let { list -> sortListings(list, sort) }
 
     Scaffold(
         topBar = {
@@ -727,6 +789,14 @@ fun MarketScreen(
                     onChats = { overlay = "inbox" },
                     onNotifications = { overlay = "notifications" }
                 )
+                if (offline) {
+                    Text(
+                        S.offlineBanner,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandGold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
                 }
             } else {
                 Row(
@@ -770,7 +840,7 @@ fun MarketScreen(
         },
         floatingActionButton = {
             if (overlay == null && tab == MarketTab.Home) {
-                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ Sell") }
+                ExtendedFloatingActionButton(onClick = { showPost = true }) { Text("+ ${S.sell}") }
             }
         }
     ) { pad ->
@@ -824,6 +894,8 @@ fun MarketScreen(
                     overlay = null
                 }
 
+                "blocked" -> BlockedSellersScreen(uid) { overlay = null }
+
                 "order" -> orderDetail?.let { order ->
                     OrderDetailScreen(
                         order = order,
@@ -854,7 +926,30 @@ fun MarketScreen(
                 }
 
                 else -> when (tab) {
-                    MarketTab.Home -> HomeTab(
+                    MarketTab.Home -> Column(Modifier.fillMaxSize()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                            listOf(5, 10, 25).forEach { r ->
+                                FilterChip(
+                                    selected = nearbyRadius == r,
+                                    onClick = {
+                                        if (nearbyRadius == r) {
+                                            nearbyRadius = null
+                                        } else {
+                                            nearbyRadius = r
+                                            val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                            if (!granted) {
+                                                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("${r} km") }
+                                )
+                            }
+                            if (shouldPromptForNearbyLocation(nearbyRadius, userLat, userLng)) {
+                                Text(S.enableLocationPrompt, style = MaterialTheme.typography.labelSmall, color = BrandGold)
+                            }
+                        }
+                        HomeTab(
                         uid = uid,
                         query = query,
                         onQuery = { query = it },
@@ -880,6 +975,7 @@ fun MarketScreen(
                         onCompare = { showCompare = true },
                         onSell = { showPost = true }
                     )
+                    }
 
                     MarketTab.Categories -> CategoriesTab(
                         ownerUid = uid,
@@ -907,8 +1003,9 @@ fun MarketScreen(
                     MarketTab.Cart -> CartScreen(
                         uid = uid,
                         onBrowse = { tab = MarketTab.Home },
-                        onCheckout = { items ->
-                            checkoutCart(db, uid, displayName, items) { err ->
+                        onCheckout = { items, checkoutId ->
+                            requestNotificationPermission()
+                            checkoutCart(db, uid, displayName, items, checkoutId) { err ->
                                 Toast.makeText(
                                     context,
                                     err ?: "Order placed ✅",
@@ -960,11 +1057,14 @@ fun MarketScreen(
                         onFavorites = { overlay = "favorites" },
                         isAdmin = isAdmin,
                         dark = dark,
+                        language = language,
                         onToggleDark = onToggleDark,
+                        onToggleLanguage = onToggleLanguage,
                         onOrders = { overlay = "orders" },
                         onInbox = { overlay = "inbox" },
                         onModeration = { overlay = "moderation" },
                         onSavedSearches = { overlay = "saved" },
+                        onBlocked = { overlay = "blocked" },
                         onListingStats = { overlay = "stats" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }
@@ -1048,18 +1148,41 @@ fun MarketScreen(
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f)
                         )
+                        // Share the card image (some apps drop the accompanying text).
+                        IconButton(onClick = {
+                            scope.launch {
+                                try {
+                                    val bitmap = renderShareCard(l)
+                                    val file = java.io.File(context.cacheDir, "share_card_${l.id}.png")
+                                    java.io.FileOutputStream(file).use { out -> bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out) }
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                    val share = Intent(Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TEXT, shareListingText(l))
+                                    }
+                                    context.startActivity(Intent.createChooser(share, "Share listing"))
+                                } catch (e: Exception) {
+                                    val share = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, shareListingText(l))
+                                    }
+                                    context.startActivity(Intent.createChooser(share, "Share listing"))
+                                }
+                            }
+                        }) {
+                            Text("↗", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                        }
+                        // Reliable text-only share (title, price, contact, deep link)
+                        // that survives apps which drop text attached to an image.
                         IconButton(onClick = {
                             val share = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "${l.title} — ₱%.2f in ${l.town}\nContact: ${l.contact}\n\n".format(l.price) +
-                                        "View it in the Camiguin Market app."
-                                )
+                                putExtra(Intent.EXTRA_TEXT, shareListingText(l))
                             }
                             context.startActivity(Intent.createChooser(share, "Share listing"))
                         }) {
-                            Text("↗", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                            Text("🔗", color = Color.White, style = MaterialTheme.typography.headlineSmall)
                         }
                         if (l.sellerId == uid) {
                             IconButton(onClick = { selected = null; editListing = l }) {
@@ -1143,7 +1266,7 @@ fun MarketScreen(
                                 )
                                 if (l.description.isNotBlank()) {
                                     Spacer(Modifier.height(8.dp))
-                                    Text("Description", fontWeight = FontWeight.Bold)
+                                    Text(S.description, fontWeight = FontWeight.Bold)
                                     Text(l.description)
                                 }
                                 Spacer(Modifier.height(8.dp))
@@ -1208,7 +1331,7 @@ fun MarketScreen(
                                         reviewsSeller = l.sellerId to l.sellerName
                                         selected = null
                                         overlay = "reviews"
-                                    }) { Text("See all reviews") }
+                                    }) { Text(S.seeAllReviews) }
                                 }
                             }
                         }
@@ -1233,7 +1356,7 @@ fun MarketScreen(
                                 },
                                 shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.fillMaxWidth().height(50.dp)
-                            ) { Text("Add to Cart", fontWeight = FontWeight.Bold) }
+                            ) { Text(S.addToCart, fontWeight = FontWeight.Bold) }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (l.sellerId != uid) {
@@ -1249,20 +1372,20 @@ fun MarketScreen(
                                     },
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.weight(1f)
-                                ) { Text("Chat with seller") }
+                                ) { Text(S.chatWithSeller) }
                             }
                             if (sellerLat != null && sellerLng != null) {
                                 OutlinedButton(
                                     onClick = { selected = null; mapListing = l },
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.weight(1f)
-                                ) { Text("View on map") }
+                                ) { Text(S.viewOnMap) }
                             } else if (l.sellerId == uid) {
                                 OutlinedButton(
                                     onClick = { selected = null; mapListing = l },
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.weight(1f)
-                                ) { Text("Set pickup location") }
+                                ) { Text(S.setPickupLocation) }
                             }
                         }
                         if (sellerLat != null && sellerLng != null) {
@@ -1277,12 +1400,25 @@ fun MarketScreen(
                                     },
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.weight(1f)
-                                ) { Text("Directions") }
+                                ) { Text(S.directions) }
                             }
                         }
                         if (l.sellerId != uid) {
-                            TextButton(onClick = { reportListing = l }) {
-                                Text("Report this listing", color = Color(0xFFE53935))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = { reportListing = l }) {
+                                    Text(S.report, color = Color(0xFFE53935))
+                                }
+                                TextButton(onClick = {
+                                    blockSeller(db, uid, l.sellerId, l.sellerName) { err ->
+                                        Toast.makeText(
+                                            context,
+                                            err ?: "Seller blocked.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }) {
+                                    Text("Block seller", color = Color(0xFFE53935))
+                                }
                             }
                         }
                     }
@@ -1370,6 +1506,7 @@ fun PostDialog(
     existing: Listing? = null,
     onClose: () -> Unit
 ) {
+    val S = LocalStrings.current
     fun priceText(value: Double): String =
         if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
 
@@ -1585,7 +1722,7 @@ fun PostDialog(
                                     pickExpiryDateTime(context, expiresAt) { expiresAt = it }
                                 },
                                 modifier = Modifier.fillMaxWidth()
-                            ) { Text("🗓️ Set expiration") }
+                            ) { Text("🗓️ ${S.setExpiration}") }
                             if (expiresAt in 1..System.currentTimeMillis()) {
                                 Text(
                                     "Choose a time in the future.",
@@ -1603,7 +1740,7 @@ fun PostDialog(
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Pickup location", style = MaterialTheme.typography.labelMedium)
+                Text(S.pickupLocation, style = MaterialTheme.typography.labelMedium)
                 Text(
                     pickup?.let { "Picked: ${formatCoordinates(it)}" }
                         ?: "No pickup point selected yet."
@@ -1611,10 +1748,10 @@ fun PostDialog(
                 OutlinedButton(
                     onClick = { showPicker = true },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("📌 Pick a pickup location on the Map") }
+                ) { Text("📌 ${S.pickPickupLocationOnMap}") }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Photos", style = MaterialTheme.typography.labelMedium)
+                Text(S.photos, style = MaterialTheme.typography.labelMedium)
                 when {
                     previews.isNotEmpty() -> Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -1699,7 +1836,10 @@ fun PostDialog(
                     ) { Text("Cancel") }
                     Button(
                         enabled = canPost,
-                        onClick = { submit() },
+                        onClick = {
+                            if (RateLimiter.allow(context, uid, "post", 10)) submit()
+                            else uploadError = "Too many posts. Try again later."
+                        },
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(2f).height(50.dp)
                     ) {
@@ -1729,8 +1869,23 @@ fun decodeImageBitmap(context: Context, uri: Uri): ImageBitmap? = runCatching {
     }
 }.getOrNull()
 
-/** Decoded photos kept in memory so scrolling never downloads or decodes twice. */
-private val imageCache = object : LruCache<String, ImageBitmap>(32) {}
+/** Decoded photos kept in memory, bounded by ~8 MB so a long scroll can't OOM. */
+private val imageCache = object : LruCache<String, ImageBitmap>(8 * 1024) {
+    override fun sizeOf(key: String, value: ImageBitmap): Int =
+        (value.width * value.height * 4) / 1024
+}
+
+/** Keep the on-disk image cache under ~50 MB by evicting the oldest files. */
+private fun evictDiskCache(dir: File, maxBytes: Long = 50L * 1024 * 1024) {
+    val files = dir.listFiles() ?: return
+    var total = files.sumOf { it.length() }
+    if (total <= maxBytes) return
+    files.sortedBy { it.lastModified() }.forEach { f ->
+        if (total <= maxBytes) return
+        total -= f.length()
+        f.delete()
+    }
+}
 
 /** Decode JPEG/PNG bytes at roughly [targetPx] on the longest edge. */
 private fun decodeDownsampled(bytes: ByteArray, targetPx: Int): ImageBitmap? {
@@ -1767,6 +1922,7 @@ fun SellerInfoDialog(
     var telegram by remember { mutableStateOf<String?>(null) }
     var messenger by remember { mutableStateOf<String?>(null) }
     var whatsapp by remember { mutableStateOf<String?>(null) }
+    val reputation = loadSellerReputation(db, sellerId)
     LaunchedEffect(sellerId) {
         if (sellerId.isBlank()) return@LaunchedEffect
         db.collection("users").document(sellerId).get()
@@ -1807,6 +1963,16 @@ fun SellerInfoDialog(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+                if (reputation.value.count > 0) {
+                    Text(
+                        "Reputation: %.1f/5 (%d ratings)%s".format(
+                            reputation.value.average, reputation.value.count,
+                            if (reputation.value.belowThreshold) "  ⚠️ low" else ""
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (reputation.value.belowThreshold) Color(0xFFE53935) else BrandMuted
+                    )
+                }
                 if (!phone.isNullOrBlank()) Text("Phone: $phone")
                 if (!email.isNullOrBlank()) Text("Email: $email")
                 if (fallbackContact.isNotBlank()) Text("Contact: $fallbackContact")
@@ -1846,6 +2012,7 @@ fun RemoteImage(url: String, modifier: Modifier = Modifier, targetPx: Int = 512)
     var retry by remember(key) { mutableStateOf(0) }
     var bitmap by remember(key, retry) { mutableStateOf(imageCache.get(key)) }
 
+    val ctx = LocalContext.current
     LaunchedEffect(key, retry) {
         if (url.isBlank()) {
             bitmap = null
@@ -1855,12 +2022,20 @@ fun RemoteImage(url: String, modifier: Modifier = Modifier, targetPx: Int = 512)
             bitmap = cached
             return@LaunchedEffect
         }
+        // Disk cache: survive restarts and airplane mode.
+        val diskFile = File(ctx.cacheDir, "imgcache/${url.hashCode()}")
         val loaded = withContext(Dispatchers.IO) {
             runCatching {
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 10_000
-                conn.readTimeout = 20_000
-                val bytes = conn.inputStream.use { it.readBytes() }
+                val bytes = if (diskFile.exists()) {
+                    diskFile.readBytes()
+                } else {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 10_000
+                    conn.readTimeout = 20_000
+                    val b = conn.inputStream.use { it.readBytes() }
+                    runCatching { diskFile.parentFile?.mkdirs(); evictDiskCache(diskFile.parentFile!!); diskFile.writeBytes(b) }
+                    b
+                }
                 decodeDownsampled(bytes, targetPx)
             }.getOrNull()
         }

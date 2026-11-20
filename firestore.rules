@@ -122,7 +122,10 @@ service cloud.firestore {
     // must be themselves (nobody can impersonate another user).
     match /notifications/{userId}/items/{notificationId} {
       allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      // Only the inbox owner may create a notification in their own inbox;
+      // fromUid must still be the caller so nobody can impersonate a sender.
       allow create: if request.auth != null
+        && request.auth.uid == userId
         && request.resource.data.fromUid == request.auth.uid
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0

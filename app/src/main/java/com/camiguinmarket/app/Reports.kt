@@ -22,6 +22,8 @@ data class Report(
     val reason: String = "",
     val note: String = "",
     val status: String = "open",
+    val priority: String? = null,
+    val resolution: String? = null,
     val createdAt: Long = 0L
 )
 
@@ -72,6 +74,7 @@ fun ReportDialog(
     onClose: () -> Unit
 ) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var reason by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
@@ -107,6 +110,11 @@ fun ReportDialog(
             TextButton(
                 enabled = !sending && reason.isNotBlank(),
                 onClick = {
+                    val ctx = context
+                    if (!RateLimiter.allow(ctx, uid, "report", 5)) {
+                        error = "You're reporting too fast. Try again later."
+                        return@TextButton
+                    }
                     sending = true
                     error = null
                     submitReport(db, uid, displayName, listing, reason, note) { err ->

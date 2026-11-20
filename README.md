@@ -466,6 +466,23 @@ On a manual run the tag comes from the app's `versionName` (`v0.8`), so bump
 stops early if the four signing secrets are missing, and verifies the APK with
 `apksigner` before publishing, so a release is always installable as an update.
 
+## CI smoke tests (emulator)
+
+The `adb-smoke-test.yml` workflow boots an Android emulator and runs the
+instrumented smoke tests in `app/src/androidTest/`. The full and subset jobs
+need a signed-in test account, so add these repository secrets under
+**Settings → Secrets and variables → Actions**:
+
+| Secret | What it is |
+|---|---|
+| `SMOKE_TEST_EMAIL` | Email of an existing Camiguin Market test account |
+| `SMOKE_TEST_PASSWORD` | Its password |
+
+Without them the smoke jobs fail fast with a clear error; the `fake-adb`
+self-test and the lint job still run without these secrets. The test account's
+data may be mutated by the smoke flows (listings, cart, orders), so use a
+dedicated account rather than a personal one.
+
 ## Not tested yet
 
 There is no device/emulator in the development environment, so **runtime behaviour

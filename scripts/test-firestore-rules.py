@@ -213,10 +213,12 @@ notif_doc = lambda sender: {"fields": {
     "createdAt": {"integerValue": "1"},
     "read": {"booleanValue": False},
 }}
-check("notification: can create for someone else", "POST", "/notifications/u2/items", 200,
+check("notification: can create in own inbox", "POST", "/notifications/u1/items", 200,
       uid="u1", body=notif_doc("u1"), doc_id="n1")
-check("notification: cannot create in someone else's name", "POST", "/notifications/u2/items", 403,
-      uid="u1", body=notif_doc("u9"), doc_id="n2")
+check("notification: cannot create in someone else's inbox", "POST", "/notifications/u2/items", 403,
+      uid="u1", body=notif_doc("u1"), doc_id="n2")
+check("notification: cannot create in someone else's name", "POST", "/notifications/u1/items", 403,
+      uid="u1", body=notif_doc("u9"), doc_id="n3")
 check("notification: owner can read", "GET", "/notifications/u2/items", 200, uid="u2")
 check("notification: others cannot read", "GET", "/notifications/u2/items", 403, uid="u1")
 

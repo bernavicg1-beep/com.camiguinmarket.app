@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
@@ -151,6 +152,12 @@ fun saveDarkMode(context: Context, dark: Boolean) {
     themePrefs(context).edit().putBoolean("dark", dark).apply()
 }
 
+fun loadLanguage(context: Context): String = themePrefs(context).getString("lang", "en") ?: "en"
+
+fun saveLanguage(context: Context, lang: String) {
+    themePrefs(context).edit().putString("lang", lang).apply()
+}
+
 // ---------------------------------------------------------------------------
 // Saved searches (Firestore: savedSearches/{uid}/items)
 // ---------------------------------------------------------------------------
@@ -198,26 +205,50 @@ fun checkSavedSearches(
     searches: List<SavedSearch>,
     listings: List<Listing>
 ) {
-    if (searches.isEmpty() || listings.isEmpty()) return
+    if (searches.isEmpty()) return
+    // Only listings newer than the oldest checkpoint can possibly match.
+    val oldestCheckpoint = searches.minOf { it.lastCheckedAt }
+    val relevant = listings.filter { it.createdAt > oldestCheckpoint }
+    if (relevant.isEmpty()) return
+    val now = System.currentTimeMillis()
     searches.forEach { s ->
-        val matches = listings.filter {
-            it.createdAt > s.lastCheckedAt && it.sellerId != uid &&
-                (s.query.isBlank() || it.title.contains(s.query, true) ||
-                    it.description.contains(s.query, true)) &&
-                (s.category == "All" || normalizeCategory(it.category) == normalizeCategory(s.category)) &&
-                (s.town == "All" || it.town == s.town)
-        }
-        val latest = listings.maxOfOrNull { it.createdAt } ?: s.lastCheckedAt
-        if (matches.isNotEmpty()) {
-            notifyUser(
-                db = db,
-                toUid = uid,
-                fromUid = uid,
-                fromName = "Saved search",
-                message = "🔔 ${matches.size} new listings for \"${s.label}\"".take(190)
-            )
-            db.collection("savedSearches").document(uid).collection("items")
-                .document(s.id).update("lastCheckedAt", latest)
+        val update = planSavedSearchUpdate(
+            uid = uid,
+            search = s,
+            storedCheckpoint = s.lastCheckedAt,
+            listings = relevant,
+            now = now
+        ) ?: return@forEach
+        // Write the alert (if any) and the checkpoint in a single transaction so
+        // a failed notification write leaves the old checkpoint behind; the next
+        // run re-decides from the stored checkpoint instead of silently losing
+        // the alert. Push delivery stays worker-only (this only writes the doc).
+        val savedSearchRef = db.collection("savedSearches").document(uid)
+            .collection("items").document(s.id)
+        db.runTransaction { tx ->
+            if (update.message != null &&
+                canDeliverNotification(uid, uid, allowSelfNotification = true)
+            ) {
+                val notifRef = db.collection("notifications").document(uid)
+                    .collection("items").document()
+                tx.set(
+                    notifRef,
+                    AppNotification(
+                        fromUid = uid,
+                        fromName = "Saved search",
+                        message = update.message,
+                        createdAt = System.currentTimeMillis()
+                    )
+                )
+            }
+            tx.update(savedSearchRef, "lastCheckedAt", update.checkpoint)
+            null
+        }.addOnSuccessListener {
+            // Push is worker-only and best-effort; only after the checkpoint
+            // commits so a failed write never notifies about stale matches.
+            if (update.message != null) {
+                sendPush("saved", savedSearchId = s.id, text = update.message)
+            }
         }
     }
 }
@@ -487,19 +518,27 @@ fun notifyUser(
     fromUid: String,
     fromName: String,
     message: String,
-    listing: Listing? = null
+    listing: Listing? = null,
+    allowSelfNotification: Boolean = false
 ) {
-    if (toUid.isBlank() || toUid == fromUid) return
-    db.collection("notifications").document(toUid).collection("items").add(
-        AppNotification(
-            fromUid = fromUid,
-            fromName = fromName,
-            message = message,
-            listingId = listing?.id ?: "",
-            listingTitle = listing?.title ?: "",
-            createdAt = System.currentTimeMillis()
+    if (!canDeliverNotification(toUid, fromUid, allowSelfNotification)) return
+    if (toUid == fromUid) {
+        // Self notification: allowed by the rules, write directly.
+        db.collection("notifications").document(toUid).collection("items").add(
+            AppNotification(
+                fromUid = fromUid,
+                fromName = fromName,
+                message = message,
+                listingId = listing?.id ?: "",
+                listingTitle = listing?.title ?: "",
+                createdAt = System.currentTimeMillis()
+            )
         )
-    )
+    } else {
+        // Cross-user: client writes are blocked by the rules, so route the
+        // inbox write through the Worker (which uses the service account).
+        sendNotification(toUid, fromUid, fromName, message, listing)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1222,9 +1261,10 @@ fun saveCartCache(context: Context, uid: String, items: List<CartItem>) {
 }
 
 @Composable
-fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -> Unit) {
+fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>, String) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
+    val S = LocalStrings.current
     // Show the local cache first so something appears even offline.
     var items by remember { mutableStateOf(loadCartCache(context, uid)) }
     var offline by remember { mutableStateOf(false) }
@@ -1246,12 +1286,14 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
     }
 
     val total = items.sumOf { it.price * it.quantity }
+    val checkoutId = remember { java.util.UUID.randomUUID().toString() }
+    var checkingOut by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.ShoppingCart, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
-            Text("My Cart", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(S.myCart, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             Text(
                 if (items.size == 1) "1 item" else "${items.size} items",
@@ -1270,9 +1312,9 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Your cart is empty.", style = MaterialTheme.typography.bodyMedium)
+                    Text(S.cartEmpty, style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = onBrowse) { Text("Search products") }
+                    Button(onClick = onBrowse) { Text(S.searchProducts) }
                 }
             }
         } else {
@@ -1355,7 +1397,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Total", style = MaterialTheme.typography.titleMedium, color = BrandMuted, modifier = Modifier.weight(1f))
+                    Text(S.total, style = MaterialTheme.typography.titleMedium, color = BrandMuted, modifier = Modifier.weight(1f))
                     Text(
                         "₱%.0f".format(total),
                         style = MaterialTheme.typography.headlineSmall,
@@ -1366,13 +1408,14 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
             }
             Spacer(Modifier.height(10.dp))
             Button(
-                onClick = { onCheckout(items) },
+                onClick = { checkingOut = true; onCheckout(items, checkoutId) },
+                enabled = !checkingOut,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 Icon(Icons.Filled.ShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Checkout", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(S.checkout, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
             Text(
@@ -1390,6 +1433,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>) -
 @Composable
 fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val S = LocalStrings.current
     var items by remember { mutableStateOf<List<FavoriteItem>>(emptyList()) }
 
     DisposableEffect(Unit) {
@@ -1407,11 +1451,11 @@ fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color(0xFFE53935))
             Spacer(Modifier.width(6.dp))
-            Text("My Favorites", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(S.myFavorites, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
-            Text("No favorites yet. Press 🤍 on a listing.")
+            Text(S.noFavorites)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(items, key = { it.id }) { f ->
@@ -1445,6 +1489,7 @@ fun FavoritesScreen(uid: String, onOpenListing: (String) -> Unit) {
 @Composable
 fun NotificationsScreen(uid: String, onOpen: (String, String, String, String) -> Unit = { _, _, _, _ -> }) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val S = LocalStrings.current
     var items by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
 
     DisposableEffect(Unit) {
@@ -1471,11 +1516,11 @@ fun NotificationsScreen(uid: String, onOpen: (String, String, String, String) ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Notifications, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
-            Text("Notifications", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(S.notifications, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
         if (items.isEmpty()) {
-            Text("No notifications yet. You'll get them here when someone adds your listing to their cart or messages you.")
+            Text(S.noNotifications)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(items, key = { it.id }) { n ->
@@ -1490,7 +1535,7 @@ fun NotificationsScreen(uid: String, onOpen: (String, String, String, String) ->
                                 Text("Listing: ${n.listingTitle}", style = MaterialTheme.typography.labelSmall)
                             }
                             Text("from ${n.fromName}", style = MaterialTheme.typography.labelSmall)
-                            Text("Tap to open chat", style = MaterialTheme.typography.labelSmall, color = BrandBlue)
+                            Text(S.tapToOpenChat, style = MaterialTheme.typography.labelSmall, color = BrandBlue)
                         }
                     }
                 }
@@ -1730,16 +1775,20 @@ fun ProfileScreen(
     myListings: List<Listing>,
     isAdmin: Boolean,
     dark: Boolean,
+    language: String = "en",
     onToggleDark: (Boolean) -> Unit,
+    onToggleLanguage: (String) -> Unit,
     onFavorites: () -> Unit,
     onOrders: () -> Unit,
     onInbox: () -> Unit,
     onModeration: () -> Unit,
     onSavedSearches: () -> Unit,
     onListingStats: () -> Unit,
+    onBlocked: () -> Unit = {},
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
+    val S = LocalStrings.current
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -1764,34 +1813,28 @@ fun ProfileScreen(
         }
         Spacer(Modifier.height(6.dp))
         TextButton(onClick = { photoPicker.launch("image/*") }, enabled = onPickPhoto != null) {
-            Text(if (photoUrl.isNullOrBlank()) "Add photo" else "Change photo")
+            Text(if (photoUrl.isNullOrBlank()) S.addPhoto else S.changePhoto)
         }
         Spacer(Modifier.height(8.dp))
         Text(displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(email, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
-        try { PhoneVerifySection(uid) } catch (e: Exception) {
-            Text("Phone verification unavailable: ${e.localizedMessage ?: "error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-        }
+        PhoneVerifySection(uid)
         Spacer(Modifier.height(12.dp))
-        try { ContactLinksSection(uid) } catch (e: Exception) {
-            Text("Contact links unavailable: ${e.localizedMessage ?: "error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-        }
+        ContactLinksSection(uid)
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatCard("${myListings.size}", "My listings", Modifier.weight(1f))
+            StatCard("${myListings.size}", S.myListings, Modifier.weight(1f))
             StatCard(
                 "₱%.0f".format(myListings.sumOf { it.price }),
-                "Total value",
+                S.totalValue,
                 Modifier.weight(1f)
             )
         }
         Spacer(Modifier.height(12.dp))
 
-        try { SellerStats(uid, myListings) } catch (e: Exception) {
-            Text("Seller stats unavailable: ${e.localizedMessage ?: "error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-        }
+        SellerStats(uid, myListings)
 
         Spacer(Modifier.height(16.dp))
 
@@ -1803,20 +1846,21 @@ fun ProfileScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column {
-                ProfileRow(Icons.Filled.ReceiptLong, "My listings", onListingStats, "${myListings.size}")
+                ProfileRow(Icons.Filled.ReceiptLong, S.myListings, onListingStats, "${myListings.size}")
                 ProfileDivider()
-                ProfileRow(Icons.Filled.Favorite, "Favorites", onFavorites)
+                ProfileRow(Icons.Filled.Favorite, S.favorites, onFavorites)
                 ProfileDivider()
-                ProfileRow(Icons.Filled.ReceiptLong, "Orders", onOrders)
+                ProfileRow(Icons.Filled.ReceiptLong, S.orders, onOrders)
                 ProfileDivider()
-                ProfileRow(Icons.Filled.Chat, "Chats", onInbox)
+                ProfileRow(Icons.Filled.Chat, S.chats, onInbox)
                 ProfileDivider()
-                ProfileRow(Icons.Filled.Notifications, "Saved searches", onSavedSearches)
+                ProfileRow(Icons.Filled.Notifications, S.savedSearches, onSavedSearches)
                 ProfileDivider()
-                ProfileRow(Icons.Filled.Storefront, "Listing stats", onListingStats)
+                ProfileRow(Icons.Filled.Close, "Blocked sellers", onBlocked)
+                ProfileRow(Icons.Filled.Storefront, S.listingStats, onListingStats)
                 if (isAdmin) {
                     ProfileDivider()
-                    ProfileRow(Icons.Filled.Delete, "Moderation", onModeration)
+                    ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
                 }
             }
         }
@@ -1826,8 +1870,19 @@ fun ProfileScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Dark mode", style = MaterialTheme.typography.bodyMedium)
+            Text(S.darkMode, style = MaterialTheme.typography.bodyMedium)
             Switch(checked = dark, onCheckedChange = onToggleDark)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(S.language, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { onToggleLanguage(if (language == "en") "ceb" else "en") }) {
+                Text(if (language == "en") "English" else "Cebuano")
+            }
         }
         Spacer(Modifier.height(8.dp))
         Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
@@ -1914,6 +1969,7 @@ private fun ProfileDivider() {
  */
 @Composable
 fun PhoneVerifySection(uid: String) {
+    val S = LocalStrings.current
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
     val db = remember { FirebaseFirestore.getInstance() }
@@ -2050,10 +2106,10 @@ fun PhoneVerifySection(uid: String) {
                         enabled = !busy && phone.count { it.isDigit() } >= 10,
                         onClick = { sendCode() }
                     ) {
-                        Text(if (verificationId == null) "Send code" else "Resend code")
+                        Text(if (verificationId == null) S.sendCode else S.resendCode)
                     }
                     if (verified) {
-                        TextButton(onClick = { editing = false; info = null }) { Text("Cancel") }
+                        TextButton(onClick = { editing = false; info = null }) { Text(S.cancel) }
                     }
                 }
                 if (verificationId != null) {
@@ -2401,6 +2457,7 @@ fun HomeTab(
     onCompare: () -> Unit,
     onSell: () -> Unit
 ) {
+    val S = LocalStrings.current
     val trending = listings.filter { it.views > 0 }
         .sortedByDescending { it.views }
         .take(5)
@@ -2463,7 +2520,17 @@ fun HomeTab(
         item { FilterBar(priceFilter, onPriceFilter, sort, onSort) }
         item {
             val db = remember { FirebaseFirestore.getInstance() }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
             var searches by remember { mutableStateOf<List<SavedSearch>>(emptyList()) }
+            val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            fun requestNotificationPermission() {
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    val granted = ContextCompat.checkSelfPermission(
+                        ctx, android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!granted) notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
             DisposableEffect(uid) {
                 val reg = db.collection("savedSearches").document(uid).collection("items")
                     .addSnapshotListener { snap, _ ->
@@ -2479,6 +2546,7 @@ fun HomeTab(
             Column {
                 TextButton(
                     onClick = {
+                        requestNotificationPermission()
                         saveSearch(
                             db, uid, query, category, "All",
                             name = query.ifBlank { category }
@@ -2597,6 +2665,7 @@ fun CategoriesTab(
     onFavorite: (Listing) -> Unit,
     onAddToCart: (Listing) -> Unit
 ) {
+    val S = LocalStrings.current
     val trending = listings.filter { it.views > 0 }
         .sortedByDescending { it.views }
         .take(5)
@@ -2616,7 +2685,7 @@ fun CategoriesTab(
         item { CategoryRows(category, onCategory) }
         item {
             Column {
-                Text("Town", style = MaterialTheme.typography.labelMedium)
+                Text(S.town, style = MaterialTheme.typography.labelMedium)
                 TownChips(town, onTown)
             }
         }
@@ -2662,9 +2731,20 @@ fun CategoriesTab(
 
 @Composable
 fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) {
+    val S = LocalStrings.current
     val db = remember { FirebaseFirestore.getInstance() }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var searches by remember { mutableStateOf<List<SavedSearch>>(emptyList()) }
     var editing by remember { mutableStateOf<SavedSearch?>(null) }
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun requestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     DisposableEffect(uid) {
         val reg = db.collection("savedSearches").document(uid).collection("items")
@@ -2681,19 +2761,19 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
             Icon(Icons.Filled.Notifications, contentDescription = null, tint = BrandBlue)
             Spacer(Modifier.width(6.dp))
             Text(
-                "Saved searches",
+                S.savedSearches,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
         }
         Text(
-            "Tap to apply the filter. Rename or remove it.",
+            S.savedSearchesHint,
             style = MaterialTheme.typography.labelSmall
         )
         Spacer(Modifier.height(8.dp))
 
         if (searches.isEmpty()) {
-            Text("No saved searches yet. On Home, press \"Save this search\".")
+            Text(S.noSavedSearches)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(searches, key = { it.id }) { s ->
@@ -2764,4 +2844,102 @@ fun SavedSearchesScreen(uid: String, onApply: (String, String, String) -> Unit) 
             }
         )
     }
+}
+
+// ---------------------------------------------------------------------------
+// Listings cache (offline mirror)
+// ---------------------------------------------------------------------------
+
+private fun listingsPrefs(context: Context) =
+    context.getSharedPreferences("listings_cache", Context.MODE_PRIVATE)
+
+fun loadListingsCache(context: Context): List<Listing> {
+    val raw = listingsPrefs(context).getString("all", null) ?: return emptyList()
+    return runCatching {
+        val arr = JSONArray(raw)
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            Listing(
+                id = o.optString("id"),
+                title = o.optString("title"),
+                description = o.optString("description"),
+                price = o.optDouble("price"),
+                category = o.optString("category"),
+                town = o.optString("town"),
+                sellerId = o.optString("sellerId"),
+                sellerName = o.optString("sellerName"),
+                contact = o.optString("contact"),
+                createdAt = o.optLong("createdAt"),
+                latitude = if (o.has("latitude") && !o.isNull("latitude")) o.optDouble("latitude") else null,
+                longitude = if (o.has("longitude") && !o.isNull("longitude")) o.optDouble("longitude") else null,
+                imageUrl = o.optString("imageUrl"),
+                imageUrls = (0 until o.optJSONArray("imageUrls")?.length().orZero()).map { j ->
+                    o.optJSONArray("imageUrls")!!.optString(j)
+                },
+                views = o.optLong("views"),
+                cartAdds = o.optLong("cartAdds"),
+                isPerishable = o.optBoolean("isPerishable"),
+                expiresAt = o.optLong("expiresAt")
+            )
+        }
+    }.getOrDefault(emptyList())
+}
+
+fun saveListingsCache(context: Context, items: List<Listing>) {
+    val arr = JSONArray()
+    items.forEach { l ->
+        arr.put(
+            JSONObject().apply {
+                put("id", l.id)
+                put("title", l.title)
+                put("description", l.description)
+                put("price", l.price)
+                put("category", l.category)
+                put("town", l.town)
+                put("sellerId", l.sellerId)
+                put("sellerName", l.sellerName)
+                put("contact", l.contact)
+                put("createdAt", l.createdAt)
+                if (l.latitude != null) put("latitude", l.latitude) else put("latitude", JSONObject.NULL)
+                if (l.longitude != null) put("longitude", l.longitude) else put("longitude", JSONObject.NULL)
+                put("imageUrl", l.imageUrl)
+                put("imageUrls", JSONArray(l.imageUrls))
+                put("views", l.views)
+                put("cartAdds", l.cartAdds)
+                put("isPerishable", l.isPerishable)
+                put("expiresAt", l.expiresAt)
+            }
+        )
+    }
+    listingsPrefs(context).edit().putString("all", arr.toString()).apply()
+}
+
+private fun Int?.orZero(): Int = this ?: 0
+
+// ---------------------------------------------------------------------------
+// Share card rendering
+// ---------------------------------------------------------------------------
+
+fun renderShareCard(listing: Listing): android.graphics.Bitmap {
+    val width = 1080
+    val height = 1350
+    val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    canvas.drawColor(android.graphics.Color.parseColor("#1E3A8A"))
+    val paint = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        isAntiAlias = true
+    }
+    paint.textSize = 72f
+    canvas.drawText(listing.title, 60f, 200f, paint)
+    paint.textSize = 48f
+    canvas.drawText("₱" + formatPrice(listing.price), 60f, 320f, paint)
+    canvas.drawText(listing.town, 60f, 420f, paint)
+    if (listing.contact.isNotBlank()) {
+        canvas.drawText("Contact: ${listing.contact}", 60f, 520f, paint)
+    }
+    paint.textSize = 36f
+    paint.color = android.graphics.Color.parseColor("#C3CFE0")
+    canvas.drawText("Camiguin Market", 60f, height - 80f, paint)
+    return bitmap
 }

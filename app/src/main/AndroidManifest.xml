@@ -65,6 +65,14 @@
             android:exported="true"
             android:launchMode="singleTop">
 
+            <!-- Deep link for a shared listing (camiguinmarket://listing/{id}). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="camiguinmarket" android:host="listing" android:pathPrefix="/" />
+            </intent-filter>
+
             <!-- Developer attribution. -->
             <meta-data
                 android:name="dev.credits"
