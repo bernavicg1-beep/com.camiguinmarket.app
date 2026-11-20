@@ -1,0 +1,46 @@
+name: Live push integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - "!worker/test/**"
+      - "!worker/README.md"
+      - "scripts/live-push-check.mjs"
+
+concurrency:
+  group: live-push-check
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  live-push:
+    name: Real send to the test account
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD are optional: when
+      # set, moderation is delivered and asserted, and a missing admins/{uid}
+      # fails the job; otherwise the job skips moderation cleanly.
+      - name: Check token, seed listing/rating, assert sent >= 1
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          SMOKE_TEST_ADMIN_EMAIL: ${{ secrets.SMOKE_TEST_ADMIN_EMAIL }}
+          SMOKE_TEST_ADMIN_PASSWORD: ${{ secrets.SMOKE_TEST_ADMIN_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          WORKER_URL: https://site-428436804b0946699db3b56b1b69fd96.freebuff.page
+          # Push-triggered runs fail without a token; manual runs may skip.
+          REQUIRE_TOKEN: ${{ github.event_name == 'push' }}
+        run: node scripts/live-push-check.mjs
+

@@ -550,6 +550,54 @@ async function handlePush(request, env) {
     return json({ sent }, 200);
   }
 
+  if (kind === "cart") {
+    const listingId = String(body.listingId || "");
+    if (!listingId) return json({ error: "missing_listingId" }, 400);
+    const listing = await readDoc(sa, access, `listings/${listingId}`);
+    if (!listing) return json({ error: "not_found" }, 404);
+    if (listing.sellerId === uid) return json({ sent: 0 }, 200);
+    const sent = await sendToUser(
+      env, sa, access, listing.sellerId,
+      "Bag-ong cart 🛒",
+      `Usa ka buyer nagdugang: ${listing.title}`,
+      { listingId, type: "cart" },
+    );
+    return json({ sent }, 200);
+  }
+
+  if (kind === "rating") {
+    const ratingOrderId = String(body.orderId || "");
+    if (!ratingOrderId) return json({ error: "missing_orderId" }, 400);
+    const rating = await readDoc(sa, access, `ratings/${ratingOrderId}`);
+    if (!rating) return json({ error: "not_found" }, 404);
+    if (rating.buyerId !== uid) return json({ error: "forbidden" }, 403);
+    const sent = await sendToUser(
+      env, sa, access, rating.sellerId,
+      "Bag-ong rating ⭐",
+      `${rating.buyerName || "Usa ka buyer"} nag-rate og ${rating.rating}⭐`,
+      { orderId: ratingOrderId, type: "rating" },
+    );
+    return json({ sent }, 200);
+  }
+
+  if (kind === "moderation") {
+    // The listing is usually deleted before this call, so the recipient comes
+    // from the body; only an admin (admins/{uid}) may send it.
+    if (!(await readDoc(sa, access, `admins/${uid}`))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const sellerId = String(body.sellerId || "");
+    if (!sellerId) return json({ error: "missing_sellerId" }, 400);
+    const title = String(body.title || "").slice(0, 140);
+    const sent = await sendToUser(
+      env, sa, access, sellerId,
+      "Listing removed ⚠️",
+      `A moderator removed: ${title}`,
+      { type: "moderation" },
+    );
+    return json({ sent }, 200);
+  }
+
   const orderId = String(body.orderId || "");
   if (!orderId) return json({ error: "missing_orderId" }, 400);
 
@@ -582,6 +630,24 @@ async function handlePush(request, env) {
       env, sa, access, order.buyerId,
       "Order update 📦",
       `${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}`,
+      { orderId, type: "order" },
+    );
+    return json({ sent }, 200);
+  }
+
+  if (kind === "cancel") {
+    // Either party may cancel; the Worker derives the recipient from the
+    // order so a user cannot spam someone else.
+    if (uid !== order.buyerId && uid !== order.sellerId) {
+      return json({ error: "forbidden" }, 403);
+    }
+    if (order.status !== "cancelled") return json({ sent: 0 }, 200);
+    const recipient = uid === order.buyerId ? order.sellerId : order.buyerId;
+    const callerName = uid === order.buyerId ? order.buyerName : order.sellerName;
+    const sent = await sendToUser(
+      env, sa, access, recipient,
+      "Order cancelled ❌",
+      `${callerName || "Usa ka user"} gikansela ang order: ${order.listingTitle}`,
       { orderId, type: "order" },
     );
     return json({ sent }, 200);

@@ -6,6 +6,12 @@ notifications**. No credentials ever reach the app — the Worker verifies the
 
 ## Setup (once)
 
+The Worker is hosted on **Freebuff Sites** (see [Deploying](#deploying)); the R2
+bucket and secrets are already provisioned there, so the current host needs no
+local setup.
+
+To run your own copy on Cloudflare instead:
+
 ```bash
 npm install -g wrangler
 wrangler login
@@ -17,45 +23,33 @@ wrangler secret put FIREBASE_SERVICE_ACCOUNT   # service account JSON (for push)
 wrangler deploy
 ```
 
-After `deploy` you get a URL like:
-
-```
-https://camiguin-market-images.<subdomain>.workers.dev
-```
-
-Set it in the app:
-
-- **Local:** `local.properties` → `R2_UPLOAD_URL=https://…workers.dev`
-- **CI:** GitHub → Settings → Secrets → Actions → `R2_UPLOAD_URL`
+That prints a `https://camiguin-market-images.<subdomain>.workers.dev` URL; put
+it in `local.properties` (`R2_UPLOAD_URL=…`) or the repository `R2_UPLOAD_URL`
+secret so the app calls your copy.
 
 ## Deploying
 
-Manual deploy (as in the setup above):
+The Worker is currently hosted on **Freebuff Sites** (project "Camiguin Market
+Images", production) at
+`https://site-428436804b0946699db3b56b1b69fd96.freebuff.page`.
+`worker/sites.deploy.json` is its deploy manifest (entrypoint `index.js`,
+compatibility date `2026-11-01`). Deploy that manifest to the **production**
+environment through Freebuff Sites; the R2 binding (`IMAGES`) and the Worker
+secrets stay attached, so `/health` should answer
+`{"ok":true,"bucket":true,"push":true,...}` afterwards.
+
+To deploy on your own Cloudflare account instead:
 
 ```bash
 cd worker
-wrangler deploy
+npm test          # a failing suite blocks the deploy
+wrangler deploy   # requires `wrangler login` or CLOUDFLARE_API_TOKEN
 ```
 
-Automated deploys run through `.github/workflows/deploy-worker.yml` on every
-push to `main` that touches `worker/**` (and on `workflow_dispatch`):
-
-1. Runs `npm test` — a failing suite blocks the deploy.
-2. `wrangler deploy`.
-3. Reads the workers.dev address from wrangler's output and checks
-   `/health`, failing the run unless it answers with `ok` and `bucket`.
-
-Two repository secrets are required (Settings → Secrets and variables →
-Actions); without them the job fails early with a message naming the missing
-secret:
-
-- `CLOUDFLARE_API_TOKEN` — an API token with the Workers Scripts:Edit permission
-  for the account that owns the Worker.
-- `CLOUDFLARE_ACCOUNT_ID` — the account id shown in the Workers & Pages dashboard.
-
-A `concurrency` group keeps two deploys from racing for the same script. The
-Worker secrets (`FIREBASE_WEB_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`) are already
-on the deployed Worker and are untouched by a deploy.
+There is **no** `.github/workflows/deploy-worker.yml` in this repo, and no
+automated Worker deploy: pushing to `main` runs the Worker tests only
+(`worker-test.yml`). Deploys are done manually through Freebuff Sites or
+`wrangler deploy`.
 
 ## Endpoints
 
@@ -166,3 +160,69 @@ wrangler tail                                # watch the purgeExpired logs
 Photo cleanup is best effort: a failed R2 delete is counted in `photoFailures`
 and does not stop the run, and because the document is already gone that image
 would need manual removal. R2 deletes are free of charge.
+
+## Live push integration check
+
+`.github/workflows/live-push-check.yml` proves the **deployed** `/push` really
+delivers. It runs on demand (`workflow_dispatch`) and on pushes to `main` that
+touch `worker/**` or `scripts/live-push-check.mjs`. It signs in as the test account,
+checks `users/{uid}/tokens` has a registered FCM token, seeds a listing and a
+rating with the service account, then asserts `sent >= 1` for `cart` and
+`rating`. If the test account has no FCM token, a push-triggered run fails (so a
+green run on `main` means something was actually tested) while a manual run logs
+a notice and skips; open the app on a device signed in as that account first.
+
+Moderation needs an **admin** caller, so it is covered only when these optional
+repository secrets are set (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `SMOKE_TEST_ADMIN_EMAIL` | The admin test account's email |
+| `SMOKE_TEST_ADMIN_PASSWORD` | Its password |
+
+To create that account:
+
+1. Firebase Console → **Authentication → Users → Add user**, with an email and
+   password (the same email/password sign-in the app uses).
+2. Firebase Console → **Firestore → admins**, and create a document whose ID is
+   that account's uid (for example `admins/tPL9ygJ3ccdWpdUun1aPRnaHETC3`). The
+   Worker only checks that the document exists; the same collection backs the
+   app's `isAdmin()` rule.
+3. Add the two secrets above and run **Live push integration**.
+
+When the secrets are absent, the job logs a notice and skips moderation. When
+they are set, the account must exist in `admins/{uid}`: a missing document fails
+the job with `moderation was not tested`, so a green run means moderation really
+delivered. A failed service-account read of `admins/{uid}` also fails the job
+instead of being mistaken for "not an admin".
+
+Every run also sends moderation with the **throwaway buyer's** token and requires
+`403`, so the non-admin path stays covered even though the test account is an
+admin (so the app shows its Admin row).
+
+### The CI admin account
+
+The repository currently uses this account:
+
+| | |
+|---|---|
+| Email | `live-admin+1795190870@example.com` |
+| UID | `wIIqLKGuTXWsuIW3oJiudQjWIw12` |
+| Firestore | `admins/wIIqLKGuTXWsuIW3oJiudQjWIw12` |
+
+Its password is random and exists only in the write-only
+`SMOKE_TEST_ADMIN_PASSWORD` secret, so it cannot be read back or displayed, and
+`@example.com` cannot receive a password-reset email. Treat it as CI-only; if
+you need to sign in with it interactively, rotate it to an address you control.
+
+To rotate it:
+
+1. Create a new email/password user (Firebase Console → **Authentication →
+   Users → Add user**, or `accounts:signUp` with the project's web API key).
+2. Create `admins/{newUid}` (Firestore Console → **admins**, or a one-off job
+   with `FIREBASE_SERVICE_ACCOUNT`).
+3. Update `SMOKE_TEST_ADMIN_EMAIL` and `SMOKE_TEST_ADMIN_PASSWORD` under
+   **Settings → Secrets and variables → Actions**.
+4. Run **Live push integration**; a green run proves the new admin really
+   delivers.
+5. Delete the old `admins/{uid}` document and the old Auth user.

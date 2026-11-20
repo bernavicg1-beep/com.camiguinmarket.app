@@ -807,7 +807,16 @@ fun MarketScreen(
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { overlay = null }) {
+                    // 44dp circular ghost back button (IconButton would inflate to 48dp).
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .clickable { overlay = null }
+                    ) {
                         Text("←", style = MaterialTheme.typography.titleLarge, color = Color.White)
                     }
                     Text(
@@ -1936,6 +1945,13 @@ fun SellerInfoDialog(
                 whatsapp = d.getString("whatsapp")?.takeIf { it.isNotBlank() }
             }
     }
+    val telegramHandle = telegram?.let { normalizeTelegramLink(it) }.orEmpty()
+    val messengerHandle = messenger?.let { normalizeMessengerLink(it) }.orEmpty()
+    val whatsappNumber = whatsapp?.let { normalizeWhatsAppLink(it) }.orEmpty()
+    val invalidContact =
+        (!telegram.isNullOrBlank() && telegramHandle.isBlank()) ||
+            (!messenger.isNullOrBlank() && messengerHandle.isBlank()) ||
+            (!whatsapp.isNullOrBlank() && whatsappNumber.isBlank())
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(name, fontWeight = FontWeight.Bold) },
@@ -1976,27 +1992,30 @@ fun SellerInfoDialog(
                 if (!phone.isNullOrBlank()) Text("Phone: $phone")
                 if (!email.isNullOrBlank()) Text("Email: $email")
                 if (fallbackContact.isNotBlank()) Text("Contact: $fallbackContact")
-                if (!telegram.isNullOrBlank()) {
+                if (telegramHandle.isNotBlank()) {
                     TextButton(onClick = {
-                        val u = "https://t.me/${normalizeTelegramLink(telegram!!)}"
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/$telegramHandle")))
                     }) { Text("Open Telegram") }
                 }
-                if (!messenger.isNullOrBlank()) {
+                if (messengerHandle.isNotBlank()) {
                     TextButton(onClick = {
-                        val u = "https://m.me/${normalizeMessengerLink(messenger!!)}"
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://m.me/$messengerHandle")))
                     }) { Text("Open Messenger") }
                 }
-                if (!whatsapp.isNullOrBlank()) {
+                if (whatsappNumber.isNotBlank()) {
                     TextButton(onClick = {
-                        val num = normalizeWhatsAppLink(whatsapp!!)
-                        val u = "https://wa.me/$num"
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$whatsappNumber")))
                     }) { Text("Open WhatsApp") }
                 }
+                if (invalidContact) {
+                    Text(
+                        "A saved contact link is not valid. Ask the seller to update it.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandMuted
+                    )
+                }
                 if (phone.isNullOrBlank() && email.isNullOrBlank() && fallbackContact.isBlank() &&
-                    telegram.isNullOrBlank() && messenger.isNullOrBlank() && whatsapp.isNullOrBlank()
+                    telegramHandle.isBlank() && messengerHandle.isBlank() && whatsappNumber.isBlank()
                 ) {
                     Text("No contact details available.", color = BrandMuted)
                 }

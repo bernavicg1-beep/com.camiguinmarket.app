@@ -66,6 +66,7 @@ fun submitRating(
                 message = "${order.buyerName} rated $stars⭐ for the order: ${order.listingTitle}"
                     .take(190)
             )
+            sendPush("rating", orderId = order.id)
             onResult(null)
         }
         .addOnFailureListener { onResult(it.localizedMessage ?: "Rating failed.") }

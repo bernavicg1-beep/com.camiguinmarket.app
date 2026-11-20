@@ -127,6 +127,28 @@ check("owner: store a field the rules do not allow", "PATCH", "/users/u1", 403, 
       body={"fields": {"phone": {"stringValue": "+639171234567"},
                        "isAdmin": {"booleanValue": True}}})
 
+# --- contact links on the user profile ---------------------------------------
+check("owner: save contact links", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"telegram": {"stringValue": "tmeuser"},
+                       "messenger": {"stringValue": "bern.gamo"},
+                       "whatsapp": {"stringValue": "+639171234567"}}})
+check("owner: save telegramVerified flag", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"telegram": {"stringValue": "tmeuser"},
+                       "telegramVerified": {"booleanValue": True}}})
+check("owner: save messengerVerified flag (legacy Facebook flow)", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"messenger": {"stringValue": "bern.gamo"},
+                       "messengerVerified": {"booleanValue": True}}})
+check("owner: wrong type for messengerVerified (string)", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"messengerVerified": {"stringValue": "yes"}}})
+check("other: write someone else's contact links", "PATCH", "/users/u1", 403, uid="u2",
+      body={"fields": {"telegram": {"stringValue": "hacker"},
+                       "messenger": {"stringValue": "hacker"},
+                       "whatsapp": {"stringValue": "+639000000000"}}})
+check("owner: wrong type for messenger (number)", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"messenger": {"integerValue": "123"}}})
+check("owner: wrong type for telegramVerified (string)", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"telegramVerified": {"stringValue": "yes"}}})
+
 # --- anonymous ---------------------------------------------------------------
 check("anon: read the listing list", "GET", "/listings", 403)
 check("anon: create a listing", "POST", "/listings", 403, body=listing("u1"), doc_id="anon")

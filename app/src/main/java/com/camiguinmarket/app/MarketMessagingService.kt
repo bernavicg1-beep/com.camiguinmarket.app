@@ -34,18 +34,15 @@ class MarketMessagingService : FirebaseMessagingService() {
         show(title, body, message.data)
     }
 
-    private fun channelFor(data: Map<String, String>): String {
-        val blob = (data.keys + data.values).joinToString(" ")
-        return when {
-            blob.contains("chat", ignoreCase = true) -> CHANNEL_CHATS
-            blob.contains("order", ignoreCase = true) -> CHANNEL_ORDERS
-            else -> CHANNEL_SAVED_SEARCHES
-        }
+    private fun channelFor(data: Map<String, String>): String = when (data["type"]) {
+        "chat" -> CHANNEL_CHATS
+        "order", "status", "cart", "rating", "moderation" -> CHANNEL_ORDERS
+        else -> CHANNEL_SAVED_SEARCHES
     }
 
     private fun stableId(data: Map<String, String>): Int {
         val key = data["chatId"] ?: data["orderId"] ?: data["savedSearchId"]
-            ?: data["id"] ?: data.values.firstOrNull() ?: ""
+            ?: data["listingId"] ?: data["id"] ?: ""
         return if (key.isBlank()) (System.currentTimeMillis() and Int.MAX_VALUE.toLong()).toInt()
         else key.hashCode()
     }

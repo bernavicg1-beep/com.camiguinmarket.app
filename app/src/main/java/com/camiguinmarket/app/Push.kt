@@ -84,11 +84,11 @@ fun sendNotification(
     val user = FirebaseAuth.getInstance().currentUser ?: return
     if (user.uid != fromUid) return
 
-    val body = org.json.JSONObject()
+        val body = JSONObject()
         .put("toUid", toUid)
         .put("fromUid", fromUid)
         .put("fromName", fromName)
-        .put("message", message.take(200))
+        .put("message", message)
         .put("listingId", listing?.id ?: "")
         .put("listingTitle", listing?.title ?: "")
 
@@ -117,6 +117,9 @@ fun sendPush(
     orderId: String? = null,
     chatId: String? = null,
     savedSearchId: String? = null,
+    listingId: String? = null,
+    sellerId: String? = null,
+    title: String? = null,
     text: String? = null
 ) {
     val base = BuildConfig.R2_UPLOAD_URL.trim().trimEnd('/')
@@ -127,6 +130,9 @@ fun sendPush(
     orderId?.let { body.put("orderId", it) }
     chatId?.let { body.put("chatId", it) }
     savedSearchId?.let { body.put("savedSearchId", it) }
+    listingId?.let { body.put("listingId", it) }
+    sellerId?.let { body.put("sellerId", it) }
+    title?.let { body.put("title", it.take(140)) }
     text?.let { body.put("text", it.take(140)) }
 
     user.getIdToken(false).addOnSuccessListener { result ->
