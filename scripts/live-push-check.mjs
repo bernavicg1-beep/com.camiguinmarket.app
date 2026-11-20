@@ -6,8 +6,8 @@
  * The test account must have at least one registered FCM token (open the app on
  * a device and sign in as that account).
  *
- * The test account itself must not be an admin: moderation sent with its token
- * is asserted to be refused with 403. Optional SMOKE_TEST_ADMIN_EMAIL /
+ * A throwaway buyer is created each run and moderation sent with its token is
+ * asserted to be refused with 403. Optional SMOKE_TEST_ADMIN_EMAIL /
  * SMOKE_TEST_ADMIN_PASSWORD add the positive moderation send. Without them it
  * is skipped with a notice; with them the account must exist in admins/{uid},
  * otherwise the run fails. Seeded documents and the throwaway buyer are removed
@@ -229,14 +229,14 @@ try {
     });
     await deliver("rating", buyer.idToken, { orderId: ratingId });
 
-    // The test account is not an admin, so moderation must be refused before
-    // the Worker looks at the recipient.
-    const refused = await send(account.idToken, { kind: "moderation" });
+    // The throwaway buyer is never an admin, so moderation must be refused
+    // before the Worker looks at the recipient.
+    const refused = await send(buyer.idToken, { kind: "moderation" });
     console.log(`moderation as non-admin: ${refused.status} ${JSON.stringify(refused.body)}`);
     if (refused.status !== 403) {
       throw new Error(
         `non-admin moderation got ${refused.status}, expected 403 ` +
-          "(is the test account an admin?)",
+          "(is the buyer an admin?)",
       );
     }
 

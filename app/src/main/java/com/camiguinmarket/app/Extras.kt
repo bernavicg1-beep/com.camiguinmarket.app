@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Chat
@@ -70,18 +71,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.camiguinmarket.app.BuildConfig
 import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
-import com.google.firebase.FirebaseException
-import com.google.firebase.auth.PhoneAuthCredential
-import com.google.firebase.auth.PhoneAuthOptions
-import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
-import java.util.concurrent.TimeUnit
 import java.util.Date
 import java.util.Locale
 import com.google.firebase.firestore.Query
@@ -1820,7 +1815,7 @@ fun ProfileScreen(
         Text(displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(email, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
-        PhoneVerifySection(uid)
+        PhoneNumberSection(uid)
         Spacer(Modifier.height(12.dp))
         ContactLinksSection(uid)
         Spacer(Modifier.height(16.dp))
@@ -1858,10 +1853,11 @@ fun ProfileScreen(
                 ProfileRow(Icons.Filled.Notifications, S.savedSearches, onSavedSearches)
                 ProfileDivider()
                 ProfileRow(Icons.Filled.Close, "Blocked sellers", onBlocked)
+                ProfileDivider()
                 ProfileRow(Icons.Filled.Storefront, S.listingStats, onListingStats)
                 if (isAdmin) {
                     ProfileDivider()
-                    ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
+                    ProfileRow(Icons.Filled.AdminPanelSettings, S.admin, onModeration)
                 }
             }
         }
@@ -1965,98 +1961,21 @@ private fun ProfileDivider() {
 }
 
 /**
- * Phone number with SMS verification. The number is stored on the user
- * document only after Firebase confirms the 6-digit code sent by text.
+ * Optional contact number, saved as-is. Numbers are no longer verified by SMS,
+ * so this is just another way for buyers to reach the seller.
  */
 @Composable
-fun PhoneVerifySection(uid: String) {
-    val S = LocalStrings.current
-    val context = LocalContext.current
-    val auth = FirebaseAuth.getInstance()
+fun PhoneNumberSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
-    var savedPhone by remember { mutableStateOf<String?>(null) }
-    var verified by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
     var phone by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    var verificationId by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
-
-    fun saveVerified(number: String) {
-        db.collection("users").document(uid)
-            .set(mapOf("phone" to number, "phoneVerified" to true), SetOptions.merge())
-        savedPhone = number
-        verified = true
-        editing = false
-        verificationId = null
-        code = ""
-        busy = false
-    }
-
-    fun linkWith(credential: PhoneAuthCredential) {
-        val user = auth.currentUser
-        if (user == null) {
-            busy = false
-            info = "You are not signed in."
-            return
-        }
-        busy = true
-        user.linkWithCredential(credential).addOnCompleteListener { t ->
-            if (t.isSuccessful) {
-                saveVerified(user.phoneNumber ?: normalizePhone(phone))
-                info = "Phone number verified ✅"
-            } else {
-                busy = false
-                info = t.exception?.localizedMessage ?: "Could not verify this number."
-            }
-        }
-    }
-
-    fun sendCode() {
-        val activity = context.findActivity()
-        if (activity == null) {
-            info = "SMS verification is not available here."
-            return
-        }
-        val number = normalizePhone(phone)
-        busy = true
-        info = null
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                linkWith(credential)
-            }
-
-            override fun onVerificationFailed(e: FirebaseException) {
-                busy = false
-                info = e.localizedMessage ?: "Verification failed."
-            }
-
-            override fun onCodeSent(id: String, token: PhoneAuthProvider.ForceResendingToken) {
-                busy = false
-                verificationId = id
-                info = "Code sent to $number"
-            }
-        }
-        PhoneAuthProvider.verifyPhoneNumber(
-            PhoneAuthOptions.newBuilder(auth)
-                .setPhoneNumber(number)
-                .setTimeout(60L, TimeUnit.SECONDS)
-                .setActivity(activity)
-                .setCallbacks(callbacks)
-                .build()
-        )
-    }
+    var busy by remember { mutableStateOf(false) }
 
     LaunchedEffect(uid) {
-        try {
-            db.collection("users").document(uid).get().addOnSuccessListener { d ->
-                savedPhone = d.getString("phone")
-                verified = d.getBoolean("phoneVerified") ?: false
-                if (!verified) editing = true
-            }
-        } catch (e: Exception) {
-            info = e.localizedMessage ?: "Failed to load phone info."
+        db.collection("users").document(uid).get().addOnSuccessListener { d ->
+            phone = d.getString("phone") ?: ""
+            saved = phone
         }
     }
 
@@ -2070,96 +1989,49 @@ fun PhoneVerifySection(uid: String) {
                 Icon(Icons.Filled.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "Phone number",
+                    "Phone number (optional)",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(Modifier.weight(1f))
-                if (verified) Text("Verified ✅", style = MaterialTheme.typography.labelSmall)
             }
             Spacer(Modifier.height(6.dp))
-
-            if (verified && !editing) {
-                Text(savedPhone ?: "", style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = {
-                    phone = savedPhone ?: ""
-                    editing = true
-                    info = null
-                    verificationId = null
-                }) { Text("Change number") }
-            } else {
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Phone number") },
-                    placeholder = { Text("09XX XXX XXXX") },
-                    singleLine = true,
-                    enabled = !busy,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Phone,
-                        imeAction = ImeAction.Done
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = !busy && phone.count { it.isDigit() } >= 10,
-                        onClick = { sendCode() }
-                    ) {
-                        Text(if (verificationId == null) S.sendCode else S.resendCode)
-                    }
-                    if (verified) {
-                        TextButton(onClick = { editing = false; info = null }) { Text(S.cancel) }
-                    }
-                }
-                if (verificationId != null) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { input -> code = input.filter { it.isDigit() }.take(6) },
-                        label = { Text("6-digit code") },
-                        singleLine = true,
-                        enabled = !busy,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.NumberPassword,
-                            imeAction = ImeAction.Done
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        enabled = !busy && code.length == 6,
-                        onClick = {
-                            val id = verificationId
-                            if (id == null) {
-                                info = "Tap \"Send code\" first."
-                            } else {
-                                linkWith(PhoneAuthProvider.getCredential(id, code))
-                            }
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it },
+                label = { Text("Phone number") },
+                placeholder = { Text("09XX XXX XXXX") },
+                singleLine = true,
+                enabled = !busy,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Done
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                enabled = !busy && phone.trim() != saved,
+                onClick = {
+                    val value = phone.trim()
+                    busy = true
+                    db.collection("users").document(uid)
+                        .set(mapOf("phone" to value), SetOptions.merge())
+                        .addOnSuccessListener {
+                            busy = false
+                            saved = value
+                            info = "Saved."
                         }
-                    ) { Text(if (busy) "Verifying…" else "Verify code") }
+                        .addOnFailureListener { e ->
+                            busy = false
+                            info = e.localizedMessage ?: "Failed."
+                        }
                 }
-            }
-
+            ) { Text(if (busy) "Saving…" else "Save number") }
             info?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(it, style = MaterialTheme.typography.labelSmall)
             }
         }
-    }
-}
-
-/** Converts 09XXXXXXXXX / 9XXXXXXXXX into +63 E.164 form. */
-fun normalizePhone(raw: String): String {
-    val trimmed = raw.trim()
-    val digits = trimmed.filter { it.isDigit() }
-    return when {
-        trimmed.startsWith("+") -> "+$digits"
-        digits.length == 11 && digits.startsWith("09") -> "+63" + digits.drop(1)
-        digits.length == 10 && digits.startsWith("9") -> "+63$digits"
-        digits.length == 12 && digits.startsWith("63") -> "+$digits"
-        else -> "+$digits"
     }
 }
 
@@ -2174,7 +2046,10 @@ fun normalizeTelegramLink(input: String): String {
     }
     val raw = if (marker != null) t.substringAfter(marker, t).substringBefore("?").substringBefore("/")
     else t
-    return raw.trim().removePrefix("@").trim()
+    val handle = raw.trim().removePrefix("@").trim()
+    // A display name ("Bernavic Alob Gamo") is not a username, so it must not
+    // become a broken t.me link.
+    return if (handle.isBlank() || handle.any { it.isWhitespace() } || handle.contains('/')) "" else handle
 }
 
 fun normalizeMessengerLink(input: String): String {
@@ -2183,13 +2058,13 @@ fun normalizeMessengerLink(input: String): String {
     val lower = t.lowercase()
     val marker = when {
         lower.contains("m.me/") -> "m.me/"
-        lower.contains("facebook.com/") -> "facebook.com/"
         lower.contains("messenger.com/") -> "messenger.com/"
         else -> null
     }
     val raw = if (marker != null) t.substringAfter(marker, t).substringBefore("?").substringBefore("/")
     else t
-    return raw.trim().trimStart('@')
+    val handle = raw.trim().trimStart('@')
+    return if (handle.isBlank() || handle.any { it.isWhitespace() } || handle.contains('/')) "" else handle
 }
 
 fun normalizeWhatsAppLink(input: String): String {
@@ -2207,69 +2082,20 @@ fun normalizeWhatsAppLink(input: String): String {
 @Composable
 fun ContactLinksSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
-    val ctx = LocalContext.current
     var telegram by remember { mutableStateOf("") }
     var messenger by remember { mutableStateOf("") }
     var whatsapp by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var fbBusy by remember { mutableStateOf(false) }
-    var fbInfo by remember { mutableStateOf<String?>(null) }
     var tgToken by remember { mutableStateOf<String?>(null) }
     var tgDialogOpen by remember { mutableStateOf(false) }
     var tgInfo by remember { mutableStateOf<String?>(null) }
-    val fbAvailable = remember { runCatching { com.facebook.FacebookSdk.isInitialized() }.getOrDefault(false) }
-    val callbackManager = if (fbAvailable) remember { com.facebook.CallbackManager.Factory.create() } else null
-    if (fbAvailable && callbackManager != null) {
-        DisposableEffect(Unit) {
-        com.facebook.login.LoginManager.getInstance().registerCallback(
-            callbackManager!!,
-            object : com.facebook.FacebookCallback<com.facebook.login.LoginResult> {
-                override fun onSuccess(result: com.facebook.login.LoginResult) {
-                    val token = result.accessToken
-                    val request = com.facebook.GraphRequest.newMeRequest(token) { obj, _ ->
-                        val name = obj?.optString("name")?.takeIf { it.isNotBlank() }
-                            ?: obj?.optString("id")
-                        if (!name.isNullOrBlank()) {
-                            messenger = name
-                            db.collection("users").document(uid).set(
-                                mapOf("messenger" to name, "messengerVerified" to true),
-                                com.google.firebase.firestore.SetOptions.merge()
-                            )
-                            fbInfo = "Connected: $name"
-                        } else {
-                            fbInfo = "Facebook login succeeded but no name returned."
-                        }
-                        fbBusy = false
-                    }
-                    val params = android.os.Bundle()
-                    params.putString("fields", "id,name")
-                    request.parameters = params
-                    request.executeAsync()
-                }
-                override fun onCancel() {
-                    fbBusy = false
-                    fbInfo = "Facebook login cancelled."
-                }
-                override fun onError(error: com.facebook.FacebookException) {
-                    fbBusy = false
-                    fbInfo = error.localizedMessage ?: "Facebook login failed."
-                }
-            }
-        )
-        onDispose { com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager!!) }
-    }
-    }
 
     LaunchedEffect(uid) {
-        try {
-            db.collection("users").document(uid).get().addOnSuccessListener { d ->
-                telegram = d.getString("telegram") ?: ""
-                messenger = d.getString("messenger") ?: ""
-                whatsapp = d.getString("whatsapp") ?: ""
-            }
-        } catch (e: Exception) {
-            info = e.localizedMessage ?: "Failed to load contact links."
+        db.collection("users").document(uid).get().addOnSuccessListener { d ->
+            telegram = d.getString("telegram") ?: ""
+            messenger = d.getString("messenger") ?: ""
+            whatsapp = d.getString("whatsapp") ?: ""
         }
     }
 
@@ -2287,33 +2113,10 @@ fun ContactLinksSection(uid: String) {
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            if (fbAvailable) {
-                OutlinedButton(
-                    onClick = {
-                        fbBusy = true
-                        fbInfo = null
-                        val act = ctx as? android.app.Activity
-                        if (act == null) {
-                            fbBusy = false
-                            fbInfo = "Cannot open Facebook login."
-                        } else {
-                            com.facebook.login.LoginManager.getInstance()
-                                .logInWithReadPermissions(act, listOf("public_profile"))
-                        }
-                    },
-                    enabled = !fbBusy,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(if (fbBusy) "Connecting…" else "Connect Facebook (Messenger)") }
-                fbInfo?.let {
-                    Spacer(Modifier.height(4.dp))
-                    Text(it, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
                     tgInfo = null
-                    val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                    val u = FirebaseAuth.getInstance().currentUser
                     if (u == null) {
                         tgInfo = "Sign in to your account first."
                     } else {
@@ -2348,7 +2151,7 @@ fun ContactLinksSection(uid: String) {
                                                     telegram = username
                                                     db.collection("users").document(uid).set(
                                                         mapOf("telegram" to username, "telegramVerified" to true),
-                                                        com.google.firebase.firestore.SetOptions.merge()
+                                                        SetOptions.merge()
                                                     )
                                                     tgInfo = "Connected: $username"
                                                 }
@@ -2376,20 +2179,32 @@ fun ContactLinksSection(uid: String) {
             Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {
-                    busy = true
-                    db.collection("users").document(uid).set(
-                        mapOf(
-                            "telegram" to normalizeTelegramLink(telegram),
-                            "messenger" to normalizeMessengerLink(messenger),
-                            "whatsapp" to normalizeWhatsAppLink(whatsapp)
-                        ),
-                        SetOptions.merge()
-                    ).addOnSuccessListener {
-                        busy = false
-                        info = "Saved."
-                    }.addOnFailureListener { e ->
-                        busy = false
-                        info = e.localizedMessage ?: "Failed."
+                    val tg = normalizeTelegramLink(telegram)
+                    val ms = normalizeMessengerLink(messenger)
+                    val wa = normalizeWhatsAppLink(whatsapp)
+                    val problem = when {
+                        telegram.isNotBlank() && tg.isBlank() ->
+                            "Telegram: use a username or t.me link, not a name."
+                        messenger.isNotBlank() && ms.isBlank() ->
+                            "Messenger: use a username or m.me link, not a name."
+                        whatsapp.isNotBlank() && wa.count { it.isDigit() } < 7 ->
+                            "WhatsApp: include the country code."
+                        else -> null
+                    }
+                    if (problem != null) {
+                        info = problem
+                    } else {
+                        busy = true
+                        db.collection("users").document(uid).set(
+                            mapOf("telegram" to tg, "messenger" to ms, "whatsapp" to wa),
+                            SetOptions.merge()
+                        ).addOnSuccessListener {
+                            busy = false
+                            info = "Saved."
+                        }.addOnFailureListener { e ->
+                            busy = false
+                            info = e.localizedMessage ?: "Failed."
+                        }
                     }
                 },
                 enabled = !busy,
@@ -2403,15 +2218,6 @@ fun ContactLinksSection(uid: String) {
     }
 }
 
-/** The hosting Activity for the Firebase phone verification callbacks. */
-fun Context.findActivity(): Activity? {
-    var ctx = this
-    while (ctx is ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}
 
 @Composable
 fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {

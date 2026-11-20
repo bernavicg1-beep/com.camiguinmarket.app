@@ -45,14 +45,7 @@ interface Strings {
     val darkMode: String get() = "Dark mode"
     val addPhoto: String get() = "Add photo"
     val changePhoto: String get() = "Change photo"
-    val verified: String get() = "Verified ✅"
-    val changeNumber: String get() = "Change number"
-    val phoneNumber: String get() = "Phone number"
-    val sendCode: String get() = "Send code"
-    val resendCode: String get() = "Resend code"
     val cancel: String get() = "Cancel"
-    val verifying: String get() = "Verifying…"
-    val verifyCode: String get() = "Verify code"
     val close: String get() = "Close"
 
     // Search
@@ -130,6 +123,7 @@ interface Strings {
     val fromSeller: String get() = "from"
 
     // Secondary screens
+    val admin: String get() = "Admin"
     val moderation: String get() = "Moderation"
     val moderationNoAccess: String get() = "You don't have access to this screen. Only moderators can see it."
     val moderationListingsTotal: String get() = "%d listings in total. Pick the one to delete."
@@ -347,13 +341,6 @@ object CebStrings : Strings {
     override val deleteAccount = "Papasa ang account ug data"
     override val addPhoto = "Dugangi ug photo"
     override val changePhoto = "Usba ang photo"
-    override val verified = "Na-verify ✅"
-    override val changeNumber = "Usba ang numero"
-    override val phoneNumber = "Numero sa telepono"
-    override val sendCode = "Ipadala ang code"
-    override val resendCode = "Ipadala pag-usab ang code"
-    override val verifying = "Gi-verify…"
-    override val verifyCode = "I-verify ang code"
     override val close = "Sirado"
 
     override val search = "Pangita"

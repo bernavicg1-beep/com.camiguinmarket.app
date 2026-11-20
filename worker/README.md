@@ -196,8 +196,9 @@ the job with `moderation was not tested`, so a green run means moderation really
 delivered. A failed service-account read of `admins/{uid}` also fails the job
 instead of being mistaken for "not an admin".
 
-Every run also sends moderation with the **test account's** token and requires
-`403`, so the non-admin path stays covered.
+Every run also sends moderation with the **throwaway buyer's** token and requires
+`403`, so the non-admin path stays covered even though the test account is an
+admin (so the app shows its Admin row).
 
 ### The CI admin account
 
