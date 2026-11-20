@@ -88,7 +88,7 @@ fun sendNotification(
         .put("toUid", toUid)
         .put("fromUid", fromUid)
         .put("fromName", fromName)
-        .put("message", message.take(200))
+        .put("message", message)
         .put("listingId", listing?.id ?: "")
         .put("listingTitle", listing?.title ?: "")
 
