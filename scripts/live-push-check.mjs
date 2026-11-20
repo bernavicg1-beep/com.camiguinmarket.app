@@ -32,9 +32,10 @@ const sa = JSON.parse(SA_JSON);
 const apiKey = JSON.parse(readFileSync("app/google-services.json", "utf8"))
   .client[0].api_key[0].current_key;
 
+// Thrown by the helpers; the top-level catch prints it as ::error:: after the
+// seeded data has been cleaned up.
 const fail = (message) => {
-  console.error(`::error::${message}`);
-  process.exit(1);
+  throw new Error(message);
 };
 
 const b64url = (value) =>
@@ -169,87 +170,92 @@ async function push(token, body) {
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }
 
-const service = await serviceToken();
-const account = await signIn();
-const uid = account.localId;
-console.log(`test account: ${uid}`);
-
-const tokens = await listDocs(service, `users/${uid}/tokens`);
-console.log(`registered FCM tokens: ${tokens.length}`);
-if (tokens.length === 0) {
-  console.log(
-    "::notice::The test account has no registered FCM token; open the app on a device, " +
-      "sign in as the test account, then re-run this workflow.",
-  );
-  process.exit(0);
-}
-
-const buyer = await signUp();
-const stamp = Date.now();
-const listingId = `live-check-${stamp}`;
-const ratingId = `live-check-${stamp}`;
-
 try {
-  await writeDoc(service, `listings/${listingId}`, {
-    sellerId: { stringValue: uid },
-    sellerName: { stringValue: "Live check" },
-    title: { stringValue: "Live check listing" },
-    price: { doubleValue: 1 },
-    category: { stringValue: "Other" },
-    town: { stringValue: "Mambajao" },
-    description: { stringValue: "Integration check" },
-    createdAt: { integerValue: String(stamp) },
-  });
+  const service = await serviceToken();
+  const account = await signIn();
+  const uid = account.localId;
+  console.log(`test account: ${uid}`);
 
-  const cart = await push(buyer.idToken, { kind: "cart", listingId });
-  console.log(`cart: ${cart.status} ${JSON.stringify(cart.body)}`);
-  if (cart.status !== 200 || !(cart.body.sent >= 1)) {
-    fail("cart did not deliver (sent >= 1 required)");
-  }
-
-  await writeDoc(service, `ratings/${ratingId}`, {
-    buyerId: { stringValue: buyer.localId },
-    sellerId: { stringValue: uid },
-    buyerName: { stringValue: "Live check" },
-    rating: { integerValue: "5" },
-    createdAt: { integerValue: String(stamp) },
-  });
-
-  const rating = await push(buyer.idToken, { kind: "rating", orderId: ratingId });
-  console.log(`rating: ${rating.status} ${JSON.stringify(rating.body)}`);
-  if (rating.status !== 200 || !(rating.body.sent >= 1)) {
-    fail("rating did not deliver (sent >= 1 required)");
-  }
-
-  const adminEmail = process.env.SMOKE_TEST_ADMIN_EMAIL;
-  const adminPassword = process.env.SMOKE_TEST_ADMIN_PASSWORD;
-  if (!adminEmail || !adminPassword) {
+  const tokens = await listDocs(service, `users/${uid}/tokens`);
+  console.log(`registered FCM tokens: ${tokens.length}`);
+  if (tokens.length === 0) {
     console.log(
-      "::notice::No admin test account (SMOKE_TEST_ADMIN_EMAIL / " +
-        "SMOKE_TEST_ADMIN_PASSWORD); skipping moderation.",
+      "::notice::The test account has no registered FCM token; open the app on a device, " +
+        "sign in as the test account, then re-run this workflow.",
     );
-  } else {
-    const admin = await signIn(adminEmail, adminPassword);
-    if (!(await readDoc(service, `admins/${admin.localId}`))) {
+    process.exit(0);
+  }
+
+  const buyer = await signUp();
+  const stamp = Date.now();
+  const listingId = `live-check-${stamp}`;
+  const ratingId = `live-check-${stamp}`;
+
+  try {
+    await writeDoc(service, `listings/${listingId}`, {
+      sellerId: { stringValue: uid },
+      sellerName: { stringValue: "Live check" },
+      title: { stringValue: "Live check listing" },
+      price: { doubleValue: 1 },
+      category: { stringValue: "Other" },
+      town: { stringValue: "Mambajao" },
+      description: { stringValue: "Integration check" },
+      createdAt: { integerValue: String(stamp) },
+    });
+
+    const cart = await push(buyer.idToken, { kind: "cart", listingId });
+    console.log(`cart: ${cart.status} ${JSON.stringify(cart.body)}`);
+    if (cart.status !== 200 || !(cart.body.sent >= 1)) {
+      fail("cart did not deliver (sent >= 1 required)");
+    }
+
+    await writeDoc(service, `ratings/${ratingId}`, {
+      buyerId: { stringValue: buyer.localId },
+      sellerId: { stringValue: uid },
+      buyerName: { stringValue: "Live check" },
+      rating: { integerValue: "5" },
+      createdAt: { integerValue: String(stamp) },
+    });
+
+    const rating = await push(buyer.idToken, { kind: "rating", orderId: ratingId });
+    console.log(`rating: ${rating.status} ${JSON.stringify(rating.body)}`);
+    if (rating.status !== 200 || !(rating.body.sent >= 1)) {
+      fail("rating did not deliver (sent >= 1 required)");
+    }
+
+    const adminEmail = process.env.SMOKE_TEST_ADMIN_EMAIL;
+    const adminPassword = process.env.SMOKE_TEST_ADMIN_PASSWORD;
+    if (!adminEmail || !adminPassword) {
       console.log(
-        "::notice::The admin test account is not in admins/; skipping moderation.",
+        "::notice::No admin test account (SMOKE_TEST_ADMIN_EMAIL / " +
+          "SMOKE_TEST_ADMIN_PASSWORD); skipping moderation.",
       );
     } else {
-      const moderation = await push(admin.idToken, {
-        kind: "moderation",
-        sellerId: uid,
-        title: "Live check",
-      });
-      console.log(`moderation: ${moderation.status} ${JSON.stringify(moderation.body)}`);
-      if (moderation.status !== 200 || !(moderation.body.sent >= 1)) {
-        fail("moderation did not deliver (sent >= 1 required)");
+      const admin = await signIn(adminEmail, adminPassword);
+      if (!(await readDoc(service, `admins/${admin.localId}`))) {
+        console.log(
+          "::notice::The admin test account is not in admins/; skipping moderation.",
+        );
+      } else {
+        const moderation = await push(admin.idToken, {
+          kind: "moderation",
+          sellerId: uid,
+          title: "Live check",
+        });
+        console.log(`moderation: ${moderation.status} ${JSON.stringify(moderation.body)}`);
+        if (moderation.status !== 200 || !(moderation.body.sent >= 1)) {
+          fail("moderation did not deliver (sent >= 1 required)");
+        }
       }
     }
-  }
 
-  console.log("live push integration passed");
-} finally {
-  await deleteDoc(service, `listings/${listingId}`);
-  await deleteDoc(service, `ratings/${ratingId}`);
-  await deleteAccount(buyer.idToken);
+    console.log("live push integration passed");
+  } finally {
+    await deleteDoc(service, `listings/${listingId}`);
+    await deleteDoc(service, `ratings/${ratingId}`);
+    await deleteAccount(buyer.idToken);
+  }
+} catch (error) {
+  console.error(`::error::${error?.message || error}`);
+  process.exit(1);
 }
