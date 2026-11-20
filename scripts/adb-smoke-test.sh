@@ -67,7 +67,6 @@ cleanup() {
     restore_network
     restore_location
     restore_language
-    "${ADB[@]}" shell rm -f /data/local/tmp/camiguin-window.xml >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

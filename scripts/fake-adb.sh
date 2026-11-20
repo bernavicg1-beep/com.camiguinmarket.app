@@ -227,8 +227,23 @@ exec_out() {
                         shared_prefs/ui_prefs.xml)
                             printf '<map><string name="lang">%s</string></map>\n' "$(get lang en)"
                             ;;
-                        databases/androidx.work.workdb|databases/androidx.work.workdb-wal)
-                            [ "$FAIL_ALL" = 0 ] && echo "saved_search_check"
+                        databases/androidx.work.workdb)
+                            if [ "$FAIL_ALL" = 0 ]; then
+                                worker="$(get worker 1)"
+                                if [ "$worker" -gt 1 ]; then
+                                    put worker "$((worker - 1))"
+                                else
+                                    echo "saved_search_check"
+                                fi
+                            fi
+                            ;;
+                        databases/androidx.work.workdb-wal)
+                            if [ "$FAIL_ALL" = 0 ]; then
+                                worker="$(get worker 1)"
+                                if [ "$worker" -le 1 ]; then
+                                    echo "saved_search_check"
+                                fi
+                            fi
                             ;;
                     esac
                     ;;

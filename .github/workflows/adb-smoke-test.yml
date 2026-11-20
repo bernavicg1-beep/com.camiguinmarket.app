@@ -27,14 +27,12 @@ jobs:
     name: Fake-adb smoke test (no device)
     needs: lint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
       - name: Run the fake-adb self-test
-        run: |
-          set -e
-          bash scripts/test-adb-smoke-test.sh
+        run: bash scripts/test-adb-smoke-test.sh
 
   emulator-smoke:
     name: Emulator smoke tests
