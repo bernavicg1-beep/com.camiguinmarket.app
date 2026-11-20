@@ -1,0 +1,29 @@
+name: Live push integration (manual)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [freebuff/camiguin-market-map-kotlin-script]
+
+permissions:
+  contents: read
+
+jobs:
+  live-push:
+    name: Real send to the test account
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check token, seed listing/rating, assert sent >= 1
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          WORKER_URL: https://site-428436804b0946699db3b56b1b69fd96.freebuff.page
+        run: node scripts/live-push-check.mjs
