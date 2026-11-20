@@ -522,16 +522,23 @@ fun notifyUser(
     allowSelfNotification: Boolean = false
 ) {
     if (!canDeliverNotification(toUid, fromUid, allowSelfNotification)) return
-    db.collection("notifications").document(toUid).collection("items").add(
-        AppNotification(
-            fromUid = fromUid,
-            fromName = fromName,
-            message = message,
-            listingId = listing?.id ?: "",
-            listingTitle = listing?.title ?: "",
-            createdAt = System.currentTimeMillis()
+    if (toUid == fromUid) {
+        // Self notification: allowed by the rules, write directly.
+        db.collection("notifications").document(toUid).collection("items").add(
+            AppNotification(
+                fromUid = fromUid,
+                fromName = fromName,
+                message = message,
+                listingId = listing?.id ?: "",
+                listingTitle = listing?.title ?: "",
+                createdAt = System.currentTimeMillis()
+            )
         )
-    )
+    } else {
+        // Cross-user: client writes are blocked by the rules, so route the
+        // inbox write through the Worker (which uses the service account).
+        sendNotification(toUid, fromUid, fromName, message, listing)
+    }
 }
 
 // ---------------------------------------------------------------------------
