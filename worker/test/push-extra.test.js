@@ -30,7 +30,7 @@ function stub({ listingSeller = "seller", admin = false } = {}) {
 
     if (href.includes("identitytoolkit.googleapis.com")) {
       const { idToken } = JSON.parse(init.body);
-      const map = { "buyer-token": "buyer", "admin-token": "admin" };
+      const map = { "buyer-token": "buyer", "seller-token": "seller", "admin-token": "admin" };
       const localId = map[idToken];
       return jsonResponse({ users: localId ? [{ localId }] : [] });
     }
@@ -57,6 +57,20 @@ function stub({ listingSeller = "seller", admin = false } = {}) {
           sellerId: { stringValue: "seller" },
           buyerName: { stringValue: "Bea" },
           rating: { integerValue: "5" },
+        },
+      });
+    }
+
+    if (href.includes("/documents/orders/")) {
+      return jsonResponse({
+        name: "orders/o1",
+        fields: {
+          buyerId: { stringValue: "buyer" },
+          sellerId: { stringValue: "seller" },
+          buyerName: { stringValue: "Bea" },
+          sellerName: { stringValue: "Sam" },
+          listingTitle: { stringValue: "Bike" },
+          status: { stringValue: "cancelled" },
         },
       });
     }
@@ -169,6 +183,60 @@ test("moderation: a missing seller is refused", async () => {
   const res = await call(env, { kind: "moderation", title: "Bike" }, "admin-token");
   assert.equal(res.status, 400);
   assert.deepEqual(res.body, { error: "missing_sellerId" });
+});
+
+test("cancel: the buyer notifies the seller", async () => {
+  const { env, fcm } = stub();
+  const res = await call(env, { kind: "cancel", orderId: "o1" }, "buyer-token");
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { sent: 1 });
+  assert.equal(fcm[0].message.data.type, "order");
+  assert.equal(fcm[0].message.token, "device-token");
+});
+
+test("cancel: the seller notifies the buyer", async () => {
+  const { env, fcm } = stub();
+  const res = await call(env, { kind: "cancel", orderId: "o1" }, "seller-token");
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { sent: 1 });
+  assert.equal(fcm[0].message.token, "device-token");
+});
+
+test("cancel: a non-party is refused", async () => {
+  const { env, fcm } = stub();
+  const res = await call(env, { kind: "cancel", orderId: "o1" }, "admin-token");
+  assert.equal(res.status, 403);
+  assert.deepEqual(res.body, { error: "forbidden" });
+  assert.equal(fcm.length, 0);
+});
+
+test("cancel: a non-cancelled order sends nothing", async () => {
+  // Reuse the stub but override the order status by patching readDoc via a
+  // custom fetch that returns a confirmed order.
+  const { env, fcm } = stub();
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    if (href.includes("/documents/orders/")) {
+      return jsonResponse({
+        name: "orders/o1",
+        fields: {
+          buyerId: { stringValue: "buyer" },
+          sellerId: { stringValue: "seller" },
+          buyerName: { stringValue: "Bea" },
+          sellerName: { stringValue: "Sam" },
+          listingTitle: { stringValue: "Bike" },
+          status: { stringValue: "confirmed" },
+        },
+      });
+    }
+    return origFetch(url, init);
+  };
+  const res = await call(env, { kind: "cancel", orderId: "o1" }, "buyer-token");
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { sent: 0 });
+  assert.equal(fcm.length, 0);
+  globalThis.fetch = origFetch;
 });
 
 test("positive path: each kind is routed to the seller and sent to FCM", async () => {

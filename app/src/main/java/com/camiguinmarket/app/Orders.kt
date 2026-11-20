@@ -596,6 +596,9 @@ fun cancelOrder(db: FirebaseFirestore, order: Order, byUid: String) {
         fromName = fromName,
         message = "$fromName cancelled the order: ${order.listingTitle}".take(190)
     )
+    // Push to the other party (best-effort); the Worker derives the recipient
+    // from the order so a user cannot spam someone else.
+    sendPush("cancel", orderId = order.id)
 }
 
 @Composable

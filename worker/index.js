@@ -635,6 +635,24 @@ async function handlePush(request, env) {
     return json({ sent }, 200);
   }
 
+  if (kind === "cancel") {
+    // Either party may cancel; the Worker derives the recipient from the
+    // order so a user cannot spam someone else.
+    if (uid !== order.buyerId && uid !== order.sellerId) {
+      return json({ error: "forbidden" }, 403);
+    }
+    if (order.status !== "cancelled") return json({ sent: 0 }, 200);
+    const recipient = uid === order.buyerId ? order.sellerId : order.buyerId;
+    const callerName = uid === order.buyerId ? order.buyerName : order.sellerName;
+    const sent = await sendToUser(
+      env, sa, access, recipient,
+      "Order cancelled ❌",
+      `${callerName || "Usa ka user"} gikansela ang order: ${order.listingTitle}`,
+      { orderId, type: "order" },
+    );
+    return json({ sent }, 200);
+  }
+
   return json({ error: "unknown_kind" }, 400);
 }
 
