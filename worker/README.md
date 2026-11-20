@@ -30,32 +30,27 @@ Set it in the app:
 
 ## Deploying
 
-Manual deploy (as in the setup above):
+The Worker is currently hosted on **Freebuff Sites** (project "Camiguin Market
+Images", production) at
+`https://site-428436804b0946699db3b56b1b69fd96.freebuff.page`.
+`worker/sites.deploy.json` is its deploy manifest (entrypoint `index.js`,
+compatibility date `2026-11-01`). Deploy that manifest to the **production**
+environment through Freebuff Sites; the R2 binding (`IMAGES`) and the Worker
+secrets stay attached, so `/health` should answer
+`{"ok":true,"bucket":true,"push":true,...}` afterwards.
+
+To deploy on your own Cloudflare account instead:
 
 ```bash
 cd worker
-wrangler deploy
+npm test          # a failing suite blocks the deploy
+wrangler deploy   # requires `wrangler login` or CLOUDFLARE_API_TOKEN
 ```
 
-Automated deploys run through `.github/workflows/deploy-worker.yml` on every
-push to `main` that touches `worker/**` (and on `workflow_dispatch`):
-
-1. Runs `npm test` — a failing suite blocks the deploy.
-2. `wrangler deploy`.
-3. Reads the workers.dev address from wrangler's output and checks
-   `/health`, failing the run unless it answers with `ok` and `bucket`.
-
-Two repository secrets are required (Settings → Secrets and variables →
-Actions); without them the job fails early with a message naming the missing
-secret:
-
-- `CLOUDFLARE_API_TOKEN` — an API token with the Workers Scripts:Edit permission
-  for the account that owns the Worker.
-- `CLOUDFLARE_ACCOUNT_ID` — the account id shown in the Workers & Pages dashboard.
-
-A `concurrency` group keeps two deploys from racing for the same script. The
-Worker secrets (`FIREBASE_WEB_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`) are already
-on the deployed Worker and are untouched by a deploy.
+There is **no** `.github/workflows/deploy-worker.yml` in this repo, and no
+automated Worker deploy: pushing to `main` runs the Worker tests only
+(`worker-test.yml`). Deploys are done manually through Freebuff Sites or
+`wrangler deploy`.
 
 ## Endpoints
 
