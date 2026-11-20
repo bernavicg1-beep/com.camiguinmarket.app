@@ -1,10 +1,10 @@
 package com.camiguinmarket.app
 
 import android.app.NotificationChannel
-import android.app.PendingIntent
-import android.content.Intent
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -14,14 +14,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
-/**
- * Push notifications from FCM.
- *
- * The token is saved to `users/{uid}/tokens/{token}` so the server can send
- * (the Cloudflare Worker) to the
- * right device. Delivery happens in the Worker (`worker/index.js`, `POST /push`),
- * which uses a service account — the app only receives.
- */
 class MarketMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
@@ -42,38 +34,41 @@ class MarketMessagingService : FirebaseMessagingService() {
         show(title, body, message.data)
     }
 
+    private fun channelFor(data: Map<String, String>): String {
+        val blob = (data.keys + data.values).joinToString(" ")
+        return when {
+            blob.contains("chat", ignoreCase = true) -> CHANNEL_CHATS
+            blob.contains("order", ignoreCase = true) -> CHANNEL_ORDERS
+            else -> CHANNEL_SAVED_SEARCHES
+        }
+    }
+
+    private fun stableId(data: Map<String, String>): Int {
+        val key = data["chatId"] ?: data["orderId"] ?: data["savedSearchId"]
+            ?: data["id"] ?: data.values.firstOrNull() ?: ""
+        return if (key.isBlank()) (System.currentTimeMillis() and Int.MAX_VALUE.toLong()).toInt()
+        else key.hashCode()
+    }
+
     private fun show(title: String, body: String, data: Map<String, String>) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "market_updates"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Camiguin Market updates",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Messages and order updates"
-                enableVibration(true)
-                setSound(
-                    android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
-                    null
-                )
-            }
-            manager.createNotificationChannel(channel)
-        }
+        val channelId = channelFor(data)
+        ensureChannels(manager)
+
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") !=
             PackageManager.PERMISSION_GRANTED
         ) {
             return
         }
-        // Tap: open the app and then the related order or chat.
+
         val tapIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             data.forEach { (k, v) -> putExtra(k, v) }
         }
         val tap = PendingIntent.getActivity(
             this,
-            System.currentTimeMillis().toInt(),
+            stableId(data),
             tapIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -85,10 +80,46 @@ class MarketMessagingService : FirebaseMessagingService() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION))
+            .setGroup(channelId)
             .setContentIntent(tap)
             .build()
-        manager.notify(System.currentTimeMillis().toInt(), notification)
+
+        manager.notify(stableId(data), notification)
+    }
+
+    private fun ensureChannels(manager: NotificationManager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channels = listOf(
+            NotificationChannel(
+                CHANNEL_CHATS,
+                "Chat messages",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "New chat messages from buyers and sellers"
+                enableVibration(true)
+            },
+            NotificationChannel(
+                CHANNEL_ORDERS,
+                "Order updates",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Order status changes"
+                enableVibration(true)
+            },
+            NotificationChannel(
+                CHANNEL_SAVED_SEARCHES,
+                "Saved search alerts",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "New listings matching a saved search"
+            }
+        )
+        manager.createNotificationChannels(channels)
+    }
+
+    companion object {
+        const val CHANNEL_CHATS = "chat_messages"
+        const val CHANNEL_ORDERS = "order_updates"
+        const val CHANNEL_SAVED_SEARCHES = "saved_search_alerts"
     }
 }

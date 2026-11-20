@@ -203,7 +203,8 @@ fun ReportsList(uid: String) {
                         Text("\"${r.note}\"", style = MaterialTheme.typography.bodySmall)
                     }
                     Text(
-                        "reported by ${r.reporterName} • ${r.status}",
+                        "reported by ${r.reporterName} • ${r.status}" +
+                            (r.priority?.let { " • $it" } ?: ""),
                         style = MaterialTheme.typography.labelSmall
                     )
                     if (r.status == "open") {
@@ -237,8 +238,10 @@ fun ReportsList(uid: String) {
                                 )
                             }) { Text("Delete listing", color = Color(0xFFE53935)) }
                             TextButton(onClick = {
-                                db.collection("reports").document(r.id)
-                                    .update("status", "dismissed")
+                                triageReport(db, r.id, REPORT_STATUS_IN_REVIEW, priority = REPORT_PRIORITY_NORMAL, moderatorUid = uid)
+                            }) { Text("In review") }
+                            TextButton(onClick = {
+                                triageReport(db, r.id, REPORT_STATUS_RESOLVED, resolution = "Dismissed by moderator", moderatorUid = uid)
                             }) { Text("Dismiss") }
                         }
                     }
