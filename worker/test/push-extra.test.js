@@ -24,6 +24,7 @@ function jsonResponse(body, status = 200) {
 
 function stub({ listingSeller = "seller", admin = false } = {}) {
   const fcm = [];
+  const tokenLookups = [];
   globalThis.fetch = async (url, init = {}) => {
     const href = String(url);
 
@@ -67,6 +68,7 @@ function stub({ listingSeller = "seller", admin = false } = {}) {
     }
 
     if (href.includes("/documents/users/") && href.endsWith("/tokens")) {
+      tokenLookups.push(href.split("/documents/")[1]);
       return jsonResponse({ documents: [{ fields: { token: { stringValue: "device-token" } } }] });
     }
 
@@ -86,7 +88,7 @@ function stub({ listingSeller = "seller", admin = false } = {}) {
       private_key: PRIVATE_KEY,
     }),
   };
-  return { env, fcm };
+  return { env, fcm, tokenLookups };
 }
 
 async function call(env, body, token) {
@@ -167,4 +169,28 @@ test("moderation: a missing seller is refused", async () => {
   const res = await call(env, { kind: "moderation", title: "Bike" }, "admin-token");
   assert.equal(res.status, 400);
   assert.deepEqual(res.body, { error: "missing_sellerId" });
+});
+
+test("positive path: each kind is delivered to the seller's device", async () => {
+  const cart = stub();
+  const cartRes = await call(cart.env, { kind: "cart", listingId: "l1" }, "buyer-token");
+  assert.deepEqual(cartRes.body, { sent: 1 });
+  assert.deepEqual(cart.tokenLookups, ["users/seller/tokens"]);
+  assert.equal(cart.fcm[0].message.token, "device-token");
+
+  const rating = stub();
+  const ratingRes = await call(rating.env, { kind: "rating", orderId: "o1" }, "buyer-token");
+  assert.deepEqual(ratingRes.body, { sent: 1 });
+  assert.deepEqual(rating.tokenLookups, ["users/seller/tokens"]);
+  assert.equal(rating.fcm[0].message.token, "device-token");
+
+  const mod = stub({ admin: true });
+  const modRes = await call(
+    mod.env,
+    { kind: "moderation", sellerId: "seller", title: "Bike" },
+    "admin-token",
+  );
+  assert.deepEqual(modRes.body, { sent: 1 });
+  assert.deepEqual(mod.tokenLookups, ["users/seller/tokens"]);
+  assert.equal(mod.fcm[0].message.token, "device-token");
 });

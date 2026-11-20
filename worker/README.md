@@ -6,6 +6,12 @@ notifications**. No credentials ever reach the app — the Worker verifies the
 
 ## Setup (once)
 
+The Worker is hosted on **Freebuff Sites** (see [Deploying](#deploying)); the R2
+bucket and secrets are already provisioned there, so the current host needs no
+local setup.
+
+To run your own copy on Cloudflare instead:
+
 ```bash
 npm install -g wrangler
 wrangler login
@@ -17,16 +23,9 @@ wrangler secret put FIREBASE_SERVICE_ACCOUNT   # service account JSON (for push)
 wrangler deploy
 ```
 
-After `deploy` you get a URL like:
-
-```
-https://camiguin-market-images.<subdomain>.workers.dev
-```
-
-Set it in the app:
-
-- **Local:** `local.properties` → `R2_UPLOAD_URL=https://…workers.dev`
-- **CI:** GitHub → Settings → Secrets → Actions → `R2_UPLOAD_URL`
+That prints a `https://camiguin-market-images.<subdomain>.workers.dev` URL; put
+it in `local.properties` (`R2_UPLOAD_URL=…`) or the repository `R2_UPLOAD_URL`
+secret so the app calls your copy.
 
 ## Deploying
 
