@@ -585,18 +585,21 @@ fun SellerActions(
 
 /** The buyer can cancel while `pending`; the seller any time before `done`. */
 fun cancelOrder(db: FirebaseFirestore, order: Order, byUid: String) {
-    db.collection("orders").document(order.id).update("status", "cancelled")
-        .addOnSuccessListener { sendPush("cancel", orderId = order.id) } // push only after status persisted
     val byBuyer = byUid == order.buyerId
     val toUid = if (byBuyer) order.sellerId else order.buyerId
     val fromName = if (byBuyer) order.buyerName else order.sellerName
-    notifyUser(
-        db = db,
-        toUid = toUid,
-        fromUid = byUid,
-        fromName = fromName,
-        message = "$fromName cancelled the order: ${order.listingTitle}".take(190)
-    )
+    db.collection("orders").document(order.id).update("status", "cancelled")
+        .addOnSuccessListener {
+            // Only notify/push once the status change actually committed.
+            notifyUser(
+                db = db,
+                toUid = toUid,
+                fromUid = byUid,
+                fromName = fromName,
+                message = "$fromName cancelled the order: ${order.listingTitle}".take(190)
+            )
+            sendPush("cancel", orderId = order.id)
+        }
 }
 
 @Composable
