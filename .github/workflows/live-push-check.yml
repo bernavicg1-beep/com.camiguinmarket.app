@@ -2,6 +2,8 @@ name: Live push integration (manual)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [freebuff/camiguin-market-map-kotlin-script]
 
 permissions:
   contents: read
@@ -17,6 +19,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Grant admin (temporary)
+        env:
+          SMOKE_TEST_ADMIN_EMAIL: ${{ secrets.SMOKE_TEST_ADMIN_EMAIL }}
+          SMOKE_TEST_ADMIN_PASSWORD: ${{ secrets.SMOKE_TEST_ADMIN_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/grant-admin.mjs
 
       # SMOKE_TEST_ADMIN_EMAIL / SMOKE_TEST_ADMIN_PASSWORD are optional: when
       # set, moderation is delivered to the test account and asserted too;
