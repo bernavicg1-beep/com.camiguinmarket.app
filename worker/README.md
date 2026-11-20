@@ -168,8 +168,9 @@ delivers. It runs on demand (`workflow_dispatch`) and on pushes to `main` that
 touch `worker/**` or `scripts/live-push-check.mjs`. It signs in as the test account,
 checks `users/{uid}/tokens` has a registered FCM token, seeds a listing and a
 rating with the service account, then asserts `sent >= 1` for `cart` and
-`rating`. If the test account has no token it logs a notice and skips, so open
-the app on a device signed in as that account first.
+`rating`. If the test account has no FCM token, a push-triggered run fails (so a
+green run on `main` means something was actually tested) while a manual run logs
+a notice and skips; open the app on a device signed in as that account first.
 
 Moderation needs an **admin** caller, so it is covered only when these optional
 repository secrets are set (Settings → Secrets and variables → Actions):

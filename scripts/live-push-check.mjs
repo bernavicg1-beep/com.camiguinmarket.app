@@ -192,10 +192,13 @@ try {
   const tokens = await listDocs(service, `users/${uid}/tokens`);
   console.log(`registered FCM tokens: ${tokens.length}`);
   if (tokens.length === 0) {
-    console.log(
-      "::notice::The test account has no registered FCM token; open the app on a device, " +
-        "sign in as the test account, then re-run this workflow.",
-    );
+    const reason =
+      "The test account has no registered FCM token; open the app on a device, " +
+      "sign in as the test account, then re-run this workflow.";
+    // A push-triggered run must prove something happened, so it fails instead
+    // of passing green with nothing tested. Manual runs may skip.
+    if (process.env.REQUIRE_TOKEN === "true") throw new Error(reason);
+    console.log(`::notice::${reason} skipping`);
     process.exit(0);
   }
 
