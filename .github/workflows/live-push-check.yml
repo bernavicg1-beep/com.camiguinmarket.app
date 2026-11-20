@@ -3,10 +3,11 @@ name: Live push integration (manual)
 on:
   workflow_dispatch:
   push:
-    branches: [main, freebuff/camiguin-market-map-kotlin-script]
+    branches: [main]
     paths:
       - "worker/**"
-      - "scripts/live-push-check.mjs"
+      - "!worker/test/**"
+      - "!worker/README.md"
 
 permissions:
   contents: read
