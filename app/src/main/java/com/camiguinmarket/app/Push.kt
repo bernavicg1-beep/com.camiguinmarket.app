@@ -76,6 +76,7 @@ fun sendPush(
     kind: String,
     orderId: String? = null,
     chatId: String? = null,
+    savedSearchId: String? = null,
     text: String? = null
 ) {
     val base = BuildConfig.R2_UPLOAD_URL.trim().trimEnd('/')
@@ -85,6 +86,7 @@ fun sendPush(
     val body = JSONObject().put("kind", kind)
     orderId?.let { body.put("orderId", it) }
     chatId?.let { body.put("chatId", it) }
+    savedSearchId?.let { body.put("savedSearchId", it) }
     text?.let { body.put("text", it.take(140)) }
 
     user.getIdToken(false).addOnSuccessListener { result ->

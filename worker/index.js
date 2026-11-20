@@ -356,11 +356,18 @@ async function deleteToken(sa, token, uid, fcmToken) {
 /** Send to every device of one user; clean up dead tokens. */
 async function sendToUser(env, sa, token, uid, title, body, data = {}) {
   if (!uid) return 0;
-  const tokens = await readTokens(sa, token, uid);
+  let tokens = [];
+  try {
+    tokens = await readTokens(sa, token, uid);
+  } catch {
+    tokens = [];
+  }
   let sent = 0;
 
   for (const fcmToken of tokens) {
-    const res = await fetch(
+    let res;
+    try {
+      res = await fetch(
       `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
       {
         method: "POST",
@@ -380,6 +387,10 @@ async function sendToUser(env, sa, token, uid, title, body, data = {}) {
         }),
       },
     );
+    } catch {
+      // Transient FCM failure: do not throw; report as not sent.
+      continue;
+    }
     if (res.ok) {
       sent += 1;
       continue;
@@ -426,6 +437,30 @@ async function handlePush(request, env) {
   }
 
   const kind = body.kind;
+
+  if (kind === "saved") {
+    const savedSearchId = String(body.savedSearchId || "");
+    if (!savedSearchId) return json({ error: "missing_savedSearchId" }, 400);
+
+    const search = await readDoc(sa, access, `savedSearches/${uid}/items/${savedSearchId}`);
+    if (!search) return json({ error: "not_found" }, 404);
+
+    const text = String(body.text || "New listings").slice(0, 140);
+    let sent = 0;
+    try {
+      sent = await sendToUser(
+        env, sa, access, uid,
+        "Saved search 🔔",
+        text || "New listings",
+        { savedSearchId, type: "saved_search" },
+      );
+    } catch {
+      sent = 0;
+    }
+    // Always report success so the client does not retry forever; partial
+    // delivery is reflected in `sent`.
+    return json({ sent }, 200);
+  }
 
   if (kind === "chat") {
     const chatId = String(body.chatId || "");
