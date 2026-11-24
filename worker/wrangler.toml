@@ -8,6 +8,14 @@ compatibility_date = "2026-11-01"
 binding = "IMAGES"
 bucket_name = "camiguinmarket-images"
 
+# D1 database binding. Create it first:
+#   wrangler d1 create camiguinmarket
+# then paste the returned database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "camiguinmarket"
+database_id = "9614f183-8f8a-4615-9278-308930207eea"
+
 # Delete expired perishable listings 4 times an hour.
 # Needs FIREBASE_SERVICE_ACCOUNT (same secret as push notifications).
 [triggers]

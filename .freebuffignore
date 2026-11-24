@@ -1,0 +1,12 @@
+# Freebuff cloud archive: exclude large/non-source folders to stay under limits
+.gradle/
+.idea/
+captures/
+app/build/
+build/
+*.apk
+*.aab
+node_modules/
+worker/.wrangler/
+web/dist/
+docs/account-deletion.html.bak

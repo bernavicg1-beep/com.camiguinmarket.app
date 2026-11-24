@@ -846,7 +846,9 @@ export default {
     if (url.pathname === "/health") {
       return json({
         ok: true,
-              bucket: Boolean(env.IMAGES),
+              db: Boolean(env.DB),
+      images: Boolean(env.IMAGES),
+      bucket: Boolean(env.IMAGES),
       push: Boolean(env.FIREBASE_SERVICE_ACCOUNT),
       telegram: Boolean(env.TELEGRAM_BOT_TOKEN),
       });
