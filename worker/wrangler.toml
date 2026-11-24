@@ -1,23 +1,7 @@
 name = "camiguin-market-images"
 main = "index.js"
-compatibility_date = "2026-11-01"
+compatibility_date = "2024-11-01"
 
-# The R2 bucket that stores listing photos.
-# Create it: wrangler r2 bucket create camiguinmarket-images
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "camiguinmarket-images"
-
-
-# Delete expired perishable listings 4 times an hour.
-# Needs FIREBASE_SERVICE_ACCOUNT (same secret as push notifications).
-[triggers]
-crons = ["*/15 * * * *"]
-
-[vars]
-# The Firebase Web API key (public — it is already in google-services.json).
-# Set it as a secret: wrangler secret put FIREBASE_WEB_API_KEY
-#
-# Optional: set it when you want a custom domain as the base of the links.
-# Without it, the Worker URL is used.
-# PUBLIC_BASE_URL = "https://images.camiguinmarket.example"
