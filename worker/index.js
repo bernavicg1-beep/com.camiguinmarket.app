@@ -340,7 +340,7 @@ async function readTokens(sa, token, uid) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
-  const res = await res.json();
+  const data = await res.json();
   return (data.documents || [])
     .map((d) => fieldValue((d.fields || {}).token))
     .filter(Boolean);
