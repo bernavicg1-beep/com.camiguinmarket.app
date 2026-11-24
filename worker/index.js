@@ -340,7 +340,7 @@ async function readTokens(sa, token, uid) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
-  const data = await res.json();
+  const res = await res.json();
   return (data.documents || [])
     .map((d) => fieldValue((d.fields || {}).token))
     .filter(Boolean);
@@ -740,7 +740,7 @@ async function purgeExpiredListings(env) {
     deleted += removedDocs.length;
     failures += expired.length - removedDocs.length;
 
-    // Drop the photos of the listings that are really gone, so R2 does not
+    // Drop the photos of the listings that are gone, so R2 does not
     // keep orphaned images after the document is deleted.
     const photos = await deletePhotos(env, removedDocs);
     photosDeleted += photos.photosDeleted;
@@ -846,7 +846,6 @@ export default {
     if (url.pathname === "/health") {
       return json({
         ok: true,
-              db: Boolean(env.DB),
       images: Boolean(env.IMAGES),
       bucket: Boolean(env.IMAGES),
       push: Boolean(env.FIREBASE_SERVICE_ACCOUNT),
