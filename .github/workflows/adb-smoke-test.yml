@@ -145,14 +145,13 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          script: |
-            bash -c 'gradle :app:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists; status=$?; if [ "$status" -ne 0 ]; then bash scripts/collect-smoke-artifacts.sh smoke-quick-failure-artifacts; fi; exit "$status"'
+          script: SMOKE_TEST_CLASSES='com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists' bash scripts/run-smoke-tests.sh
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: smoke-quick-failure-diagnostics
-          path: smoke-quick-failure-artifacts
+          path: smoke-failure-artifacts
           if-no-files-found: warn
 
   emulator-smoke-subset:
@@ -202,14 +201,13 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          script: |
-            bash -c 'gradle :app:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders; status=$?; if [ "$status" -ne 0 ]; then bash scripts/collect-smoke-artifacts.sh smoke-subset-failure-artifacts; fi; exit "$status"'
+          script: SMOKE_TEST_CLASSES='com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders' bash scripts/run-smoke-tests.sh
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: smoke-subset-failure-diagnostics
-          path: smoke-subset-failure-artifacts
+          path: smoke-failure-artifacts
           if-no-files-found: warn
 
   # Optional run of the full suite: a test account is a nice-to-have here, so
