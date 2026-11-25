@@ -29,79 +29,10 @@ jobs:
           if [ -z "$fp" ]; then echo "::error::Could not extract SHA256 fingerprint"; exit 1; fi
           echo "$fp" > /tmp/fp.txt
 
-      - name: Apply app-links edits to worker/index.js
+      - name: Apply edits
         run: |
-          python3 - "$(cat /tmp/fp.txt)" <<'PY'
-          import sys
-          fp = sys.argv[1]
-          p = "worker/index.js"
-          s = open(p).read()
-
-          s = s.replace(
-              'await telegramNotify(env, sa, access, other, `💬 ${names[uid] || "Bag-ong mensahe"}\\n${text || "Bag-ong mensahe"}`);',
-              'await telegramNotify(env, sa, access, other, `💬 ${names[uid] || "Bag-ong mensahe"}\\n${text || "Bag-ong mensahe"}\\n${publicBase(request, env)}/chat/${chatId}`);'
-          )
-          s = s.replace(
-              'await telegramNotify(env, sa, access, order.sellerId, `Bag-ong order 🛒\\n${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}`);',
-              'await telegramNotify(env, sa, access, order.sellerId, `Bag-ong order 🛒\\n${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}\\n${publicBase(request, env)}/order/${orderId}`);'
-          )
-          s = s.replace(
-              'await telegramNotify(env, sa, access, order.buyerId, `Order update 📦\\n${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}`);',
-              'await telegramNotify(env, sa, access, order.buyerId, `Order update 📦\\n${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}\\n${publicBase(request, env)}/order/${orderId}`);'
-          )
-
-          marker = '    return json({ error: "not_found" }, 404);'
-          block = '''    // Android App Links: Digital Asset Links file used by the OS to verify
-    // that https://<worker>/listing|order|chat URLs open the Camiguin Market app.
-    if (url.pathname === "/.well-known/assetlinks.json") {
-      return new Response(
-        JSON.stringify([
-          {
-            relation: ["delegate_permission/common.handle_all_urls"],
-            target: {
-              namespace: "android_app",
-              package_name: "com.camiguinmarket.app",
-              sha256_cert_fingerprints: [
-                "PLACEHOLDER_FP",
-              ],
-            },
-          },
-        ]),
-        { status: 200, headers: { "Content-Type": "application/json", ...CORS } },
-      );
-    }
-
-    // Deep-link fallback pages: when the app is not installed (or app links
-    // are not yet verified) the browser shows a small page that tries to open
-    // the matching custom scheme (camiguinmarket://...) and links to the store.
-    const deepLinkMatch = url.pathname.match(/^\/(listing|order|chat)\/([^/]+)\/?$/);
-    if (deepLinkMatch) {
-      const kind = deepLinkMatch[1];
-      const id = decodeURIComponent(deepLinkMatch[2]);
-      const scheme = `camiguinmarket://${kind}/${id}`;
-      const html = `<!doctype html><html><head><meta charset="utf-8">` +
-        `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-        `<title>Open in Camiguin Market</title>` +
-        `<meta http-equiv="refresh" content="0;url=${scheme}">` +
-        `</head><body style="font-family:sans-serif;text-align:center;padding:24px">` +
-        `<h2>Opening Camiguin Market…</h2>` +
-        `<p>If nothing happens, <a href="${scheme}">tap here</a>.</p>` +
-        `</body></html>`;
-      return new Response(html, {
-        status: 200,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
-    }
-
-'''
-          assert marker in s, "not_found marker not found"
-          s = s.replace(marker, block + marker, 1)
-
-          s = s.replace("PLACEHOLDER_FP", fp)
-
-          open(p, "w").write(s)
-          print("done")
-          PY
+          printf '%s' "aW1wb3J0IHN5cwoKZnAgPSBzeXMuYXJndlsxXQpwID0gIndvcmtlci9pbmRleC5qcyIKcyA9IG9wZW4ocCkucmVhZCgpCgojIDEuIFRlbGVncmFtIGRlZXAgbGlua3M6IGFwcGVuZCBIVFRQUyBVUkwgdG8gY2hhdC9vcmRlci9zdGF0dXMgbWVzc2FnZXMuCnMgPSBzLnJlcGxhY2UoCiAgICAnYXdhaXQgdGVsZWdyYW1Ob3RpZnkoZW52LCBzYSwgYWNjZXNzLCBvdGhlciwgYPCfkqwgJHtuYW1lc1t1aWRdIHx8ICJCYWctb25nIG1lbnNhaGUifVxcbiR7dGV4dCB8fCAiQmFnLW9uZyBtZW5zYWhlIn1gKTsnLAogICAgJ2F3YWl0IHRlbGVncmFtTm90aWZ5KGVudiwgc2EsIGFjY2Vzcywgb3RoZXIsIGDwn5KsICR7bmFtZXNbdWlkXSB8fCAiQmFnLW9uZyBtZW5zYWhlIn1cXG4ke3RleHQgfHwgIkJhZy1vbmcgbWVuc2FoZSJ9XFxuJHtwdWJsaWNCYXNlKHJlcXVlc3QsIGVudil9L2NoYXQvJHtjaGF0SWR9YCk7JwopCnMgPSBzLnJlcGxhY2UoCiAgICAnYXdhaXQgdGVsZWdyYW1Ob3RpZnkoZW52LCBzYSwgYWNjZXNzLCBvcmRlci5zZWxsZXJJZCwgYEJhZy1vbmcgb3JkZXIg8J+bklxcbiR7b3JkZXIuYnV5ZXJOYW1lIHx8ICJVc2Ega2EgYnV5ZXIifSBtaS1vcmRlcjogJHtvcmRlci5saXN0aW5nVGl0bGV9IMOXJHtxdHl9YCk7JywKICAgICdhd2FpdCB0ZWxlZ3JhbU5vdGlmeShlbnYsIHNhLCBhY2Nlc3MsIG9yZGVyLnNlbGxlcklkLCBgQmFnLW9uZyBvcmRlciDwn5uSXFxuJHtvcmRlci5idXllck5hbWUgfHwgIlVzYSBrYSBidXllciJ9IG1pLW9yZGVyOiAke29yZGVyLmxpc3RpbmdUaXRsZX0gw5cke3F0eX1cXG4ke3B1YmxpY0Jhc2UocmVxdWVzdCwgZW52KX0vb3JkZXIvJHtvcmRlcklkfWApOycKKQpzID0gcy5yZXBsYWNlKAogICAgJ2F3YWl0IHRlbGVncmFtTm90aWZ5KGVudiwgc2EsIGFjY2Vzcywgb3JkZXIuYnV5ZXJJZCwgYE9yZGVyIHVwZGF0ZSDwn5OmXFxuJHtvcmRlci5zZWxsZXJOYW1lIHx8ICJBbmcgc2VsbGVyIn0gJHthY3Rpb259IGFuZyBpbW9uZyBvcmRlcjogJHtvcmRlci5saXN0aW5nVGl0bGV9YCk7JywKICAgICdhd2FpdCB0ZWxlZ3JhbU5vdGlmeShlbnYsIHNhLCBhY2Nlc3MsIG9yZGVyLmJ1eWVySWQsIGBPcmRlciB1cGRhdGUg8J+TplxcbiR7b3JkZXIuc2VsbGVyTmFtZSB8fCAiQW5nIHNlbGxlciJ9ICR7YWN0aW9ufSBhbmcgaW1vbmcgb3JkZXI6ICR7b3JkZXIubGlzdGluZ1RpdGxlfVxcbiR7cHVibGljQmFzZShyZXF1ZXN0LCBlbnYpfS9vcmRlci8ke29yZGVySWR9YCk7JwopCgojIDIuIEluc2VydCBhc3NldGxpbmtzICsgZGVlcC1saW5rIGZhbGxiYWNrIHJvdXRlcyBiZWZvcmUgdGhlIG5vdF9mb3VuZCByZXR1cm4uCm1hcmtlciA9ICcgICAgcmV0dXJuIGpzb24oeyBlcnJvcjogIm5vdF9mb3VuZCIgfSwgNDA0KTsnCmJsb2NrID0gJycnICAgIC8vIEFuZHJvaWQgQXBwIExpbmtzOiBEaWdpdGFsIEFzc2V0IExpbmtzIGZpbGUgdXNlZCBieSB0aGUgT1MgdG8gdmVyaWZ5CiAgICAvLyB0aGF0IGh0dHBzOi8vPHdvcmtlcj4vbGlzdGluZ3xvcmRlcnxjaGF0IFVSTHMgb3BlbiB0aGUgQ2FtaWd1aW4gTWFya2V0IGFwcC4KICAgIGlmICh1cmwucGF0aG5hbWUgPT09ICIvLndlbGwta25vd24vYXNzZXRsaW5rcy5qc29uIikgewogICAgICByZXR1cm4gbmV3IFJlc3BvbnNlKAogICAgICAgIEpTT04uc3RyaW5naWZ5KFsKICAgICAgICAgIHsKICAgICAgICAgICAgcmVsYXRpb246IFsiZGVsZWdhdGVfcGVybWlzc2lvbi9jb21tb24uaGFuZGxlX2FsbF91cmxzIl0sCiAgICAgICAgICAgIHRhcmdldDogewogICAgICAgICAgICAgIG5hbWVzcGFjZTogImFuZHJvaWRfYXBwIiwKICAgICAgICAgICAgICBwYWNrYWdlX25hbWU6ICJjb20uY2FtaWd1aW5tYXJrZXQuYXBwIiwKICAgICAgICAgICAgICBzaGEyNTZfY2VydF9maW5nZXJwcmludHM6IFsKICAgICAgICAgICAgICAgICJQTEFDRUhPTERFUl9GUCIsCiAgICAgICAgICAgICAgXSwKICAgICAgICAgICAgfSwKICAgICAgICAgIH0sCiAgICAgICAgXSksCiAgICAgICAgeyBzdGF0dXM6IDIwMCwgaGVhZGVyczogeyAiQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL2pzb24iLCAuLi5DT1JTIH0gfSwKICAgICAgKTsKICAgIH0KCiAgICAvLyBEZWVwLWxpbmsgZmFsbGJhY2sgcGFnZXM6IHdoZW4gdGhlIGFwcCBpcyBub3QgaW5zdGFsbGVkIChvciBhcHAgbGlua3MKICAgIC8vIGFyZSBub3QgeWV0IHZlcmlmaWVkKSB0aGUgYnJvd3NlciBzaG93cyBhIHNtYWxsIHBhZ2UgdGhhdCB0cmllcyB0byBvcGVuCiAgICAvLyB0aGUgbWF0Y2hpbmcgY3VzdG9tIHNjaGVtZSAoY2FtaWd1aW5tYXJrZXQ6Ly8uLi4pIGFuZCBsaW5rcyB0byB0aGUgc3RvcmUuCiAgICBjb25zdCBkZWVwTGlua01hdGNoID0gdXJsLnBhdGhuYW1lLm1hdGNoKC9eXFwvKGxpc3Rpbmd8b3JkZXJ8Y2hhdClcXC8oW14vXSspXFwvPyQvKTsKICAgIGlmIChkZWVwTGlua01hdGNoKSB7CiAgICAgIGNvbnN0IGtpbmQgPSBkZWVwTGlua01hdGNoWzFdOwogICAgICBjb25zdCBpZCA9IGRlY29kZVVSSUNvbXBvbmVudChkZWVwTGlua01hdGNoWzJdKTsKICAgICAgY29uc3Qgc2NoZW1lID0gYGNhbWlndWlubWFya2V0Oi8vJHtraW5kfS8ke2lkfWA7CiAgICAgIGNvbnN0IGh0bWwgPSBgPCFkb2N0eXBlIGh0bWw+PGh0bWw+PGhlYWQ+PG1ldGEgY2hhcnNldD0idXRmLTgiPmAgKwogICAgICAgIGA8bWV0YSBuYW1lPSJ2aWV3cG9ydCIgY29udGVudD0id2lkdGg9ZGV2aWNlLXdpZHRoLGluaXRpYWwtc2NhbGU9MSI+YCArCiAgICAgICAgYDx0aXRsZT5PcGVuIGluIENhbWlndWluIE1hcmtldDwvdGl0bGU+YCArCiAgICAgICAgYDxtZXRhIGh0dHAtZXF1aXY9InJlZnJlc2giIGNvbnRlbnQ9IjA7dXJsPSR7c2NoZW1lfSI+YCArCiAgICAgICAgYDwvaGVhZD48Ym9keSBzdHlsZT0iZm9udC1mYW1pbHk6c2Fucy1zZXJpZjt0ZXh0LWFsaWduOmNlbnRlcjtwYWRkaW5nOjI0cHgiPmAgKwogICAgICAgIGA8aDI+T3BlbmluZyBDYW1pZ3VpbiBNYXJrZXTigKY8L2gyPmAgKwogICAgICAgIGA8cD5JZiBub3RoaW5nIGhhcHBlbnMsIDxhIGhyZWY9IiR7c2NoZW1lfSI+dGFwIGhlcmU8L2E+LjwvcD5gICsKICAgICAgICBgPC9ib2R5PjwvaHRtbD5gOwogICAgICByZXR1cm4gbmV3IFJlc3BvbnNlKGh0bWwsIHsKICAgICAgICBzdGF0dXM6IDIwMCwKICAgICAgICBoZWFkZXJzOiB7ICJDb250ZW50LVR5cGUiOiAidGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04IiB9LAogICAgICB9KTsKICAgIH0KCicnJwphc3NlcnQgbWFya2VyIGluIHMsICJub3RfZm91bmQgbWFya2VyIG5vdCBmb3VuZCIKcyA9IHMucmVwbGFjZShtYXJrZXIsIGJsb2NrICsgbWFya2VyLCAxKQoKIyAzLiBQYXRjaCBmaW5nZXJwcmludCBwbGFjZWhvbGRlci4KcyA9IHMucmVwbGFjZSgiUExBQ0VIT0xERVJfRlAiLCBmcCkKCm9wZW4ocCwgInciKS53cml0ZShzKQpwcmludCgiZG9uZSIpClBZ" | base64 -d > /tmp/apply.py
+          python3 /tmp/apply.py "$(cat /tmp/fp.txt)"
 
       - name: Commit and push
         run: |
