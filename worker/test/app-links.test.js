@@ -42,9 +42,7 @@ test("deep-link fallback neutralizes script payloads", async () => {
   const res = await call("/listing/%3Cscript%3Ealert(1)%3C%2Fscript%3E");
   assert.equal(res.status, 200);
   const body = await res.text();
-  assert.match(body, /camiguinmarket:\/\/listing\/hello%20world/);
-  const body2 = await res.text();
-  assert.ok(!body2.includes("<script>"), "raw script tag must not appear");
+  assert.ok(!body.includes("<script>"), "raw script tag must not appear");
 });
 
 test("deep-link fallback percent-encodes special characters", async () => {
