@@ -1,0 +1,33 @@
+name: Apply MainActivity refactor
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: |
+          git apply --check scratchpad/ma-refactor.patch
+          git apply scratchpad/ma-refactor.patch
+      - name: Place test file
+        run: |
+          mkdir -p app/src/test/java/com/camiguinmarket/app
+          cp scratchpad/DeepLinkParsingTest.kt app/src/test/java/com/camiguinmarket/app/DeepLinkParsingTest.kt
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/camiguinmarket/app/MainActivity.kt app/src/test/java/com/camiguinmarket/app/DeepLinkParsingTest.kt
+          git commit -m "Refactor MainActivity deep-link parsing into companion + add tests"
+          git push
+      - name: Cleanup scratchpad
+        run: |
+          git rm -r scratchpad 2>/dev/null || true
+          git commit -m "Remove scratchpad temp files" || true
+          git push || true
