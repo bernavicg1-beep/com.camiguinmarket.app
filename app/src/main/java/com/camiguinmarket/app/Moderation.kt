@@ -28,6 +28,7 @@ import com.google.firebase.firestore.Query
  */
 @Composable
 fun ModerationScreen(uid: String, isAdmin: Boolean) {
+    val S = LocalStrings.current
     if (!isAdmin) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Text("Moderation", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -243,6 +244,26 @@ fun ReportsList(uid: String) {
                             TextButton(onClick = {
                                 triageReport(db, r.id, REPORT_STATUS_RESOLVED, resolution = "Dismissed by moderator", moderatorUid = uid)
                             }) { Text("Dismiss") }
+                            TextButton(onClick = {
+                                db.collection("users").document(r.sellerId).set(
+                                    mapOf(
+                                        "verified" to false,
+                                        "verifiedBy" to "",
+                                        "verifiedAt" to 0L
+                                    ),
+                                    com.google.firebase.firestore.SetOptions.merge()
+                                )
+                                db.collection("reports").document(r.id)
+                                    .update("status", "resolved")
+                                notifyUser(
+                                    db = db,
+                                    toUid = r.sellerId,
+                                    fromUid = uid,
+                                    fromName = "Moderator",
+                                    message = "Your community verification was revoked by a moderator."
+                                        .take(190)
+                                )
+                            }) { Text(S.revokeVerification, color = Color(0xFFE53935)) }
                         }
                     }
                 }
