@@ -8,6 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore original MainActivity.kt
+        run: git show b001dae:app/src/main/java/com/camiguinmarket/app/MainActivity.kt > app/src/main/java/com/camiguinmarket/app/MainActivity.kt
       - name: Apply changes
         run: python3 scratchpad/apply_ma.py
       - name: Commit and push
@@ -15,5 +19,5 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add app/src/main/java/com/camiguinmarket/app/MainActivity.kt
-          git commit -m "Apply MainActivity app-link changes" || echo "No changes"
+          git commit -m "Apply MainActivity app-link changes"
           git push
