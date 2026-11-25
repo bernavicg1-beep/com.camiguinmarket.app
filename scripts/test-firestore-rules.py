@@ -515,6 +515,77 @@ check("views: cannot change the title", "PATCH", "/listings/viewdoc1", 403,
       uid="u2", body=listing_views_patch(app_listing("u1"), 2, title="Gi-hack"))
 
 
+
+# --- trust layer: user verification fields -----------------------------------
+# Owner cannot self-verify: `verified`/`verifiedBy`/`verifiedAt` are not in the
+# owner allow-list.
+check("trust: owner cannot set verified on own profile", "PATCH", "/users/u1", 403,
+      uid="u1", body={"fields": {"uid": {"stringValue": "u1"},
+                                 "verified": {"booleanValue": True},
+                                 "verifiedBy": {"stringValue": "self"},
+                                 "verifiedAt": {"integerValue": "1"}}})
+check("trust: owner cannot add verified to an allowed update", "PATCH", "/users/u1", 403,
+      uid="u1", body={"fields": {"phone": {"stringValue": "+639171234567"},
+                                 "phoneVerified": {"booleanValue": True},
+                                 "verified": {"booleanValue": True}}})
+
+# Seed a user doc so an admin can update its verification fields.
+seed("/users", "trustuser", {"fields": {"uid": {"stringValue": "trustuser"},
+                                        "name": {"stringValue": "Trust User"},
+                                        "email": {"stringValue": "t@example.com"}}})
+
+check("trust: admin can set verified fields", "PATCH", "/users/trustuser", 200,
+      uid="admin1", mask="verified&updateMask.fieldPaths=verifiedBy&updateMask.fieldPaths=verifiedAt",
+      body={"fields": {"verified": {"booleanValue": True},
+                       "verifiedBy": {"stringValue": "admin:admin1"},
+                       "verifiedAt": {"integerValue": "123"}}})
+check("trust: admin cannot change non-verification fields", "PATCH", "/users/trustuser", 403,
+      uid="admin1", mask="name",
+      body={"fields": {"name": {"stringValue": "Hacked"}}})
+check("trust: non-admin cannot set verified fields", "PATCH", "/users/trustuser", 403,
+      uid="u1", mask="verified&updateMask.fieldPaths=verifiedBy&updateMask.fieldPaths=verifiedAt",
+      body={"fields": {"verified": {"booleanValue": True},
+                       "verifiedBy": {"stringValue": "admin:u1"},
+                       "verifiedAt": {"integerValue": "1"}}})
+check("trust: admin can revoke verification", "PATCH", "/users/trustuser", 200,
+      uid="admin1", mask="verified&updateMask.fieldPaths=verifiedBy&updateMask.fieldPaths=verifiedAt",
+      body={"fields": {"verified": {"booleanValue": False},
+                       "verifiedBy": {"stringValue": ""},
+                       "verifiedAt": {"integerValue": "0"}}})
+
+
+# --- trust layer: verificationRequests ---------------------------------------
+vr_doc = lambda seller, name="Nena": {"fields": {
+    "sellerUid": {"stringValue": seller},
+    "sellerName": {"stringValue": name},
+    "status": {"stringValue": "pending"},
+    "createdAt": {"integerValue": "1"},
+}}
+
+check("vr: seller can create own request", "POST", "/verificationRequests", 200,
+      uid="u1", body=vr_doc("u1"), doc_id="vr1")
+check("vr: cannot create in someone else's name", "POST", "/verificationRequests", 403,
+      uid="u1", body=vr_doc("u2"), doc_id="vr2")
+check("vr: status must be pending", "POST", "/verificationRequests", 403,
+      uid="u1", body={"fields": {"sellerUid": {"stringValue": "u1"},
+                                 "sellerName": {"stringValue": "Nena"},
+                                 "status": {"stringValue": "approved"},
+                                 "createdAt": {"integerValue": "1"}}},
+      doc_id="vr3")
+check("vr: requester can read own", "GET", "/verificationRequests/vr1", 200, uid="u1")
+check("vr: other user cannot read", "GET", "/verificationRequests/vr1", 403, uid="u2")
+check("vr: admin can read", "GET", "/verificationRequests/vr1", 200, uid="admin1")
+check("vr: admin can list", "GET", "/verificationRequests", 200, uid="admin1")
+check("vr: non-admin cannot update", "PATCH", "/verificationRequests/vr1", 403,
+      uid="u1", body={"fields": {"status": {"stringValue": "approved"}}})
+check("vr: admin can approve", "PATCH", "/verificationRequests/vr1", 200,
+      uid="admin1", body={"fields": {"status": {"stringValue": "approved"},
+                                    "reviewedBy": {"stringValue": "admin1"},
+                                    "reviewedAt": {"integerValue": "2"}}})
+check("vr: cannot be deleted (even by admin)", "DELETE", "/verificationRequests/vr1", 403,
+      uid="admin1")
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")
