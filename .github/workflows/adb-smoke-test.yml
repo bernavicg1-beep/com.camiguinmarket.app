@@ -226,7 +226,7 @@ jobs:
           if-no-files-found: warn
 
   # Optional run of the full suite: a test account is a nice-to-have here, so
-  # missing secrets ksip the emulator work instead of failing the pull request.
+  # missing secrets skip the emulator work instead of failing the pull request.
   emulator-smoke-optional:
     name: Emulator smoke tests (optional account)
     needs: [lint, fake-adb]
