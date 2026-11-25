@@ -1,0 +1,26 @@
+name: Apply MainActivity.kt app-link changes
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Apply changes
+        run: |
+          echo 'PLACEHOLDER' | base64 -d > /tmp/apply_ma.py
+          python3 /tmp/apply_ma.py
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "Add app-link deep-link parsing to MainActivity.kt (listing/order/chat/saved)"
+          git push origin HEAD:main
