@@ -180,11 +180,11 @@ class SmokeTest {
     @Test
     fun offlineCacheKeepsListingsVisible() {
         openHome()
+        // The cache is written from the feed, and the file exists even when the
+        // feed was empty, so require a listing to cache before going offline.
         assumeTrue(
-            "No listings cache yet; the feed never loaded, so there is nothing to show offline",
-            awaitCondition(20_000) {
-                File(context.dataDir, "shared_prefs/listings_cache.xml").exists()
-            }
+            "No listings to cache; seed a listing to exercise the offline feed",
+            awaitCondition(20_000) { hasTag("listing_card") }
         )
 
         disableNetwork()
@@ -299,7 +299,8 @@ class SmokeTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Orders").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Orders").performClick()
+        // The profile is a scrolling column; an off-screen row swallows the tap.
+        composeRule.onNodeWithText("Orders").performScrollTo().performClick()
         // The Buyer/Seller pills are static chrome, but the screen only exists
         // once the orders listener has attached; skip cleanly when it does not.
         assumeTrue(
