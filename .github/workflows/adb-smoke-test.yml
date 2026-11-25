@@ -80,20 +80,16 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The action runs each script line in its own shell, so the credentials are
+      # passed as step env instead of being exported inside the script.
       - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
-          script: |
-            set +e
-            export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
-            export SMOKE_TEST_PASSWORD="${{ secrets.SMOKE_TEST_PASSWORD }}"
-            bash scripts/run-smoke-tests.sh
-            status=$?
-            if [ "$status" -ne 0 ]; then
-              bash scripts/collect-smoke-artifacts.sh smoke-failure-artifacts
-            fi
-            exit "$status"
+          script: bash scripts/run-smoke-tests.sh
 
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -140,20 +136,17 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The action runs each script line in its own shell, so the credentials are
+      # passed as step env instead of being exported inside the script.
       - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
           script: |
-            set +e
-            export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
-            export SMOKE_TEST_PASSWORD="${{ secrets.SMOKE_TEST_PASSWORD }}"
-            gradle :app:connectedDebugAndroidTest --no-daemon               -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL"               -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD"               -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists
-            status=$?
-            if [ "$status" -ne 0 ]; then
-              bash scripts/collect-smoke-artifacts.sh smoke-quick-failure-artifacts
-            fi
-            exit "$status"
+            bash -c 'gradle :app:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists; status=$?; if [ "$status" -ne 0 ]; then bash scripts/collect-smoke-artifacts.sh smoke-quick-failure-artifacts; fi; exit "$status"'
 
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -200,23 +193,17 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The action runs each script line in its own shell, so the credentials are
+      # passed as step env instead of being exported inside the script.
       - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
           script: |
-            set +e
-            export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
-            export SMOKE_TEST_PASSWORD="${{ secrets.SMOKE_TEST_PASSWORD }}"
-            gradle :app:connectedDebugAndroidTest --no-daemon \
-              -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" \
-              -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders
-            status=$?
-            if [ "$status" -ne 0 ]; then
-              bash scripts/collect-smoke-artifacts.sh smoke-subset-failure-artifacts
-            fi
-            exit "$status"
+            bash -c 'gradle :app:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.smokeEmail="$SMOKE_TEST_EMAIL" -Pandroid.testInstrumentationRunnerArguments.smokePassword="$SMOKE_TEST_PASSWORD" -Pandroid.testInstrumentationRunnerArguments.class=com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders; status=$?; if [ "$status" -ne 0 ]; then bash scripts/collect-smoke-artifacts.sh smoke-subset-failure-artifacts; fi; exit "$status"'
 
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -271,21 +258,17 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The action runs each script line in its own shell, so the credentials are
+      # passed as step env instead of being exported inside the script.
       - uses: reactivecircus/android-emulator-runner@v2
         if: steps.creds.outputs.available == 'true'
+        env:
+          SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+          SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
-          script: |
-            set +e
-            export SMOKE_TEST_EMAIL="${{ secrets.SMOKE_TEST_EMAIL }}"
-            export SMOKE_TEST_PASSWORD="${{ secrets.SMOKE_TEST_PASSWORD }}"
-            bash scripts/run-smoke-tests.sh
-            status=$?
-            if [ "$status" -ne 0 ]; then
-              bash scripts/collect-smoke-artifacts.sh optional-smoke-artifacts
-            fi
-            exit "$status"
+          script: bash scripts/run-smoke-tests.sh
 
       - uses: actions/upload-artifact@v7
         if: failure() && steps.creds.outputs.available == 'true'
