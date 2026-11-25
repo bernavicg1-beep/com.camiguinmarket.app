@@ -36,6 +36,64 @@ function json(body, status = 200) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Best-effort in-isolate rate limiting. Cloudflare Rate Limiting rules are the
+// stronger layer; this protects against runaway clients and accidental loops.
+// State is per isolate (and per test env's worker instance is shared, so tests
+// call resetRateLimits() between cases).
+// ---------------------------------------------------------------------------
+const RATE_LIMIT_BUCKETS = new Map();
+
+export function resetRateLimits() {
+  RATE_LIMIT_BUCKETS.clear();
+}
+
+function checkRateLimit(key, limit, windowMs) {
+  const buckets = RATE_LIMIT_BUCKETS;
+  const now = Date.now();
+  const bucket = buckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    buckets.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: limit - 1, retryAfter: 0 };
+  }
+  if (bucket.count >= limit) {
+    return { allowed: false, remaining: 0, retryAfter: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)) };
+  }
+  bucket.count += 1;
+  return { allowed: true, remaining: limit - bucket.count, retryAfter: 0 };
+}
+
+function clientIp(request) {
+  const cf = request.headers.get("CF-Connecting-IP");
+  if (cf) return cf.trim();
+  const xff = request.headers.get("X-Forwarded-For");
+  if (xff) return xff.split(",")[0].trim();
+  return "unknown";
+}
+
+function rateLimitedResponse(retryAfter) {
+  return new Response(JSON.stringify({ error: "rate_limited" }), {
+    status: 429,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": String(retryAfter || 60),
+      ...CORS,
+    },
+  });
+}
+
+// Rate-limit helper. With uid=null it checks the per-IP bucket (pre-auth);
+// with a uid it checks the per-user bucket (post-auth). Returns a 429
+// Response when exceeded, otherwise null.
+function guardRateLimit(request, scope, uid, uidLimit) {
+  if (uid) {
+    const r = checkRateLimit(`uid:${scope}:${uid}`, uidLimit || 60, 60000);
+    return r.allowed ? null : rateLimitedResponse(r.retryAfter);
+  }
+  const r = checkRateLimit(`ip:${scope}:${clientIp(request)}`, 60, 60000);
+  return r.allowed ? null : rateLimitedResponse(r.retryAfter);
+}
+
 /** Verify the Firebase ID token and return the uid (or null when invalid). */
 async function verifyIdToken(idToken, env) {
   const apiKey = env.FIREBASE_WEB_API_KEY;
@@ -65,12 +123,18 @@ function publicBase(request, env) {
 }
 
 async function handleUpload(request, env) {
+  const ipBlock = guardRateLimit(request, "upload", null);
+  if (ipBlock) return ipBlock;
+
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token) return json({ error: "unauthorized" }, 401);
 
   const uid = await verifyIdToken(token, env);
   if (!uid) return json({ error: "unauthorized" }, 401);
+
+  const uidBlock = guardRateLimit(request, "upload", uid, 60);
+  if (uidBlock) return uidBlock;
 
   const contentType = (request.headers.get("Content-Type") || "")
     .split(";")[0]
@@ -107,12 +171,18 @@ async function handleUpload(request, env) {
  * listing that belongs to someone else.
  */
 async function handleDeleteImages(request, env) {
+  const ipBlock = guardRateLimit(request, "delete", null);
+  if (ipBlock) return ipBlock;
+
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token) return json({ error: "unauthorized" }, 401);
 
   const uid = await verifyIdToken(token, env);
   if (!uid) return json({ error: "unauthorized" }, 401);
+
+  const uidBlock = guardRateLimit(request, "delete", uid, 30);
+  if (uidBlock) return uidBlock;
 
   if (!env.IMAGES) return json({ error: "storage_not_configured" }, 503);
 
@@ -353,6 +423,62 @@ async function deleteToken(sa, token, uid, fcmToken) {
   });
 }
 
+/** Persist the verified Telegram chat id + username on the user document. */
+async function writeTelegramLink(sa, token, uid, chatId, username) {
+  const fields = {};
+  const mask = [];
+  if (chatId !== null && chatId !== undefined) {
+    fields.telegramChatId = { integerValue: String(chatId) };
+    mask.push("telegramChatId");
+  }
+  if (username) {
+    fields.telegramUsername = { stringValue: String(username) };
+    mask.push("telegramUsername");
+  }
+  if (mask.length === 0) return;
+  const qs = mask.map((f) => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join("&");
+  await fetch(`${docUrl(sa, `users/${uid}`)}?${qs}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields }),
+  });
+}
+
+/** Read a user's stored Telegram chat id (or null). */
+async function readTelegramChatId(sa, token, uid) {
+  if (!uid) return null;
+  const doc = await readDoc(sa, token, `users/${uid}`);
+  if (!doc) return null;
+  const v = doc.telegramChatId;
+  return v === null || v === undefined ? null : v;
+}
+
+/** Send a plain-text message through the Telegram Bot API. Best effort. */
+async function sendTelegram(env, chatId, text) {
+  const botToken = env.TELEGRAM_BOT_TOKEN;
+  if (!botToken || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: String(text).slice(0, 4000) }),
+    });
+  } catch {
+    // Network failure: do not throw; Telegram is a secondary channel.
+  }
+}
+
+// Best-effort Telegram notification: looks up the recipient's stored chat id
+// and sends a message. Never throws.
+async function telegramNotify(env, sa, access, uid, text) {
+  try {
+    const chatId = await readTelegramChatId(sa, access, uid);
+    if (chatId) await sendTelegram(env, chatId, text);
+  } catch {
+    // ignore
+  }
+}
+
 /** Send to every device of one user; clean up dead tokens. */
 async function sendToUser(env, sa, token, uid, title, body, data = {}) {
   if (!uid) return 0;
@@ -417,12 +543,18 @@ async function sendToUser(env, sa, token, uid, title, body, data = {}) {
  * stays in place while cross-user notifications still work.
  */
 async function handleNotify(request, env) {
+  const ipBlock = guardRateLimit(request, "notify", null);
+  if (ipBlock) return ipBlock;
+
   const auth = request.headers.get("Authorization") || "";
   const idToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!idToken) return json({ error: "unauthorized" }, 401);
 
   const uid = await verifyIdToken(idToken, env);
   if (!uid) return json({ error: "unauthorized" }, 401);
+
+  const uidBlock = guardRateLimit(request, "notify", uid, 60);
+  if (uidBlock) return uidBlock;
 
   const sa = serviceAccount(env);
   if (!sa) return json({ error: "notify_not_configured" }, 503);
@@ -480,12 +612,18 @@ async function handleNotify(request, env) {
  * client — so a user cannot spam another user.
  */
 async function handlePush(request, env) {
+  const ipBlock = guardRateLimit(request, "push", null);
+  if (ipBlock) return ipBlock;
+
   const auth = request.headers.get("Authorization") || "";
   const idToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!idToken) return json({ error: "unauthorized" }, 401);
 
   const uid = await verifyIdToken(idToken, env);
   if (!uid) return json({ error: "unauthorized" }, 401);
+
+  const uidBlock = guardRateLimit(request, "push", uid, 60);
+  if (uidBlock) return uidBlock;
 
   const sa = serviceAccount(env);
   if (!sa) return json({ error: "push_not_configured" }, 503);
@@ -521,6 +659,7 @@ async function handlePush(request, env) {
     } catch {
       sent = 0;
     }
+    await telegramNotify(env, sa, access, uid, `Saved search 🔔\n${text || "New listings"}`);
     // Always report success so the client does not retry forever; partial
     // delivery is reflected in `sent`.
     return json({ sent }, 200);
@@ -547,6 +686,7 @@ async function handlePush(request, env) {
       text || "Bag-ong mensahe",
       { chatId, type: "chat" },
     );
+    await telegramNotify(env, sa, access, other, `💬 ${names[uid] || "Bag-ong mensahe"}\n${text || "Bag-ong mensahe"}`);
     return json({ sent }, 200);
   }
 
@@ -566,6 +706,7 @@ async function handlePush(request, env) {
       `${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}`,
       { orderId, type: "order" },
     );
+    await telegramNotify(env, sa, access, order.sellerId, `Bag-ong order 🛒\n${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}`);
     return json({ sent }, 200);
   }
 
@@ -584,6 +725,7 @@ async function handlePush(request, env) {
       `${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}`,
       { orderId, type: "order" },
     );
+    await telegramNotify(env, sa, access, order.buyerId, `Order update 📦\n${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}`);
     return json({ sent }, 200);
   }
 
@@ -755,6 +897,9 @@ async function purgeExpiredListings(env) {
 }
 
 async function handleTelegramLogin(request, env, url) {
+  const ipBlock = guardRateLimit(request, "telegram-login", null);
+  if (ipBlock) return ipBlock;
+
   const botUsername = env.TELEGRAM_BOT_USERNAME || "CamiguinMarketBot";
   const token = url.searchParams.get("token") || "";
   const html = `<!doctype html>
@@ -788,11 +933,17 @@ async function handleTelegramLogin(request, env, url) {
 }
 
 async function handleTelegramVerify(request, env) {
+  const ipBlock = guardRateLimit(request, "telegram-verify", null);
+  if (ipBlock) return ipBlock;
+
   const auth = request.headers.get('Authorization') || '';
   const idToken = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   if (!idToken) return json({ error: 'unauthorized' }, 401);
   const uid = await verifyIdToken(idToken, env);
   if (!uid) return json({ error: 'unauthorized' }, 401);
+
+  const uidBlock = guardRateLimit(request, "telegram-verify", uid, 10);
+  if (uidBlock) return uidBlock;
 
   const botToken = env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return json({ error: 'telegram_not_configured' }, 503);
@@ -823,7 +974,17 @@ async function handleTelegramVerify(request, env) {
   }
 
   const username = body.username || body.first_name || '';
-  return json({ ok: true, uid, username });
+  const chatId = body.id;
+
+  // Persist the verified Telegram chat id so the Worker can push alerts
+  // through the Bot API later (best effort; needs the service account).
+  const sa = serviceAccount(env);
+  if (sa) {
+    const access = await accessToken(env);
+    if (access) await writeTelegramLink(sa, access, uid, chatId, username).catch(() => {});
+  }
+
+  return json({ ok: true, uid, username, chatId });
 }
 
 export default {
