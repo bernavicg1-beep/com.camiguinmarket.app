@@ -22,7 +22,23 @@ if [ -n "${ANDROID_SERIAL:-}" ]; then
   ADB=(adb -s "$ANDROID_SERIAL")
 fi
 
-"$GRADLE_BIN" :app:assembleDebug :app:assembleDebugAndroidTest
+# Maven Central intermittently answers 429 (rate limit) for a runner's IP, which
+# fails dependency resolution before the emulator is ever exercised. The build
+# never runs tests, so retrying it cannot hide a test failure.
+build_apks() {
+  "$GRADLE_BIN" :app:assembleDebug :app:assembleDebugAndroidTest
+}
+
+attempt=1
+until build_apks; do
+  if [ "$attempt" -ge 3 ]; then
+    echo "Gradle build failed after $attempt attempts" >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  echo "Gradle build failed - retrying in 20s (attempt $attempt)" >&2
+  sleep 20
+done
 
 "${ADB[@]}" install -r app/build/outputs/apk/debug/app-debug.apk
 "${ADB[@]}" install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
