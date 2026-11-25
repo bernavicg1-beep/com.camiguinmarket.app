@@ -33,25 +33,32 @@ def b64(obj):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def token(uid):
-    """Unsigned JWT that the emulator accepts as a signed-in user."""
+def token(uid, phone=None):
+    """Unsigned JWT that the emulator accepts as a signed-in user.
+
+    `phone` adds the `phone_number` claim Firebase Auth sets after a phone
+    number is verified, so the rules can trust the badge it backs.
+    """
     header = b64({"alg": "none", "typ": "JWT"})
-    payload = b64(
-        {
-            "sub": uid,
-            "user_id": uid,
-            "aud": PROJECT,
-            "iss": f"https://securetoken.google.com/{PROJECT}",
-            "iat": 0,
-            "exp": 9999999999,
-            "auth_time": 0,
-            "firebase": {"sign_in_provider": "password"},
-        }
-    )
+    claims = {
+        "sub": uid,
+        "user_id": uid,
+        "aud": PROJECT,
+        "iss": f"https://securetoken.google.com/{PROJECT}",
+        "iat": 0,
+        "exp": 9999999999,
+        "auth_time": 0,
+        "firebase": {"sign_in_provider": "password"},
+    }
+    if phone:
+        claims["phone_number"] = phone
+        claims["firebase"]["identities"] = {"phone": [phone]}
+    payload = b64(claims)
     return f"{header}.{payload}."
 
 
-def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=None):
+def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=None,
+            phone=None):
     params = []
     if doc_id:
         params.append("documentId=" + doc_id)
@@ -65,7 +72,7 @@ def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
     if uid:
-        req.add_header("Authorization", "Bearer " + token(uid))
+        req.add_header("Authorization", "Bearer " + token(uid, phone))
     try:
         with urllib.request.urlopen(req) as resp:
             return resp.status
@@ -116,8 +123,24 @@ def check(name, method, path, expected, **kwargs):
 
 
 # --- phone number on the user profile ---------------------------------------
-check("owner: save a verified phone number", "PATCH", "/users/u1", 200, uid="u1",
+# The badge is only trusted when the ID token carries the verified
+# `phone_number` claim; a plain client write must not set it.
+check("owner: self-set phoneVerified without a verified phone", "PATCH", "/users/u1", 403,
+      uid="u1",
       body={"fields": {"phone": {"stringValue": "+639171234567"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: set phoneVerified with a verified phone claim", "PATCH", "/users/u1", 200,
+      uid="u1", phone="+639171234567",
+      body={"fields": {"phone": {"stringValue": "+639171234567"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: claim a phone number that was not verified", "PATCH", "/users/u1", 403,
+      uid="u1", phone="+639171234567",
+      body={"fields": {"phone": {"stringValue": "+639000000000"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: keep the verified phone while editing the profile", "PATCH", "/users/u1", 200,
+      uid="u1",
+      body={"fields": {"name": {"stringValue": "Nena"},
+                       "phone": {"stringValue": "+639171234567"},
                        "phoneVerified": {"booleanValue": True}}})
 check("owner: read their own profile document", "GET", "/users/u1", 200, uid="u1")
 check("other: write someone else's phone number", "PATCH", "/users/u1", 403, uid="u2",
@@ -126,6 +149,24 @@ check("other: write someone else's phone number", "PATCH", "/users/u1", 403, uid
 check("owner: store a field the rules do not allow", "PATCH", "/users/u1", 403, uid="u1",
       body={"fields": {"phone": {"stringValue": "+639171234567"},
                        "isAdmin": {"booleanValue": True}}})
+
+# --- checkout idempotency markers -------------------------------------------
+# checkoutCart() reads /checkouts/{id} before writing it; a missing document
+# must be readable (404) rather than denied (403).
+check("checkout: owner can read a missing marker", "GET", "/checkouts/missing-checkout", 404,
+      uid="u1")
+check("checkout: owner can create their marker", "POST", "/checkouts", 200,
+      uid="u1", body={"fields": {"uid": {"stringValue": "u1"}}}, doc_id="checkout-a")
+check("checkout: owner can read their marker", "GET", "/checkouts/checkout-a", 200, uid="u1")
+check("checkout: another user cannot read the marker", "GET", "/checkouts/checkout-a", 403,
+      uid="u2")
+check("checkout: another user cannot create a marker for the owner", "POST", "/checkouts", 403,
+      uid="u2", body={"fields": {"uid": {"stringValue": "u1"}}}, doc_id="checkout-b")
+check("checkout: owner can update their marker", "PATCH", "/checkouts/checkout-a", 200,
+      uid="u1", body={"fields": {"uid": {"stringValue": "u1"}}})
+check("checkout: another user cannot update the marker", "PATCH", "/checkouts/checkout-a", 403,
+      uid="u2", body={"fields": {"uid": {"stringValue": "u2"}}})
+check("checkout: delete is denied", "DELETE", "/checkouts/checkout-a", 403, uid="u1")
 
 # --- anonymous ---------------------------------------------------------------
 check("anon: read the listing list", "GET", "/listings", 403)

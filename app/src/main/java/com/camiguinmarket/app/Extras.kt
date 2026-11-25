@@ -2031,8 +2031,18 @@ fun PhoneVerifySection(uid: String) {
         busy = true
         user.linkWithCredential(credential).addOnCompleteListener { t ->
             if (t.isSuccessful) {
-                saveVerified(user.phoneNumber ?: normalizePhone(phone))
-                info = "Phone number verified ✅"
+                // Refresh the ID token so the verified `phone_number` claim is
+                // present on the Firestore write the rules check.
+                user.getIdToken(true).addOnCompleteListener { tokenTask ->
+                    if (tokenTask.isSuccessful) {
+                        saveVerified(user.phoneNumber ?: normalizePhone(phone))
+                        info = "Phone number verified ✅"
+                    } else {
+                        busy = false
+                        info = tokenTask.exception?.localizedMessage
+                            ?: "Could not refresh the sign-in token."
+                    }
+                }
             } else {
                 busy = false
                 info = t.exception?.localizedMessage ?: "Could not verify this number."
