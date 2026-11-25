@@ -90,6 +90,15 @@ field `active` (boolean) = `true`. There is no UI for this in the app because no
 just anyone should be able to create a moderator; `admins` is blocked by the rules
 (`allow write: if false`).
 
+### Seller verification (admin/community)
+
+Moderators also get **Seller verification** in Profile. It lists sellers
+(searchable by name or uid) with phone-verified / community-verified badges and
+lets the moderator **Verify** or **Revoke** a seller. Sellers can request
+community verification from their own Profile; the request appears under the
+**Requests** tab for approval/rejection. Verification is soft: it never blocks
+posting or buying, it only surfaces trust badges and a low-rating flag.
+
 ### Reporting a listing
 
 The listing detail has **Report this listing** (on other people's listings).
