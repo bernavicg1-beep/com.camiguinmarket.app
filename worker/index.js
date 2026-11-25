@@ -686,7 +686,7 @@ async function handlePush(request, env) {
       text || "Bag-ong mensahe",
       { chatId, type: "chat" },
     );
-    await telegramNotify(env, sa, access, other, `💬 ${names[uid] || "Bag-ong mensahe"}\n${text || "Bag-ong mensahe"}`);
+    await telegramNotify(env, sa, access, other, `💬 ${names[uid] || "Bag-ong mensahe"}\n${text || "Bag-ong mensahe"}\n${publicBase(request, env)}/chat/${chatId}`);
     return json({ sent }, 200);
   }
 
@@ -706,7 +706,7 @@ async function handlePush(request, env) {
       `${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}`,
       { orderId, type: "order" },
     );
-    await telegramNotify(env, sa, access, order.sellerId, `Bag-ong order 🛒\n${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}`);
+    await telegramNotify(env, sa, access, order.sellerId, `Bag-ong order 🛒\n${order.buyerName || "Usa ka buyer"} mi-order: ${order.listingTitle} ×${qty}\n${publicBase(request, env)}/order/${orderId}`);
     return json({ sent }, 200);
   }
 
@@ -725,7 +725,7 @@ async function handlePush(request, env) {
       `${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}`,
       { orderId, type: "order" },
     );
-    await telegramNotify(env, sa, access, order.buyerId, `Order update 📦\n${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}`);
+    await telegramNotify(env, sa, access, order.buyerId, `Order update 📦\n${order.sellerName || "Ang seller"} ${action} ang imong order: ${order.listingTitle}\n${publicBase(request, env)}/order/${orderId}`);
     return json({ sent }, 200);
   }
 
@@ -1049,6 +1049,48 @@ export default {
         return json({ error: "method_not_allowed" }, 405);
       }
       return handleImage(decodeURIComponent(url.pathname.slice(3)), env, request, ctx);
+    }
+
+    // Android App Links: Digital Asset Links file used by the OS to verify
+    // that https://<worker>/listing|order|chat URLs open the Camiguin Market app.
+    if (url.pathname === "/.well-known/assetlinks.json") {
+      return new Response(
+        JSON.stringify([
+          {
+            relation: ["delegate_permission/common.handle_all_urls"],
+            target: {
+              namespace: "android_app",
+              package_name: "com.camiguinmarket.app",
+              sha256_cert_fingerprints: [
+                "C7:3A:F1:15:85:CF:67:95:18:7B:77:6B:46:F8:F3:12:7F:AD:EC:E5:C7:A0:92:05:19:A5:13:97:E7:F6:2A:95",
+              ],
+            },
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json", ...CORS } },
+      );
+    }
+
+    // Deep-link fallback pages: when the app is not installed (or app links
+    // are not yet verified) the browser shows a small page that tries to open
+    // the matching custom scheme (camiguinmarket://...) and links to the store.
+    const deepLinkMatch = url.pathname.match(/^\/(listing|order|chat)\/([^/]+)\/?$/);
+    if (deepLinkMatch) {
+      const kind = deepLinkMatch[1];
+      const id = decodeURIComponent(deepLinkMatch[2]);
+      const scheme = `camiguinmarket://${kind}/${id}`;
+      const html = `<!doctype html><html><head><meta charset="utf-8">` +
+        `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+        `<title>Open in Camiguin Market</title>` +
+        `<meta http-equiv="refresh" content="0;url=${scheme}">` +
+        `</head><body style="font-family:sans-serif;text-align:center;padding:24px">` +
+        `<h2>Opening Camiguin Market…</h2>` +
+        `<p>If nothing happens, <a href="${scheme}">tap here</a>.</p>` +
+        `</body></html>`;
+      return new Response(html, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
     }
 
     return json({ error: "not_found" }, 404);
