@@ -1,9 +1,14 @@
 name: Apply trust layer files
 
 # One-shot helper: the contents API truncated the large trust-layer sources,
-# so this job rebuilds them from origin/main plus the checked-in patches.
+# so this job rebuilds them from origin/main plus the checked-in patches, then
+# removes itself and the patches in the same commit.
 on:
-  workflow_dispatch:
+  push:
+    branches: [feature/trust-layer]
+    paths:
+      - '.github/patches/**'
+      - '.github/workflows/apply-trust-layer.yml'
 
 permissions:
   contents: write
@@ -20,6 +25,10 @@ jobs:
       - name: Rebuild sources from main + patches
         run: |
           set -euo pipefail
+          if [ ! -d .github/patches ]; then
+            echo "patches already applied; nothing to do"
+            exit 0
+          fi
           git fetch origin main
           git checkout origin/main -- \
             worker/index.js \
@@ -44,11 +53,13 @@ jobs:
             app/src/main/java/com/camiguinmarket/app/Trust.kt \
             app/src/main/java/com/camiguinmarket/app/Moderation.kt
 
-      - name: Commit and push
+      - name: Commit, push and clean up
         run: |
           set -euo pipefail
           git config user.name "bernavicg1-beep"
           git config user.email "bernavicg1-beep@users.noreply.github.com"
+          git rm -r --quiet .github/patches
+          git rm --quiet .github/workflows/apply-trust-layer.yml
           git add -A
           git diff --cached --stat
           git commit -m "Restore trust-layer sources truncated by the contents API"
