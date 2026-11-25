@@ -65,18 +65,48 @@
             android:exported="true"
             android:launchMode="singleTop">
 
-            <!-- Deep link for a shared listing (camiguinmarket://listing/{id}). -->
+            <!-- Deep links for notification taps (camiguinmarket://listing|order|chat/{id}). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="camiguinmarket" android:host="listing" android:pathPrefix="/" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="camiguinmarket" android:host="order" android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="camiguinmarket" android:host="chat" android:pathPrefix="/" />
+            </intent-filter>
+
+            <!-- Android App Links (verified HTTPS) for notification taps.
+                 Requires /.well-known/assetlinks.json on the worker origin
+                 with the release keystore SHA-256 fingerprint. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="camiguin-market-images.bernavicg1.workers.dev" android:pathPrefix="/listing/" />
+                <data android:scheme="https" android:host="camiguin-market-images.bernavicg1.workers.dev" android:pathPrefix="/order/" />
+                <data android:scheme="https" android:host="camiguin-market-images.bernavicg1.workers.dev" android:pathPrefix="/chat/" />
+            </intent-filter>
 
             <!-- Developer attribution. -->
             <meta-data
                 android:name="dev.credits"
                 android:value="Bernavic Gamo" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="camiguinmarket" android:host="listing" android:pathPrefix="/" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
