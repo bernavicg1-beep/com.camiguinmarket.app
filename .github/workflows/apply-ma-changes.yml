@@ -15,8 +15,8 @@ jobs:
         run: |
           python3 -c "
           import base64
-          s = base64.b64decode('PLACEHOLDER')
-          open('/tmp/apply_ma.py','wb').write(s)
+          data = base64.b64decode('PLACEHOLDER')
+          open('/tmp/apply_ma.py','wb').write(data)
           "
           python3 /tmp/apply_ma.py
           git config user.name "github-actions[bot]"
