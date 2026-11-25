@@ -1,0 +1,46 @@
+name: Apply trust layer files
+
+# One-shot helper: the contents API truncated the large trust-layer sources,
+# so this job applies the checked-in patches and then removes itself.
+on:
+  push:
+    branches: [feature/trust-layer]
+    paths:
+      - '.github/patches/**'
+      - '.github/workflows/apply-trust-layer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/trust-layer
+          fetch-depth: 0
+
+      - name: Apply patches
+        run: |
+          set -euo pipefail
+          if [ ! -d .github/patches ]; then
+            echo "patches already applied; nothing to do"
+            exit 0
+          fi
+          for p in .github/patches/*.patch; do
+            echo "applying $p"
+            git apply -p1 --verbose "$p"
+          done
+
+      - name: Commit, push and clean up
+        run: |
+          set -euo pipefail
+          git config user.name "bernavicg1-beep"
+          git config user.email "bernavicg1-beep@users.noreply.github.com"
+          git rm -r --quiet .github/patches
+          git rm --quiet .github/workflows/apply-trust-layer.yml
+          git add -A
+          git diff --cached --stat
+          git commit -m "Add missing Security icon import in Extras.kt"
+          git push origin HEAD:refs/heads/feature/trust-layer

@@ -1,0 +1,12 @@
+diff --git a/app/src/main/java/com/camiguinmarket/app/Extras.kt b/app/src/main/java/com/camiguinmarket/app/Extras.kt
+index eb09e60..6832f22 100644
+--- a/app/src/main/java/com/camiguinmarket/app/Extras.kt
++++ b/app/src/main/java/com/camiguinmarket/app/Extras.kt
+@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.ReceiptLong
+ import androidx.compose.material.icons.filled.Remove
+ import androidx.compose.material.icons.filled.Restaurant
+ import androidx.compose.material.icons.filled.Search
++import androidx.compose.material.icons.filled.Security
+ import androidx.compose.material.icons.filled.Send
+ import androidx.compose.material.icons.filled.ShoppingCart
+ import androidx.compose.material.icons.filled.Storefront
