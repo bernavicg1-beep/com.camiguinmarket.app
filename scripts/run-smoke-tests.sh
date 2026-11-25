@@ -51,13 +51,26 @@ if [ -n "${SMOKE_TEST_CLASSES:-}" ]; then
   MATCH_ARGS=(-e class "$SMOKE_TEST_CLASSES")
 fi
 
+INSTRUMENTATION_LOG="$(mktemp)"
 set +e
 "${ADB[@]}" shell am instrument -w -r "${MATCH_ARGS[@]}" \
   -e smokeEmail "$SMOKE_TEST_EMAIL" \
   -e smokePassword "$SMOKE_TEST_PASSWORD" \
-  com.camiguinmarket.app.test/androidx.test.runner.AndroidJUnitRunner
-status=$?
+  com.camiguinmarket.app.test/androidx.test.runner.AndroidJUnitRunner | tee "$INSTRUMENTATION_LOG"
+status=${PIPESTATUS[0]}
 set -e
+
+# `am instrument -r` exits 0 even when tests fail, so the verdict has to come
+# from the raw status stream: -2 is a failed test, -4 a skipped one.
+if grep -q 'INSTRUMENTATION_STATUS_CODE: -2' "$INSTRUMENTATION_LOG"; then
+  echo "At least one smoke test failed." >&2
+  status=1
+fi
+if ! grep -q 'INSTRUMENTATION_CODE:' "$INSTRUMENTATION_LOG"; then
+  echo "The instrumentation run never reported a result." >&2
+  status=1
+fi
+rm -f "$INSTRUMENTATION_LOG"
 
 if [ "$status" -ne 0 ]; then
   bash "$(dirname "$0")/collect-smoke-artifacts.sh" smoke-failure-artifacts || true
