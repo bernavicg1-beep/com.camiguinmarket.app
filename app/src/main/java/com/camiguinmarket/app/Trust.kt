@@ -128,10 +128,11 @@ data class SellerReputation(
 fun loadSellerReputation(db: FirebaseFirestore, sellerId: String): State<SellerReputation> {
     val state = remember(sellerId) { mutableStateOf(SellerReputation(sellerId = sellerId)) }
     DisposableEffect(sellerId) {
+        if (sellerId.isBlank()) { onDispose { }; return@DisposableEffect }
         val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
             .addSnapshotListener { snap, _ ->
                 val ratings = snap?.documents.orEmpty()
-                    .mapNotNull { it.getDouble("stars")?.toFloat() }
+                    .mapNotNull { it.getLong("rating")?.toFloat() }
                 state.value = SellerReputation(
                     sellerId = sellerId,
                     average = if (ratings.isEmpty()) 0f else ratings.average().toFloat(),
@@ -200,6 +201,85 @@ fun BlockedSellersScreen(uid: String, onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Seller verification (phone + community/admin)
+// ---------------------------------------------------------------------------
+
+/**
+ * Trust signals read from `users/{sellerId}`: phone verification (self-service
+ * via SMS) and community/admin verification. Both are optional and default to
+ * false when the field is missing.
+ */
+data class SellerVerification(
+    val phoneVerified: Boolean = false,
+    val verified: Boolean = false,
+    val verifiedBy: String = "",
+    val verifiedAt: Long = 0L
+) {
+    /** True when at least one verification signal is present. */
+    val anyVerified: Boolean get() = phoneVerified || verified
+}
+
+@Composable
+fun loadSellerVerification(db: FirebaseFirestore, sellerId: String): State<SellerVerification> {
+    val state = remember(sellerId) { mutableStateOf(SellerVerification()) }
+    DisposableEffect(sellerId) {
+        if (sellerId.isBlank()) {
+            return@DisposableEffect onDispose { }
+        }
+        val reg = db.collection("users").document(sellerId)
+            .addSnapshotListener { snap, _ ->
+                state.value = SellerVerification(
+                    phoneVerified = snap?.getBoolean("phoneVerified") ?: false,
+                    verified = snap?.getBoolean("verified") ?: false,
+                    verifiedBy = snap?.getString("verifiedBy") ?: "",
+                    verifiedAt = snap?.getLong("verifiedAt") ?: 0L
+                )
+            }
+        onDispose { reg.remove() }
+    }
+    return state
+}
+
+/**
+ * Small badge row: a phone-verified chip and/or a community-verified chip.
+ * Use `compact = true` on listing cards (icon-only) and the full labels in
+ * dialogs. Renders nothing when neither signal is present.
+ */
+@Composable
+fun VerifiedBadge(
+    phoneVerified: Boolean,
+    verified: Boolean,
+    compact: Boolean = false
+) {
+    val S = LocalStrings.current
+    if (!phoneVerified && !verified) return
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (phoneVerified) {
+            SuggestionChip(
+                onClick = {},
+                label = {
+                    Text(
+                        if (compact) "📱" else S.phoneVerified,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            )
+        }
+        if (verified) {
+            SuggestionChip(
+                onClick = {},
+                label = {
+                    Text(
+                        if (compact) "✓" else S.verified,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            )
         }
     }
 }
