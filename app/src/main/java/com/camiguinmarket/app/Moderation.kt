@@ -169,6 +169,7 @@ fun ModerationScreen(uid: String, isAdmin: Boolean) {
 /** Report list; only an admin can see it (rules: `allow read: if isAdmin()`). */
 @Composable
 fun ReportsList(uid: String) {
+    val S = LocalStrings.current
     val db = remember { FirebaseFirestore.getInstance() }
     var reports by remember { mutableStateOf<List<Report>>(emptyList()) }
 

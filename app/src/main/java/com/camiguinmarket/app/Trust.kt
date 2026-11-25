@@ -128,18 +128,21 @@ data class SellerReputation(
 fun loadSellerReputation(db: FirebaseFirestore, sellerId: String): State<SellerReputation> {
     val state = remember(sellerId) { mutableStateOf(SellerReputation(sellerId = sellerId)) }
     DisposableEffect(sellerId) {
-        if (sellerId.isBlank()) { onDispose { }; return@DisposableEffect }
-        val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
-            .addSnapshotListener { snap, _ ->
-                val ratings = snap?.documents.orEmpty()
-                    .mapNotNull { it.getLong("rating")?.toFloat() }
-                state.value = SellerReputation(
-                    sellerId = sellerId,
-                    average = if (ratings.isEmpty()) 0f else ratings.average().toFloat(),
-                    count = ratings.size
-                )
-            }
-        onDispose { reg.remove() }
+        if (sellerId.isBlank()) {
+            onDispose { }
+        } else {
+            val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
+                .addSnapshotListener { snap, _ ->
+                    val ratings = snap?.documents.orEmpty()
+                        .mapNotNull { it.getLong("rating")?.toFloat() }
+                    state.value = SellerReputation(
+                        sellerId = sellerId,
+                        average = if (ratings.isEmpty()) 0f else ratings.average().toFloat(),
+                        count = ratings.size
+                    )
+                }
+            onDispose { reg.remove() }
+        }
     }
     return state
 }

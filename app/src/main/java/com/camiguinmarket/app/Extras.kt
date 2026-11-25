@@ -1158,6 +1158,28 @@ fun ListingCard(
                         color = BrandBlue
                     )
                 }
+                if (listing.sellerName.isNotBlank()) {
+                    val db = remember { FirebaseFirestore.getInstance() }
+                    val verification = loadSellerVerification(db, listing.sellerId)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            listing.sellerName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = BrandMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedBadge(
+                            phoneVerified = verification.value.phoneVerified,
+                            verified = verification.value.verified,
+                            compact = true
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        SellerRatingSummary(listing.sellerId)
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Button(
                     onClick = onAddToCart,
@@ -1785,6 +1807,7 @@ fun ProfileScreen(
     onSavedSearches: () -> Unit,
     onListingStats: () -> Unit,
     onBlocked: () -> Unit = {},
+    onVerification: () -> Unit = {},
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -1820,6 +1843,8 @@ fun ProfileScreen(
         Text(email, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
         PhoneVerifySection(uid)
+        Spacer(Modifier.height(12.dp))
+        RequestVerificationSection(uid)
         Spacer(Modifier.height(12.dp))
         ContactLinksSection(uid)
         Spacer(Modifier.height(16.dp))
@@ -1861,6 +1886,8 @@ fun ProfileScreen(
                 if (isAdmin) {
                     ProfileDivider()
                     ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
+                    ProfileDivider()
+                    ProfileRow(Icons.Filled.Security, S.adminVerification, onVerification)
                 }
             }
         }
