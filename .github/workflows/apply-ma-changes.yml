@@ -13,7 +13,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Apply changes
         run: |
-          echo 'PLACEHOLDER_B64' | base64 -d > /tmp/apply_ma.py
+          python3 -c "
+          import base64
+          s = base64.b64decode('PLACEHOLDER')
+          open('/tmp/apply_ma.py','wb').write(s)
+          "
           python3 /tmp/apply_ma.py
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
