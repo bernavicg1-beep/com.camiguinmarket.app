@@ -28,14 +28,16 @@ jobs:
             echo "applying $p"
             git apply -p1 --verbose "$p"
           done
+          # Workflow files are updated through the API: the Actions token
+          # cannot push changes under .github/workflows.
+          git checkout -- .github/workflows/adb-smoke-test.yml
 
-      - name: Commit, push and clean up
+      - name: Commit and push the non-workflow changes
         run: |
           set -euo pipefail
           git config user.name "bernavicg1-beep"
           git config user.email "bernavicg1-beep@users.noreply.github.com"
           git rm -r --quiet .github/patches
-          git rm --quiet .github/workflows/apply-rules-fix.yml
           git add -A
           git diff --cached --stat
           git commit -m "Fix checkout reads, gate phoneVerified on a verified phone, and run emulator tests on x86_64"
