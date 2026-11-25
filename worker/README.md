@@ -64,8 +64,11 @@ on the deployed Worker and are untouched by a deploy.
 | `POST` | `/upload` | `Authorization: Bearer <Firebase ID token>` | Upload a photo (image only, under 5 MB). Returns `{ "url": "…" }` |
 | `POST` | `/delete-images` | `Authorization: Bearer <Firebase ID token>` | Delete the caller's own photos (`{ "urls": [...] }`). Returns `{ "deleted": n, "skipped": n }` |
 | `GET` | `/i/<key>` | none | Serve a photo from R2 (long cache) |
-| `POST` | `/push` | `Authorization: Bearer <Firebase ID token>` | Send an FCM push (`kind`: `order`, `status`, `chat`). Returns `{ "sent": n }` |
-| `GET` | `/health` | none | `{ "ok": true, "bucket": true, "push": true }` |
+| `POST` | `/push` | `Authorization: Bearer <Firebase ID token>` | Send an FCM push (`kind`: `order`, `status`, `chat`, `saved`). Returns `{ "sent": n }`. Also sends a Telegram message when the recipient has a connected account |
+| `POST` | `/notify` | `Authorization: Bearer <Firebase ID token>` | Write a cross-user notification document to the recipient's inbox (`{ toUid, fromUid, fromName, message, listingId?, listingTitle? }`) |
+| `GET` | `/telegram/login` | `Authorization: Bearer <Firebase ID token>` (via `?token=`) | Serve the Telegram Login Widget page |
+| `POST` | `/telegram/verify` | `Authorization: Bearer <Firebase ID token>` | Verify the Telegram widget payload (HMAC-SHA256 over sorted fields). Persists `telegramChatId`/`telegramUsername` on `users/{uid}` |
+| `GET` | `/health` | none | `{ "ok": true, "images": true, "bucket": true, "push": true, "telegram": true }` |
 | cron | `*/15 * * * *` | — | Delete expired perishable listings |
 
 The key has the form `listing_images/{uid}/{timestamp}-{random}.{jpg|png|webp}` —
@@ -103,6 +106,17 @@ failed document delete keeps its photos for the next run, that R2 failures are
 counted without stopping the run, batching (a full batch fetches again, a short
 one stops), and the no-service-account case where nothing is touched.
 
+`test/telegram.test.js` covers `GET /telegram/login` and `POST /telegram/verify`:
+missing auth, missing hash, valid signature, tampered payload, expired
+`auth_date`, bad JSON, wrong method, and the per-uid rate limit.
+
+`test/telegram-notify.test.js` covers the secondary Telegram send on
+`POST /push` (saved/chat/order/status) when the recipient has a stored chat id,
+and the skip when absent.
+
+`test/telegram-persist.test.js` covers persistence of `telegramChatId` /
+`telegramUsername` on `/telegram/verify` with and without a service account.
+
 Every network call is stubbed, so the suite needs no credentials, no emulator,
 and runs in CI (`.github/workflows/worker-test.yml`).
 
@@ -135,6 +149,41 @@ curl https://<worker>/health                   # "push": true
 The service account needs the **Firebase Admin SDK / Firebase Cloud Messaging API**
 and **Cloud Firestore API** enabled, plus the `Firebase Admin SDK Administrator
 Service Agent` role. No Blaze plan or Firebase Functions required.
+
+## Telegram connect + notifications
+
+`GET /telegram/login` serves a small HTML page embedding the Telegram Login
+Widget. The app opens it in a WebView with a Firebase ID token in `?token=`;
+the widget calls back into `window.Android.onVerified(username)` on success,
+and the page also POSTs the full Telegram user object to `/telegram/verify`.
+
+`POST /telegram/verify` recomputes `HMAC-SHA256` over the sorted
+`key=value` fields (secret key = `SHA-256` of `TELEGRAM_BOT_TOKEN`) and
+compares it to `hash`; tampered or expired (`auth_date` older than 24 h)
+payloads are rejected. On success it persists `telegramChatId` and
+`telegramUsername` on `users/{uid}` (best effort, needs the service account).
+
+When a recipient has a stored `telegramChatId`, every `POST /push` call also
+sends a plain-text message through the Bot API as a secondary channel (in
+addition to FCM). Telegram delivery is best effort and never blocks the
+response.
+
+Requires the `TELEGRAM_BOT_TOKEN` secret and a bot domain set in BotFather
+pointing at the Worker origin.
+
+## Rate limiting
+
+Best-effort in-isolate fixed-window limits (per IP pre-auth, per uid post-auth):
+
+- `/upload`: 60/min each
+- `/delete-images`: 60/min IP, 30/min uid
+- `/push`, `/notify`: 60/min each
+- `/telegram/login`: 30/min IP
+- `/telegram/verify`: 30/min IP, 10/min uid
+
+Exceeded requests get `429` with a `Retry-After` header. State is per isolate,
+so Cloudflare Rate Limiting rules remain the stronger layer for cross-isolate
+enforcement.
 
 ## Expired perishable listings (cron)
 
