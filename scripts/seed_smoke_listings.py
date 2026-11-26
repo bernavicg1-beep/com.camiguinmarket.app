@@ -155,9 +155,11 @@ def seed(token: str, project: str) -> int:
         # Slightly increasing timestamps keep the order deterministic.
         payload = {"fields": fields_for(spec, now_ms + index)}
         with request(token, url, "PATCH", payload) as resp:
-            resp.read()
-        print(f"seeded listings/{doc_id}")
-    print(f"Seeded {len(LISTINGS)} listings for seller {SELLER_ID}.")
+            document = json.load(resp)
+        # The document name carries the project and database actually written to,
+        # which is what makes a "seeded but invisible" run diagnosable.
+        print(f"seeded {document.get('name', url)}")
+    print(f"Seeded {len(LISTINGS)} listings for seller {SELLER_ID} in project {project}.")
     return 0
 
 
