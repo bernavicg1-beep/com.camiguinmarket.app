@@ -46,6 +46,10 @@ CATEGORY = "Food"
 _RAW_SUFFIX = os.environ.get("SMOKE_SEED_SUFFIX", "")
 SUFFIX = re.sub(r"[^a-z0-9]+", "-", _RAW_SUFFIX.strip().lower()).strip("-")[:24]
 SELLER_ID = f"smoke-seed-seller-{SUFFIX}" if SUFFIX else "smoke-seed-seller"
+# Every smoke seller shares this prefix, which is what the cleanup sweep uses.
+STALE_SELLER_PREFIX = "smoke-seed-seller"
+# Seeds older than this were left behind by a run that never reached cleanup.
+STALE_AFTER_MS = 2 * 60 * 60 * 1000
 
 # Fixed document ids keep re-runs idempotent: seeding overwrites, cleanup
 # deletes exactly these. The coordinates sit around Mambajao so a location fix
@@ -222,6 +226,52 @@ def delete_doc(token: str, url: str) -> None:
             raise
 
 
+def delete_stale_seeds(token: str, base: str) -> None:
+    """Removes smoke listings left behind by earlier runs or cancelled jobs.
+
+    Every run seeds under its own suffix, so a run that never reached cleanup
+    would otherwise leave its documents in the project forever.
+    """
+    query = {
+        "structuredQuery": {
+            "from": [{"collectionId": "listings"}],
+            "where": {
+                "compositeFilter": {
+                    "op": "AND",
+                    "filters": [
+                        {"fieldFilter": {"field": {"fieldPath": "sellerId"},
+                                         "op": "GREATER_THAN_OR_EQUAL",
+                                         "value": {"stringValue": STALE_SELLER_PREFIX}}},
+                        {"fieldFilter": {"field": {"fieldPath": "sellerId"},
+                                         "op": "LESS_THAN_OR_EQUAL",
+                                         "value": {"stringValue": STALE_SELLER_PREFIX + "\uf8ff"}}},
+                    ],
+                }
+            },
+            "limit": 100,
+        }
+    }
+    try:
+        with request(token, f"{base}:runQuery", "POST", query) as resp:
+            rows = json.load(resp)
+    except (urllib.error.HTTPError, urllib.error.URLError) as err:
+        print(f"::warning::Could not sweep stale smoke listings: {err}")
+        return
+    # Only old documents: parallel jobs' seeds are minutes old and still in use.
+    cutoff = int(time.time() * 1000) - STALE_AFTER_MS
+    removed = 0
+    for row in rows:
+        document = row.get("document") or {}
+        fields = document.get("fields") or {}
+        title = (fields.get("title") or {}).get("stringValue") or ""
+        created = int((fields.get("createdAt") or {}).get("integerValue") or 0)
+        if document.get("name") and title.startswith(TITLE_PREFIX) and 0 < created < cutoff:
+            delete_doc(token, f"https://firestore.googleapis.com/v1/{document['name']}")
+            removed += 1
+    if removed:
+        print(f"Removed {removed} stale smoke listing(s) from earlier runs.")
+
+
 def cleanup(token: str, project: str) -> int:
     base = FIRESTORE.format(project=project)
     for name in LISTINGS:
@@ -229,13 +279,16 @@ def cleanup(token: str, project: str) -> int:
         delete_doc(token, f"{base}/listings/{identifier}")
         print(f"removed listings/{identifier}")
 
+    delete_stale_seeds(token, base)
+
     # Orders written by the cart test point at the seeded listings; remove them
     # so repeated runs do not accumulate junk in the project.
     query = {"structuredQuery": {"from": [{"collectionId": "orders"}],
                                  "where": {"fieldFilter": {
                                      "field": {"fieldPath": "sellerId"},
                                      "op": "EQUAL",
-                                     "value": {"stringValue": SELLER_ID}}}}}
+                                     "value": {"stringValue": SELLER_ID}}}},
+             "limit": 100}
     try:
         with request(token, f"{base}:runQuery", "POST", query) as resp:
             rows = json.load(resp)
