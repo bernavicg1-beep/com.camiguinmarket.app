@@ -221,12 +221,10 @@ class SmokeTest {
             awaitSeed()
         )
 
-        // Several seeded cards share the prefix, so open the first match.
-        composeRule.onAllNodesWithText(SEED_PREFIX, substring = true)
-            .onFirst().performClick()
-        composeRule.waitUntil(15_000) {
-            composeRule.onAllNodesWithText("↗").fetchSemanticsNodes().isNotEmpty()
-        }
+        assertTrue(
+            "Seeded listing detail did not open: ${screenSummary()}",
+            openFirstSeedDetail()
+        )
         composeRule.onNodeWithText("↗").performClick()
 
         composeRule.waitUntil(30_000) { shareFiles().isNotEmpty() }
@@ -306,12 +304,9 @@ class SmokeTest {
                 listingDiagnostics(),
             awaitSeed()
         )
-        // Several seeded cards share the prefix, so open the first match.
-        composeRule.onAllNodesWithText(SEED_PREFIX, substring = true)
-            .onFirst().performClick()
         assertTrue(
             "Seeded listing has no add-to-cart action: ${screenSummary()}",
-            awaitCondition(15_000) { hasText("Add to cart", substring = true) }
+            openFirstSeedDetail()
         )
         composeRule.onNodeWithText("Add to cart", substring = true).performClick()
 
@@ -405,6 +400,38 @@ class SmokeTest {
             }
         }
         return runCatching { seedVisible() }.getOrDefault(false)
+    }
+
+    /**
+     * Opens the first seeded listing's detail and waits for its add-to-cart.
+     *
+     * The feed is often still settling right after the scroll that revealed the
+     * card, and a tap whose centre sits under the sticky search bar never reaches
+     * the card, so the card is scrolled into view and the tap is retried.
+     */
+    private fun openFirstSeedDetail(timeoutMs: Long = 20_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var attempt = 0
+        while (System.currentTimeMillis() < deadline && attempt < 4) {
+            if (!seedVisible() && !awaitSeed(5_000)) return false
+            // The merged card node is clickable as a whole, but its centre can sit
+            // on the card's own button; the unmerged title is a plain node inside
+            // the card, so alternating between them covers both layouts.
+            val unmerged = attempt % 2 == 0
+            val node = runCatching {
+                composeRule.onAllNodesWithText(
+                    SEED_PREFIX,
+                    substring = true,
+                    useUnmergedTree = unmerged
+                ).onFirst()
+            }.getOrNull() ?: continue
+            attempt += 1
+            runCatching { node.performScrollTo() }
+            composeRule.waitForIdle()
+            runCatching { node.performClick() }
+            if (awaitCondition(6_000) { hasText("Add to cart", substring = true) }) return true
+        }
+        return false
     }
 
     /**
