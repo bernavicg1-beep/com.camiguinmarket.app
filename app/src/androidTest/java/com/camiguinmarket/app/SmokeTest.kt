@@ -148,7 +148,8 @@ class SmokeTest {
 
         try {
             assertTrue(
-                "Seeded listings never appeared on Home: ${screenSummary()}",
+                "Seeded listings never appeared on Home: ${screenSummary()} | " +
+                    listingDiagnostics(),
                 awaitSeed()
             )
 
@@ -181,7 +182,7 @@ class SmokeTest {
         // The cache is written from the feed, and the file exists even when the
         // feed was empty, so a listing must be on screen before going offline.
         assertTrue(
-            "No seeded listing to cache: ${screenSummary()}",
+            "No seeded listing to cache: ${screenSummary()} | " + listingDiagnostics(),
             awaitSeed()
         )
 
@@ -216,7 +217,7 @@ class SmokeTest {
         openHome()
         shareFiles().forEach { it.delete() }
         assertTrue(
-            "No seeded listing to share: ${screenSummary()}",
+            "No seeded listing to share: ${screenSummary()} | " + listingDiagnostics(),
             awaitSeed()
         )
 
@@ -301,7 +302,8 @@ class SmokeTest {
 
         openHome()
         assertTrue(
-            "Seeded listing did not appear on Home: ${screenSummary()}",
+            "Seeded listing did not appear on Home: ${screenSummary()} | " +
+                listingDiagnostics(),
             awaitSeed()
         )
         // Several seeded cards share the prefix, so open the first match.
@@ -405,6 +407,23 @@ class SmokeTest {
         return runCatching { seedVisible() }.getOrDefault(false)
     }
 
+    /**
+     * What the signed-in SDK itself sees, so a "seeded but not on screen" failure
+     * says whether the data is missing, denied, or a UI problem.
+     */
+    private fun listingDiagnostics(): String = runCatching {
+        val db = FirebaseFirestore.getInstance()
+        val query = db.collection("listings")
+            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+        val snap = Tasks.await(query.get(), 25, TimeUnit.SECONDS)
+        val titles = snap.documents.take(3).map { it.getString("title") }
+        "project=${db.app.options.projectId} serverListings=${snap.size()} titles=$titles"
+    }.getOrElse {
+        val project = runCatching { FirebaseFirestore.getInstance().app.options.projectId }
+            .getOrDefault("?")
+        "project=$project listingsError=${it::class.simpleName}: ${it.message}"
+    }
+
     /** Node counts for the labels under test, quoted in failure messages. */
     private fun screenSummary(): String =
         listOf("Home", "Cart", "Profile", "Orders", "Add to cart", "Checkout", "Sell")
@@ -414,7 +433,7 @@ class SmokeTest {
                         .fetchSemanticsNodes().size
                 }.getOrDefault(-1)
                 "$label=$count"
-            }
+            } + " offline=${hasText("Offline", substring = true)}"
 
     private fun openHome() {
         composeRule.onNodeWithText("Home").performClick()
