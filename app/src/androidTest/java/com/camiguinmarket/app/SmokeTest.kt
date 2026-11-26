@@ -213,7 +213,7 @@ class SmokeTest {
     }
 
     @Test
-    fun shareCardCreatesSquarePng() {
+    fun shareCardCreatesPng() {
         openHome()
         shareFiles().forEach { it.delete() }
         assertTrue(
@@ -232,8 +232,9 @@ class SmokeTest {
         assertNotNull("Share card was not written to the app cache", file)
         val bitmap = BitmapFactory.decodeFile(file!!.absolutePath)
         assertNotNull("Share card is not a readable image", bitmap)
-        assertEquals(1080, bitmap!!.width)
-        assertEquals(1080, bitmap.height)
+        // renderShareCard draws a 1080x1350 story-sized card.
+        assertEquals("Share card width", 1080, bitmap!!.width)
+        assertEquals("Share card height", 1350, bitmap.height)
     }
 
     @Test
@@ -407,13 +408,17 @@ class SmokeTest {
      *
      * The feed is often still settling right after the scroll that revealed the
      * card, and a tap whose centre sits under the sticky search bar never reaches
-     * the card, so the card is scrolled into view and the tap is retried.
+     * the card, so the feed is returned to the top and the tap is retried.
      */
     private fun openFirstSeedDetail(timeoutMs: Long = 20_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         var attempt = 0
         while (System.currentTimeMillis() < deadline && attempt < 4) {
             if (!seedVisible() && !awaitSeed(5_000)) return false
+            // The seeds are the newest listings, so they sit at the top of the
+            // feed — partly under the sticky search bar. Start from the top so
+            // the tap lands on the card and not on the header.
+            scrollFeedToTop()
             // The merged card node is clickable as a whole, but its centre can sit
             // on the card's own button; the unmerged title is a plain node inside
             // the card, so alternating between them covers both layouts.
@@ -432,6 +437,20 @@ class SmokeTest {
             if (awaitCondition(6_000) { hasText("Add to cart", substring = true) }) return true
         }
         return false
+    }
+
+    /** Scrolls the home feed back to its first card. */
+    private fun scrollFeedToTop() {
+        repeat(3) {
+            device.swipe(
+                device.displayWidth / 2,
+                device.displayHeight / 4,
+                device.displayWidth / 2,
+                device.displayHeight * 3 / 4,
+                15
+            )
+        }
+        composeRule.waitForIdle()
     }
 
     /**
