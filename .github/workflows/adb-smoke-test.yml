@@ -67,9 +67,11 @@ jobs:
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
-        run: |
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |-
           test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
           test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
+          test -n "$FIREBASE_SERVICE_ACCOUNT" || { echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set (needed to seed smoke listings)"; exit 1; }
 
       # The runner user cannot read /dev/kvm by default, and the emulator action
       # silently falls back to -accel off, which emulator 37 refuses to start
@@ -79,6 +81,14 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
+      # so the test account gets a real "Add to cart" action.
+      - name: Seed smoke listings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_REQUIRED: "1"
+        run: bash scripts/seed-smoke-listings.sh seed
 
       # The action runs each script line in its own shell, so the credentials are
       # passed as step env instead of being exported inside the script.
@@ -90,6 +100,12 @@ jobs:
           api-level: 34
           arch: x86_64
           script: bash scripts/run-smoke-tests.sh
+
+      - name: Remove seeded listings
+        if: always()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -123,7 +139,7 @@ jobs:
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
-        run: |
+        run: |-
           test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
           test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
 
@@ -179,9 +195,11 @@ jobs:
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
-        run: |
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |-
           test -n "$SMOKE_TEST_EMAIL" || { echo "::error::SMOKE_TEST_EMAIL secret is not set"; exit 1; }
           test -n "$SMOKE_TEST_PASSWORD" || { echo "::error::SMOKE_TEST_PASSWORD secret is not set"; exit 1; }
+          test -n "$FIREBASE_SERVICE_ACCOUNT" || { echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set (needed to seed smoke listings)"; exit 1; }
 
       # The runner user cannot read /dev/kvm by default, and the emulator action
       # silently falls back to -accel off, which emulator 37 refuses to start
@@ -191,6 +209,14 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
+      # so the test account gets a real "Add to cart" action.
+      - name: Seed smoke listings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_REQUIRED: "1"
+        run: bash scripts/seed-smoke-listings.sh seed
 
       # The action runs each script line in its own shell, so the credentials are
       # passed as step env instead of being exported inside the script.
@@ -202,6 +228,12 @@ jobs:
           api-level: 34
           arch: x86_64
           script: SMOKE_TEST_CLASSES='com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders' bash scripts/run-smoke-tests.sh
+
+      - name: Remove seeded listings
+        if: always()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -247,6 +279,15 @@ jobs:
             echo "::notice::SMOKE_TEST_EMAIL/SMOKE_TEST_PASSWORD are not set - skipping the smoke suite."
           fi
 
+      # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
+      # so the test account gets a real "Add to cart" action.
+      - name: Seed smoke listings
+        if: steps.creds.outputs.available == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_REQUIRED: "1"
+        run: bash scripts/seed-smoke-listings.sh seed
+
       # The runner user cannot read /dev/kvm by default, and the emulator action
       # silently falls back to -accel off, which emulator 37 refuses to start
       # with ("Software CPU emulation (-accel off) is not supported").
@@ -267,6 +308,12 @@ jobs:
           api-level: 34
           arch: x86_64
           script: bash scripts/run-smoke-tests.sh
+
+      - name: Remove seeded listings
+        if: always() && steps.creds.outputs.available == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
         if: failure() && steps.creds.outputs.available == 'true'
