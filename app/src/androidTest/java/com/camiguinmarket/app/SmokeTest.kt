@@ -220,7 +220,9 @@ class SmokeTest {
             awaitSeed()
         )
 
-        composeRule.onNodeWithText(SEED_PREFIX, substring = true).performClick()
+        // Several seeded cards share the prefix, so open the first match.
+        composeRule.onAllNodesWithText(SEED_PREFIX, substring = true)
+            .onFirst().performClick()
         composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("↗").fetchSemanticsNodes().isNotEmpty()
         }
@@ -302,7 +304,9 @@ class SmokeTest {
             "Seeded listing did not appear on Home: ${screenSummary()}",
             awaitSeed()
         )
-        composeRule.onNodeWithText(SEED_PREFIX, substring = true).performClick()
+        // Several seeded cards share the prefix, so open the first match.
+        composeRule.onAllNodesWithText(SEED_PREFIX, substring = true)
+            .onFirst().performClick()
         assertTrue(
             "Seeded listing has no add-to-cart action: ${screenSummary()}",
             awaitCondition(15_000) { hasText("Add to cart", substring = true) }
