@@ -419,9 +419,6 @@ class SmokeTest {
             // feed — partly under the sticky search bar. Start from the top so
             // the tap lands on the card and not on the header.
             scrollFeedToTop()
-            // The merged card node is clickable as a whole, but its centre can sit
-            // on the card's own button; the unmerged title is a plain node inside
-            // the card, so alternating between them covers both layouts.
             val unmerged = attempt % 2 == 0
             val node = runCatching {
                 composeRule.onAllNodesWithText(
@@ -433,7 +430,17 @@ class SmokeTest {
             attempt += 1
             runCatching { node.performScrollTo() }
             composeRule.waitForIdle()
-            runCatching { node.performClick() }
+            // Tap just below the title rather than on it: the title's centre can
+            // sit under the sticky search bar, which swallows the tap. The point
+            // below the title is inside the card body but above its own button.
+            val bounds = runCatching { node.fetchSemanticsNode().boundsInRoot }.getOrNull()
+            if (bounds != null && bounds.height > 0f) {
+                val x = ((bounds.left + bounds.right) / 2f).toInt()
+                val y = (bounds.bottom + 60f).toInt().coerceAtMost(device.displayHeight - 100)
+                device.click(x, y)
+            } else {
+                runCatching { node.performClick() }
+            }
             if (awaitCondition(6_000) { hasText("Add to cart", substring = true) }) return true
         }
         return false
