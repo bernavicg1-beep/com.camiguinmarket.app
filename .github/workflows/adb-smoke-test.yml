@@ -83,10 +83,13 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
-      # so the test account gets a real "Add to cart" action.
+      # so the test account gets a real "Add to cart" action. The suffix keeps
+      # this job's documents private: parallel jobs would otherwise overwrite
+      # each other and one job's cleanup would delete another job's seeds.
       - name: Seed smoke listings
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
           SMOKE_SEED_REQUIRED: "1"
         run: bash scripts/seed-smoke-listings.sh seed
 
@@ -101,10 +104,20 @@ jobs:
           arch: x86_64
           script: bash scripts/run-smoke-tests.sh
 
+      # Read-only: shows whether the seeded documents survived the run, so a
+      # "seeded but not on screen" failure is diagnosable from the logs alone.
+      - name: Verify seeded listings
+        if: always()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
+        run: bash scripts/seed-smoke-listings.sh verify
+
       - name: Remove seeded listings
         if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
         run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
@@ -211,10 +224,13 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
-      # so the test account gets a real "Add to cart" action.
+      # so the test account gets a real "Add to cart" action. The suffix keeps
+      # this job's documents private: parallel jobs would otherwise overwrite
+      # each other and one job's cleanup would delete another job's seeds.
       - name: Seed smoke listings
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
           SMOKE_SEED_REQUIRED: "1"
         run: bash scripts/seed-smoke-listings.sh seed
 
@@ -227,12 +243,22 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          script: SMOKE_TEST_CLASSES='com.camiguinmarket.app.SmokeTest#bisayaToggleUpdatesLabelsAndPersists,com.camiguinmarket.app.SmokeTest#postListingCreatesDocument,com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#ordersScreenRenders' bash scripts/run-smoke-tests.sh
+          script: SMOKE_TEST_CLASSES='com.camiguinmarket.app.SmokeTest#cartCheckoutPlacesOrder,com.camiguinmarket.app.SmokeTest#shareCardCreatesSquarePng' bash scripts/run-smoke-tests.sh
+
+      # Read-only: shows whether the seeded documents survived the run, so a
+      # "seeded but not on screen" failure is diagnosable from the logs alone.
+      - name: Verify seeded listings
+        if: always()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
+        run: bash scripts/seed-smoke-listings.sh verify
 
       - name: Remove seeded listings
         if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
         run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
@@ -270,21 +296,25 @@ jobs:
         env:
           SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
           SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          if [ -n "$SMOKE_TEST_EMAIL" ] && [ -n "$SMOKE_TEST_PASSWORD" ]; then
+          if [ -n "$SMOKE_TEST_EMAIL" ] && [ -n "$SMOKE_TEST_PASSWORD" ] && [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Test account present - the smoke suite will run."
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::SMOKE_TEST_EMAIL/SMOKE_TEST_PASSWORD are not set - skipping the smoke suite."
+            echo "::notice::Smoke-test secrets are not set - skipping the smoke suite."
           fi
 
       # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
-      # so the test account gets a real "Add to cart" action.
+      # so the test account gets a real "Add to cart" action. The suffix keeps
+      # this job's documents private: parallel jobs would otherwise overwrite
+      # each other and one job's cleanup would delete another job's seeds.
       - name: Seed smoke listings
         if: steps.creds.outputs.available == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
           SMOKE_SEED_REQUIRED: "1"
         run: bash scripts/seed-smoke-listings.sh seed
 
@@ -309,10 +339,18 @@ jobs:
           arch: x86_64
           script: bash scripts/run-smoke-tests.sh
 
+      - name: Verify seeded listings
+        if: always() && steps.creds.outputs.available == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
+        run: bash scripts/seed-smoke-listings.sh verify
+
       - name: Remove seeded listings
         if: always() && steps.creds.outputs.available == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}
         run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
