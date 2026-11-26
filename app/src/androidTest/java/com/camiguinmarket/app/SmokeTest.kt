@@ -5,18 +5,16 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
@@ -24,13 +22,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.Source
 import java.io.File
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -42,7 +36,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Minimal device smoke tests for the five release-critical flows.
+ * Device smoke tests for the release-critical flows.
  *
  * Credentials are deliberately not stored here. Pass them as instrumentation
  * arguments:
@@ -52,8 +46,10 @@ import org.junit.runner.RunWith
  *     -e smokePassword "$SMOKE_TEST_PASSWORD" \
  *     com.camiguinmarket.app.test/androidx.test.runner.AndroidJUnitRunner
  *
- * If the app already has a signed-in session, the credentials can be omitted.
- * Tests that need seeded listings skip cleanly when none are present.
+ * The data-dependent flows expect the listings written by
+ * `scripts/seed-smoke-listings.sh`. They belong to a synthetic seller, so the
+ * test account really gets an "Add to cart" action instead of its own listing.
+ * Without the seeds those tests fail, not skip: a silent skip hid regressions.
  */
 @LargeTest
 @RunWith(AndroidJUnit4::class)
@@ -66,6 +62,11 @@ class SmokeTest {
     private val args = InstrumentationRegistry.getArguments()
     private lateinit var device: UiDevice
 
+    companion object {
+        /** Every seeded listing title starts with this. */
+        private const val SEED_PREFIX = "Smoke seed"
+    }
+
     @Before
     fun setUp() {
         device = UiDevice.getInstance(instrumentation)
@@ -73,6 +74,15 @@ class SmokeTest {
         // own values afterwards so a shared phone is left as it was found.
         disableAnimations()
         enableNetwork()
+        // Checkout asks for this lazily; the system dialog would block the taps.
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            runCatching {
+                instrumentation.uiAutomation.grantRuntimePermission(
+                    context.packageName,
+                    "android.permission.POST_NOTIFICATIONS"
+                )
+            }
+        }
         ensureSignedIn()
     }
 
@@ -81,8 +91,7 @@ class SmokeTest {
         enableNetwork()
         restoreAnimations()
         runCatching { device.pressBack() }
-        context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
-            .edit().putString("lang", "en").apply()
+        prefs().edit().putString("lang", "en").apply()
     }
 
     @Test
@@ -92,23 +101,16 @@ class SmokeTest {
         // flips between the two when tapped, so normalise to English first.
         if (hasText("Cebuano")) {
             composeRule.onNodeWithText("Cebuano").performScrollTo().performClick()
-            composeRule.waitUntil(5_000) {
-                prefs().getString("lang", "en") == "en"
-            }
+            composeRule.waitUntil(5_000) { prefs().getString("lang", "en") == "en" }
         }
 
         composeRule.onNodeWithText("English").performScrollTo().performClick()
-        composeRule.waitUntil(5_000) {
-            prefs().getString("lang", "en") == "ceb"
-        }
-        // The row label is translated and the control reports the new language.
+        composeRule.waitUntil(5_000) { prefs().getString("lang", "en") == "ceb" }
         composeRule.onNodeWithText("Pinulongan").assertExists()
         composeRule.onNodeWithText("Cebuano").performScrollTo().assertExists()
 
         composeRule.onNodeWithText("Cebuano").performScrollTo().performClick()
-        composeRule.waitUntil(5_000) {
-            prefs().getString("lang", "en") == "en"
-        }
+        composeRule.waitUntil(5_000) { prefs().getString("lang", "en") == "en" }
         composeRule.onNodeWithText("Language").assertExists()
     }
 
@@ -145,11 +147,10 @@ class SmokeTest {
         runCatching { device.executeShellCommand("cmd location set-location-enabled false") }
 
         try {
-            assumeTrue(
-                "No listings on this device; seed a listing to exercise the nearby filter",
-                awaitCondition(20_000) { hasTag("listing_card") }
+            assertTrue(
+                "Seeded listings never appeared on Home: ${screenSummary()}",
+                awaitSeed()
             )
-            val before = composeRule.onAllNodesWithTag("listing_card").fetchSemanticsNodes().size
 
             composeRule.onNodeWithText("5 km").performClick()
             composeRule.waitForIdle()
@@ -162,17 +163,14 @@ class SmokeTest {
                 ).fetchSemanticsNodes().isNotEmpty()
             }
             // ...and the feed must be left untouched until a real fix arrives.
-            val after = composeRule.onAllNodesWithTag("listing_card").fetchSemanticsNodes().size
-            assertEquals(
-                "Feed changed without a location fix ($before -> $after)",
-                before,
-                after
-            )
+            assertTrue("Seeded listings disappeared without a location fix", seedVisible())
 
             composeRule.onNodeWithText("5 km").performClick()
             composeRule.waitForIdle()
         } finally {
-            runCatching { device.executeShellCommand("settings put secure location_mode $originalMode") }
+            runCatching {
+                device.executeShellCommand("settings put secure location_mode $originalMode")
+            }
             runCatching { device.executeShellCommand("cmd location set-location-enabled true") }
         }
     }
@@ -181,10 +179,10 @@ class SmokeTest {
     fun offlineCacheKeepsListingsVisible() {
         openHome()
         // The cache is written from the feed, and the file exists even when the
-        // feed was empty, so require a listing to cache before going offline.
-        assumeTrue(
-            "No listings to cache; seed a listing to exercise the offline feed",
-            awaitCondition(20_000) { hasTag("listing_card") }
+        // feed was empty, so a listing must be on screen before going offline.
+        assertTrue(
+            "No seeded listing to cache: ${screenSummary()}",
+            awaitSeed()
         )
 
         disableNetwork()
@@ -194,9 +192,10 @@ class SmokeTest {
             // separately: the app sets it only when the listings listener returns
             // an error, and Firestore serves cached snapshots instead of erroring,
             // so its absence with the radio off is not a failure.
-            composeRule.waitUntil(30_000) {
-                composeRule.onAllNodesWithTag("listing_card").fetchSemanticsNodes().isNotEmpty()
-            }
+            assertTrue(
+                "Cached seeded listing did not render with the network off",
+                awaitSeed(40_000)
+            )
             val bannerShown = runCatching {
                 composeRule.waitUntil(3_000) {
                     composeRule.onAllNodesWithText("Offline", substring = true)
@@ -216,23 +215,20 @@ class SmokeTest {
     fun shareCardCreatesSquarePng() {
         openHome()
         shareFiles().forEach { it.delete() }
-        val lists = composeRule.onAllNodesWithTag("listing_list").fetchSemanticsNodes()
-        assumeTrue("Home listing list was not found", lists.isNotEmpty())
-        val scrolled = runCatching {
-            composeRule.onAllNodesWithTag("listing_list").onFirst()
-                .performScrollToNode(hasTestTag("listing_card"))
-        }.isSuccess
-        assumeTrue("No listing is available to share", scrolled)
+        assertTrue(
+            "No seeded listing to share: ${screenSummary()}",
+            awaitSeed()
+        )
 
-        composeRule.onAllNodesWithTag("listing_card").onFirst().performClick()
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("listing_share").fetchSemanticsNodes().isNotEmpty()
+        composeRule.onNodeWithText(SEED_PREFIX, substring = true).performClick()
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithText("↗").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onAllNodesWithTag("listing_share").onFirst().performClick()
+        composeRule.onNodeWithText("↗").performClick()
 
-        composeRule.waitUntil(20_000) { shareFiles().isNotEmpty() }
+        composeRule.waitUntil(30_000) { shareFiles().isNotEmpty() }
         val file = shareFiles().maxByOrNull { it.lastModified() }
-        assertNotNull("Share card was not written", file)
+        assertNotNull("Share card was not written to the app cache", file)
         val bitmap = BitmapFactory.decodeFile(file!!.absolutePath)
         assertNotNull("Share card is not a readable image", bitmap)
         assertEquals(1080, bitmap!!.width)
@@ -241,56 +237,105 @@ class SmokeTest {
 
     @Test
     fun postListingCreatesDocument() {
-        // Open the sell dialog from the floating action button and post a
-        // listing without photos (no R2 upload required).
+        // Post a listing without photos (no R2 upload required), prove the
+        // document reached Firestore, then remove it so re-runs stay clean.
+        val db = FirebaseFirestore.getInstance()
+        val seller = uid()
+        val startedAt = System.currentTimeMillis()
+
         composeRule.waitUntil(10_000) { isMarketVisible() }
-        // The FAB reads "+ Sell", and the tab bar has a "Sell" entry too, so
-        // match the first one rather than requiring a unique node.
-        composeRule.onAllNodesWithText("Sell", substring = true).onFirst().performClick()
-        assumeTrue(
+        composeRule.onNodeWithText("+ Sell").performClick()
+        assertTrue(
             "Post form did not open: ${screenSummary()}",
             awaitCondition(10_000) { hasText("Sell an item") }
         )
-        val fields = composeRule.onAllNodes(hasSetTextAction())
-        assumeTrue("Post form has no text fields", fields.fetchSemanticsNodes().size >= 4)
+
+        // Only the dialog's own fields: a plain by-index scan also picks up the
+        // Home search box behind it, which left the form incomplete.
+        val fields = composeRule.onAllNodes(hasSetTextAction() and hasAnyAncestor(isDialog()))
+        assertEquals(
+            "Expected four text fields in the post form, saw ${fields.fetchSemanticsNodes().size}",
+            4,
+            fields.fetchSemanticsNodes().size
+        )
         fields[0].performTextReplacement("Smoke test listing")
         fields[1].performTextReplacement("Automated smoke test listing")
         fields[2].performTextReplacement("100")
         fields[3].performTextReplacement("09171234567")
         composeRule.onNodeWithText("Post listing").performClick()
-        // Posting writes to Firestore; without a reachable backend the dialog
-        // stays open, which is an environment limit rather than a UI bug.
-        assumeTrue(
-            "Post form did not close; Firestore write not available: ${screenSummary()}",
-            awaitCondition(15_000) { !hasText("Sell an item") }
+
+        assertTrue(
+            "Post form did not close after submitting: ${screenSummary()}",
+            awaitCondition(10_000) { !hasText("Sell an item") }
         )
+
+        var createdIds: List<String> = emptyList()
+        val created = awaitCondition(30_000) {
+            createdIds = runCatching {
+                Tasks.await(
+                    db.collection("listings").whereEqualTo("sellerId", seller).get(),
+                    20,
+                    TimeUnit.SECONDS
+                ).documents.filter { doc ->
+                    doc.getString("title") == "Smoke test listing" &&
+                        (doc.getLong("createdAt") ?: 0L) >= startedAt - 5_000
+                }.map { it.id }
+            }.getOrDefault(emptyList())
+            createdIds.isNotEmpty()
+        }
+        createdIds.forEach { id ->
+            runCatching { db.collection("listings").document(id).delete() }
+        }
+        assertTrue("Posting created no listing document for $seller", created)
     }
 
     @Test
     fun cartCheckoutPlacesOrder() {
+        // The seeded listings belong to a different seller, so the test account
+        // gets a real "Add to cart" action instead of skipping.
+        val db = FirebaseFirestore.getInstance()
+        val buyer = uid()
+        val ordersBefore = buyerOrderIds(db, buyer)
+
         openHome()
-        // Commerce needs a listing somebody else sells; a fresh account on a
-        // fresh emulator has none, so skip instead of timing out.
-        assumeTrue(
-            "No listing available to add to cart; seed one to exercise checkout",
-            awaitCondition(20_000) { hasTag("listing_card") }
+        assertTrue(
+            "Seeded listing did not appear on Home: ${screenSummary()}",
+            awaitSeed()
         )
-        composeRule.onAllNodesWithTag("listing_card").onFirst().performClick()
-        assumeTrue(
-            "Listing has no add-to-cart action (own listing?): ${screenSummary()}",
-            awaitCondition(10_000) { hasText("Add to cart", substring = true) }
+        composeRule.onNodeWithText(SEED_PREFIX, substring = true).performClick()
+        assertTrue(
+            "Seeded listing has no add-to-cart action: ${screenSummary()}",
+            awaitCondition(15_000) { hasText("Add to cart", substring = true) }
         )
         composeRule.onNodeWithText("Add to cart", substring = true).performClick()
-        composeRule.waitForIdle()
 
-        // Open the cart tab and check out.
         composeRule.onNodeWithText("Cart").performClick()
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithText("Checkout", substring = true)
-                .fetchSemanticsNodes().isNotEmpty()
-        }
+        assertTrue(
+            "Cart never showed a Checkout button: ${screenSummary()}",
+            awaitCondition(15_000) { hasText("Checkout", substring = true) }
+        )
         composeRule.onNodeWithText("Checkout", substring = true).performClick()
-        composeRule.waitForIdle()
+
+        assertTrue(
+            "Checkout created no order document for $buyer",
+            awaitCondition(30_000) {
+                (buyerOrderIds(db, buyer) - ordersBefore).isNotEmpty()
+            }
+        )
+        assertTrue(
+            "Cart was not emptied after checkout: ${screenSummary()}",
+            awaitCondition(20_000) { hasText("Your cart is empty.", substring = true) }
+        )
+
+        // The order is really visible in the buyer's list, not just written.
+        composeRule.onNodeWithText("Profile").performClick()
+        composeRule.onNodeWithText("Orders").performScrollTo().performClick()
+        assertTrue(
+            "Seeded order did not appear under Orders: ${screenSummary()}",
+            awaitCondition(20_000) {
+                hasText("I'm the Buyer") && hasText(SEED_PREFIX, substring = true)
+            }
+        )
     }
 
     @Test
@@ -302,8 +347,8 @@ class SmokeTest {
         // The profile is a scrolling column; an off-screen row swallows the tap.
         composeRule.onNodeWithText("Orders").performScrollTo().performClick()
         // The Buyer/Seller pills are static chrome, but the screen only exists
-        // once the orders listener has attached; skip cleanly when it does not.
-        assumeTrue(
+        // once the orders listener has attached.
+        assertTrue(
             "Orders screen did not render its Buyer/Seller toggle: ${screenSummary()}",
             awaitCondition(15_000) {
                 hasText("I'm the Buyer") || hasText("I'm the Seller")
@@ -318,12 +363,11 @@ class SmokeTest {
         composeRule.onAllNodesWithText(text, substring = substring)
             .fetchSemanticsNodes().isNotEmpty()
 
-    private fun hasTag(tag: String): Boolean =
-        composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    private fun seedVisible(): Boolean = hasText(SEED_PREFIX, substring = true)
 
     /**
      * Polls the semantics tree instead of blocking in `waitUntil`, so a data
-     * dependent screen can be skipped (or failed) with a bounded wait.
+     * dependent screen can be failed with a bounded wait and a clear message.
      */
     private fun awaitCondition(timeoutMs: Long, predicate: () -> Boolean): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -334,7 +378,30 @@ class SmokeTest {
         return runCatching(predicate).getOrDefault(false)
     }
 
-    /** Node counts for the labels under test, quoted in skip/failure messages. */
+    /** Waits for a seeded listing, scrolling the feed down while it loads. */
+    private fun awaitSeed(timeoutMs: Long = 30_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var swipes = 0
+        while (System.currentTimeMillis() < deadline) {
+            if (seedVisible()) return true
+            if (swipes < 6) {
+                device.swipe(
+                    device.displayWidth / 2,
+                    device.displayHeight * 3 / 4,
+                    device.displayWidth / 2,
+                    device.displayHeight / 4,
+                    20
+                )
+                composeRule.waitForIdle()
+                swipes += 1
+            } else {
+                Thread.sleep(250)
+            }
+        }
+        return runCatching { seedVisible() }.getOrDefault(false)
+    }
+
+    /** Node counts for the labels under test, quoted in failure messages. */
     private fun screenSummary(): String =
         listOf("Home", "Cart", "Profile", "Orders", "Add to cart", "Checkout", "Sell")
             .joinToString { label ->
@@ -347,10 +414,6 @@ class SmokeTest {
 
     private fun openHome() {
         composeRule.onNodeWithText("Home").performClick()
-        composeRule.waitForIdle()
-        runCatching {
-            composeRule.onAllNodesWithTag("listing_list").onFirst().performScrollToIndex(0)
-        }
         composeRule.waitForIdle()
     }
 
@@ -400,8 +463,23 @@ class SmokeTest {
 
     private fun shareFiles(): List<File> =
         context.cacheDir.listFiles { file ->
-            file.name.startsWith("share_") && file.name.endsWith(".png")
+            file.name.startsWith("share_card_") && file.name.endsWith(".png")
         }?.toList().orEmpty()
+
+    private fun uid(): String =
+        requireNotNull(FirebaseAuth.getInstance().currentUser?.uid) {
+            "No signed-in Firebase user; the smoke account must be signed in"
+        }
+
+    /** Order document ids for the signed-in buyer, used to detect a new order. */
+    private fun buyerOrderIds(db: FirebaseFirestore, buyer: String): Set<String> =
+        runCatching {
+            Tasks.await(
+                db.collection("orders").whereEqualTo("buyerId", buyer).get(),
+                20,
+                TimeUnit.SECONDS
+            ).documents.map { it.id }.toSet()
+        }.getOrDefault(emptySet())
 
     private fun disableNetwork() {
         runCatching { device.executeShellCommand("cmd connectivity airplane-mode enable") }
