@@ -12,9 +12,14 @@ the synthetic seller never needs a Firebase Auth user and the Firestore rules
 credential is read from ``FIREBASE_SERVICE_ACCOUNT`` (the JSON itself, or a path
 to it) and is never printed.
 
+Each workflow job exports ``SMOKE_SEED_SUFFIX`` so its ids and seller id are its
+own. Without that, parallel jobs overwrite each other's documents and one job's
+cleanup deletes the listings another job is still testing against.
+
 Usage:
-  scripts/seed-smoke-listings.sh seed
-  scripts/seed-smoke-listings.sh cleanup
+  scripts/seed-smoke-listings.sh seed      # write, then report what is readable
+  scripts/seed-smoke-listings.sh verify    # read-only: what does the project hold
+  scripts/seed-smoke-listings.sh cleanup   # delete this suffix's docs and orders
 
 Exit codes: 0 ok, 1 missing/invalid credential when SMOKE_SEED_REQUIRED=1,
 2 unknown mode.
@@ -23,6 +28,7 @@ Exit codes: 0 ok, 1 missing/invalid credential when SMOKE_SEED_REQUIRED=1,
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -31,18 +37,22 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-SELLER_ID = "smoke-seed-seller"
+# Titles always start with this: it is what the suite looks for on screen.
+TITLE_PREFIX = "Smoke seed"
 SELLER_NAME = "Smoke Seed Seller"
 CONTACT = "09171234567"
 CATEGORY = "Food"
 
+_RAW_SUFFIX = os.environ.get("SMOKE_SEED_SUFFIX", "")
+SUFFIX = re.sub(r"[^a-z0-9]+", "-", _RAW_SUFFIX.strip().lower()).strip("-")[:24]
+SELLER_ID = f"smoke-seed-seller-{SUFFIX}" if SUFFIX else "smoke-seed-seller"
+
 # Fixed document ids keep re-runs idempotent: seeding overwrites, cleanup
-# deletes exactly these. Titles share the "Smoke seed" prefix the suite looks
-# for, and the coordinates sit around Mambajao so a location fix would not
-# filter them out.
+# deletes exactly these. The coordinates sit around Mambajao so a location fix
+# would not filter them out.
 LISTINGS = {
     "smoke-seed-bananas": {
-        "title": "Smoke seed bananas",
+        "title": f"{TITLE_PREFIX} bananas",
         "description": "Seeded bananas for the cart, checkout and share smoke tests.",
         "price": 250.0,
         "town": "Mambajao",
@@ -50,7 +60,7 @@ LISTINGS = {
         "longitude": 124.7167,
     },
     "smoke-seed-fish": {
-        "title": "Smoke seed fresh fish",
+        "title": f"{TITLE_PREFIX} fresh fish",
         "description": "Seeded fish for the offline feed and nearby-radius smoke tests.",
         "price": 180.0,
         "town": "Mambajao",
@@ -58,7 +68,7 @@ LISTINGS = {
         "longitude": 124.7180,
     },
     "smoke-seed-copra": {
-        "title": "Smoke seed copra sack",
+        "title": f"{TITLE_PREFIX} copra sack",
         "description": "Seeded copra for the second nearby-radius smoke test listing.",
         "price": 900.0,
         "town": "Catarman",
@@ -68,6 +78,10 @@ LISTINGS = {
 }
 
 FIRESTORE = "https://firestore.googleapis.com/v1/projects/{project}/databases/(default)/documents"
+
+
+def doc_id(base: str) -> str:
+    return f"{base}-{SUFFIX}" if SUFFIX else base
 
 
 def b64url(raw: bytes) -> str:
@@ -149,17 +163,53 @@ def request(token: str, url: str, method: str = "GET", payload: dict | None = No
 
 
 def seed(token: str, project: str) -> int:
+    base = FIRESTORE.format(project=project)
     now_ms = int(time.time() * 1000)
-    for index, (doc_id, spec) in enumerate(LISTINGS.items()):
-        url = f"{FIRESTORE.format(project=project)}/listings/{doc_id}"
+    for index, (name, spec) in enumerate(LISTINGS.items()):
+        identifier = doc_id(name)
+        url = f"{base}/listings/{identifier}"
         # Slightly increasing timestamps keep the order deterministic.
         payload = {"fields": fields_for(spec, now_ms + index)}
         with request(token, url, "PATCH", payload) as resp:
-            document = json.load(resp)
-        # The document name carries the project and database actually written to,
-        # which is what makes a "seeded but invisible" run diagnosable.
-        print(f"seeded {document.get('name', url)}")
+            written = json.load(resp)
+        # A patch that reports success but carries no fields would create an
+        # empty document, which an `orderBy("createdAt")` feed silently skips.
+        written_fields = sorted((written.get("fields") or {}).keys())
+        print(f"seeded {written.get('name', url)} fields={len(written_fields)}")
+        if "createdAt" not in written_fields or "title" not in written_fields:
+            print(f"::error::listing {identifier} was written without its fields")
+            return 1
     print(f"Seeded {len(LISTINGS)} listings for seller {SELLER_ID} in project {project}.")
+    return verify(token, project, "after-seed")
+
+
+def verify(token: str, project: str, label: str) -> int:
+    """Reports what the project returns for the feed's own query shape."""
+    query = {
+        "structuredQuery": {
+            "from": [{"collectionId": "listings"}],
+            "orderBy": [{"field": {"fieldPath": "createdAt"}, "direction": "DESCENDING"}],
+            "limit": 30,
+        }
+    }
+    url = f"{FIRESTORE.format(project=project)}:runQuery"
+    try:
+        with request(token, url, "POST", query) as resp:
+            rows = json.load(resp)
+    except (urllib.error.HTTPError, urllib.error.URLError) as err:
+        print(f"::warning::Could not verify seeded listings ({label}): {err}")
+        return 0
+    titles = []
+    for row in rows:
+        document = row.get("document") or {}
+        title = ((document.get("fields") or {}).get("title") or {}).get("stringValue")
+        if title:
+            titles.append(title)
+    seeded = [title for title in titles if title.startswith(TITLE_PREFIX)]
+    print(
+        f"verify({label}): project={project} seller={SELLER_ID} "
+        f"total={len(titles)} seeded={len(seeded)} titles={seeded}"
+    )
     return 0
 
 
@@ -174,9 +224,10 @@ def delete_doc(token: str, url: str) -> None:
 
 def cleanup(token: str, project: str) -> int:
     base = FIRESTORE.format(project=project)
-    for doc_id in LISTINGS:
-        delete_doc(token, f"{base}/listings/{doc_id}")
-        print(f"removed listings/{doc_id}")
+    for name in LISTINGS:
+        identifier = doc_id(name)
+        delete_doc(token, f"{base}/listings/{identifier}")
+        print(f"removed listings/{identifier}")
 
     # Orders written by the cart test point at the seeded listings; remove them
     # so repeated runs do not accumulate junk in the project.
@@ -190,9 +241,9 @@ def cleanup(token: str, project: str) -> int:
             rows = json.load(resp)
         removed = 0
         for row in rows:
-            doc = row.get("document")
-            if doc and doc.get("name"):
-                delete_doc(token, f"https://firestore.googleapis.com/v1/{doc['name']}")
+            document = row.get("document")
+            if document and document.get("name"):
+                delete_doc(token, f"https://firestore.googleapis.com/v1/{document['name']}")
                 removed += 1
         print(f"Removed {removed} seeded order(s).")
     except (urllib.error.HTTPError, urllib.error.URLError) as err:
@@ -205,8 +256,8 @@ def cleanup(token: str, project: str) -> int:
 
 def main(argv: list[str]) -> int:
     mode = argv[1] if len(argv) > 1 else "seed"
-    if mode not in ("seed", "cleanup"):
-        print(f"Unknown mode '{mode}'. Use 'seed' or 'cleanup'.", file=sys.stderr)
+    if mode not in ("seed", "verify", "cleanup"):
+        print(f"Unknown mode '{mode}'. Use 'seed', 'verify' or 'cleanup'.", file=sys.stderr)
         return 2
 
     raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT", "").strip()
@@ -235,7 +286,11 @@ def main(argv: list[str]) -> int:
 
     project = service_account.get("project_id") or "camiguinmarket"
     token = access_token(service_account)
-    return cleanup(token, project) if mode == "cleanup" else seed(token, project)
+    if mode == "cleanup":
+        return cleanup(token, project)
+    if mode == "verify":
+        return verify(token, project, "on-demand")
+    return seed(token, project)
 
 
 if __name__ == "__main__":
