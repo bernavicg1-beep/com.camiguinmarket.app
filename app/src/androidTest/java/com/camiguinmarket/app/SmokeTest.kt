@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -318,8 +319,19 @@ class SmokeTest {
         )
         composeRule.onNodeWithText("Checkout", substring = true).performClick()
 
+        // Known blocker, stated plainly: checkoutCart() reads checkouts/{id} and
+        // then writes the orders. The rules deployed on the project still combine
+        // that collection's read and write behind `request.resource`, which is
+        // undefined for a read, so the pre-check read is denied and no order is
+        // ever written. This branch's firestore.rules split read from write; the
+        // order lands once those rules are deployed.
         assertTrue(
-            "Checkout created no order document for $buyer",
+            "Checkout created no order document for $buyer — the deployed Firestore " +
+                "rules block checkout: checkoutCart() reads checkouts/{id} before " +
+                "writing the order, and the rules currently on the project deny that " +
+                "read. This branch's firestore.rules allow the read and are the fix; " +
+                "the order appears once they are deployed. " +
+                "checkouts read probe: ${checkoutReadProbe()}. ${screenSummary()}",
             awaitCondition(30_000) {
                 (buyerOrderIds(db, buyer) - ordersBefore).isNotEmpty()
             }
@@ -404,60 +416,58 @@ class SmokeTest {
     }
 
     /**
-     * Opens the first seeded listing's detail and waits for its add-to-cart.
+     * Opens the first seeded listing's detail by tapping the feed card node
+     * itself, then waits for its add-to-cart action.
      *
-     * The feed is often still settling right after the scroll that revealed the
-     * card, and a tap whose centre sits under the sticky search bar never reaches
-     * the card, so the feed is returned to the top and the tap is retried.
+     * The card is located by semantics ([seedCardNode]), so the tap lands on the
+     * card rather than on a screen coordinate; the card is scrolled into view
+     * first because the seeds sit below the hero, categories and trending row.
      */
     private fun openFirstSeedDetail(timeoutMs: Long = 20_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
-        var attempt = 0
-        while (System.currentTimeMillis() < deadline && attempt < 4) {
+        while (System.currentTimeMillis() < deadline) {
             if (!seedVisible() && !awaitSeed(5_000)) return false
-            // The seeds are the newest listings, so they sit at the top of the
-            // feed — partly under the sticky search bar. Start from the top so
-            // the tap lands on the card and not on the header.
-            scrollFeedToTop()
-            val unmerged = attempt % 2 == 0
-            val node = runCatching {
-                composeRule.onAllNodesWithText(
-                    SEED_PREFIX,
-                    substring = true,
-                    useUnmergedTree = unmerged
-                ).onFirst()
-            }.getOrNull() ?: continue
-            attempt += 1
-            runCatching { node.performScrollTo() }
-            composeRule.waitForIdle()
-            // Tap just below the title rather than on it: the title's centre can
-            // sit under the sticky search bar, which swallows the tap. The point
-            // below the title is inside the card body but above its own button.
-            val bounds = runCatching { node.fetchSemanticsNode().boundsInRoot }.getOrNull()
-            if (bounds != null && bounds.height > 0f) {
-                val x = ((bounds.left + bounds.right) / 2f).toInt()
-                val y = (bounds.bottom + 60f).toInt().coerceAtMost(device.displayHeight - 100)
-                device.click(x, y)
-            } else {
-                runCatching { node.performClick() }
+            val card = seedCardNode()
+            if (card != null) {
+                val tapped = runCatching {
+                    card.performScrollTo()
+                    card.performClick()
+                }.isSuccess
+                if (tapped && awaitCondition(8_000) {
+                        hasText("Add to cart", substring = true)
+                    }
+                ) return true
             }
-            if (awaitCondition(6_000) { hasText("Add to cart", substring = true) }) return true
+            Thread.sleep(250)
         }
         return false
     }
 
-    /** Scrolls the home feed back to its first card. */
-    private fun scrollFeedToTop() {
-        repeat(3) {
-            device.swipe(
-                device.displayWidth / 2,
-                device.displayHeight / 4,
-                device.displayWidth / 2,
-                device.displayHeight * 3 / 4,
-                15
-            )
-        }
-        composeRule.waitForIdle()
+    /**
+     * The feed card for a seeded listing: the clickable node whose merged text
+     * carries the seed title. Tapping it hits the card, whereas the bare title
+     * text node can sit under the sticky search bar and swallow the tap.
+     */
+    private fun seedCardNode() = runCatching {
+        composeRule.onAllNodes(
+            hasClickAction() and androidx.compose.ui.test.hasText(SEED_PREFIX, substring = true)
+        ).onFirst()
+    }.getOrNull()
+
+    /**
+     * Read probe for `checkouts/{id}`, the step that fails first when the
+     * deployed rules deny it. Quoted in the cart test's failure message.
+     */
+    private fun checkoutReadProbe(): String = runCatching {
+        val snap = Tasks.await(
+            FirebaseFirestore.getInstance().collection("checkouts")
+                .document("smoke-rules-probe").get(),
+            15,
+            TimeUnit.SECONDS
+        )
+        "read allowed (probe exists=${snap.exists()})"
+    }.getOrElse { error ->
+        "read denied or failed: ${error.message ?: error::class.java.simpleName}"
     }
 
     /**
