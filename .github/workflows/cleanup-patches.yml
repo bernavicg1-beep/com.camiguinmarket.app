@@ -1,0 +1,27 @@
+name: Clean up COM patch files
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-patches.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/com-spec
+
+      - name: Remove the patch files and this workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r -f .github/patches
+          git rm -f .github/workflows/cleanup-patches.yml
+          git commit -m "Remove the one-shot patch files"
+          git push origin HEAD:feature/com-spec
