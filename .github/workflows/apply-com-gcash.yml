@@ -1,0 +1,42 @@
+name: Apply the GCash number patch
+on:
+  push:
+    branches: [feature/com-spec]
+    paths:
+      - ".github/patches/00-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Apply the patches
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          patches=(.github/patches/*.patch)
+          if [ ${#patches[@]} -eq 0 ]; then
+            echo "No patches to apply."
+            exit 0
+          fi
+          for p in "${patches[@]}"; do
+            echo "::group::Applying $p"
+            git apply -p1 --verbose "$p"
+            echo "::endgroup::"
+          done
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "bernavicg1-beep"
+          git config user.email "bernavicg1-beep@users.noreply.github.com"
+          rm -rf .github/patches
+          git rm -q -f .github/workflows/apply-com-gcash.yml
+          git add -A
+          git diff --cached --stat
+          git commit -m "Show the seller's GCash number to buyers paying by GCash"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

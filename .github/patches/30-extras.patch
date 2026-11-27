@@ -1,0 +1,105 @@
+diff --git a/app/src/main/java/com/camiguinmarket/app/Extras.kt b/app/src/main/java/com/camiguinmarket/app/Extras.kt
+index 5f5e76f..0765cba 100644
+--- a/app/src/main/java/com/camiguinmarket/app/Extras.kt
++++ b/app/src/main/java/com/camiguinmarket/app/Extras.kt
+@@ -1297,6 +1297,8 @@ fun CartScreen(
+ ) {
+     // Payment is chosen at checkout: "cash" (pay on pickup/delivery) or "gcash".
+     var paymentMethod by remember { mutableStateOf("cash") }
++    // Each seller's GCash number so the prompt says where the money goes.
++    val sellerGcash = rememberSellerGcash(items.map { it.sellerId })
+     val db = remember { FirebaseFirestore.getInstance() }
+     val context = LocalContext.current
+     val S = LocalStrings.current
+@@ -1454,6 +1456,22 @@ fun CartScreen(
+                         style = MaterialTheme.typography.labelSmall,
+                         color = BrandMuted
+                     )
++                    if (paymentMethod == "gcash") {
++                        items.map { it.sellerId to it.sellerName }.distinct().forEach { (sid, sname) ->
++                            val number = sellerGcash[sid]
++                            Spacer(Modifier.height(4.dp))
++                            Text(
++                                if (number.isNullOrBlank()) {
++                                    "$sname has not added a GCash number yet — ask in chat."
++                                } else {
++                                    "Send to $sname: GCash $number"
++                                },
++                                style = MaterialTheme.typography.bodySmall,
++                                fontWeight = FontWeight.Medium,
++                                color = BrandInk
++                            )
++                        }
++                    }
+                 }
+             }
+             Spacer(Modifier.height(8.dp))
+@@ -2300,6 +2318,10 @@ fun ContactLinksSection(uid: String) {
+     var whatsapp by remember { mutableStateOf("") }
+     var info by remember { mutableStateOf<String?>(null) }
+     var busy by remember { mutableStateOf(false) }
++    // Store info: the GCash number buyers pay into (empty when not set).
++    var gcashNumber by remember { mutableStateOf("") }
++    var gcashInfo by remember { mutableStateOf<String?>(null) }
++    var gcashBusy by remember { mutableStateOf(false) }
+     var fbBusy by remember { mutableStateOf(false) }
+     var fbInfo by remember { mutableStateOf<String?>(null) }
+     var tgToken by remember { mutableStateOf<String?>(null) }
+@@ -2354,6 +2376,7 @@ fun ContactLinksSection(uid: String) {
+                 telegram = d.getString("telegram") ?: ""
+                 messenger = d.getString("messenger") ?: ""
+                 whatsapp = d.getString("whatsapp") ?: ""
++                gcashNumber = d.getString("gcashNumber") ?: ""
+             }
+         } catch (e: Exception) {
+             info = e.localizedMessage ?: "Failed to load contact links."
+@@ -2373,6 +2396,49 @@ fun ContactLinksSection(uid: String) {
+             OutlinedTextField(messenger, { messenger = it }, label = { Text("Messenger username (or m.me link)") }, modifier = Modifier.fillMaxWidth())
+             Spacer(Modifier.height(6.dp))
+             OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
++            Spacer(Modifier.height(10.dp))
++            Text(
++                "GCash number (buyers send payments here)",
++                style = MaterialTheme.typography.labelLarge,
++                fontWeight = FontWeight.Bold
++            )
++            Spacer(Modifier.height(4.dp))
++            OutlinedTextField(
++                value = gcashNumber,
++                onValueChange = { typed -> gcashNumber = typed.filter { it.isDigit() }.take(11) },
++                label = { Text("09XX XXX XXXX") },
++                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
++                singleLine = true,
++                modifier = Modifier.fillMaxWidth()
++            )
++            Spacer(Modifier.height(6.dp))
++            OutlinedButton(
++                onClick = {
++                    val number = gcashNumber.trim()
++                    gcashInfo = null
++                    if (number.isNotEmpty() && !Regex("^09\\d{9}$").matches(number)) {
++                        gcashInfo = "Use the 11-digit mobile number that starts with 09, e.g. 09171234567."
++                    } else {
++                        gcashBusy = true
++                        db.collection("users").document(uid)
++                            .set(mapOf("gcashNumber" to number), SetOptions.merge())
++                            .addOnSuccessListener {
++                                gcashBusy = false
++                                gcashInfo = if (number.isEmpty()) "GCash number cleared." else "GCash number saved."
++                            }
++                            .addOnFailureListener { e ->
++                                gcashBusy = false
++                                gcashInfo = e.localizedMessage ?: "Failed to save the GCash number."
++                            }
++                    }
++                },
++                enabled = !gcashBusy,
++                modifier = Modifier.fillMaxWidth()
++            ) { Text(if (gcashBusy) "Saving…" else "Save GCash number") }
++            gcashInfo?.let {
++                Spacer(Modifier.height(4.dp))
++                Text(it, style = MaterialTheme.typography.labelSmall)
++            }
+             Spacer(Modifier.height(8.dp))
+             if (fbAvailable) {
+                 OutlinedButton(

@@ -1,0 +1,20 @@
+diff --git a/README.md b/README.md
+index aac7f25..358a13c 100644
+--- a/README.md
++++ b/README.md
+@@ -114,6 +114,15 @@ How a GCash order moves:
+ 4. `Done` stays disabled until the order is paid — "paid" always means the seller
+    verified the money, never that the buyer said so.
+ 
++**Where the money goes.** The seller saves their GCash number in *Profile →
++Contact links* (their store info). It is stored on the `users` document as
++`gcashNumber`, validated by the rules to an 11-digit mobile starting with `09`
++(empty clears it), and readable by any signed-in user. The buyer sees it in the
++Cart's GCash prompt (per seller), on the order's Payment card, and inside the
++**I paid via GCash** dialog next to the amount. A seller who has not saved one
++yet gets an "ask them in chat" note instead of a dead end, and nothing is marked
++paid until the seller confirms.
++
+ Cash orders start as `cod` (paid on hand-over) and skip all of it. The rules
+ enforce the same thing: the buyer cannot create an already-paid order, cannot mark
+ it paid, and neither side can switch the payment method after checkout. Existing
