@@ -437,7 +437,11 @@ class SmokeTest {
                 val tapped = runCatching {
                     card.performScrollTo()
                     composeRule.waitForIdle()
-                    card.performTouchInput { click(percentOffset(0.5f, 0.25f)) }
+                    card.performTouchInput {
+                        val point = percentOffset(0.5f, 0.25f)
+                        down(point)
+                        up()
+                    }
                 }.isSuccess
                 if (tapped && awaitCondition(6_000) {
                         hasText("Add to cart", substring = true)
