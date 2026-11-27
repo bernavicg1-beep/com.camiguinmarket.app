@@ -1297,14 +1297,14 @@ fun CartScreen(
 ) {
     // Payment is chosen at checkout: "cash" (pay on pickup/delivery) or "gcash".
     var paymentMethod by remember { mutableStateOf("cash") }
-    // Each seller's GCash number so the prompt says where the money goes.
-    val sellerGcash = rememberSellerGcash(items.map { it.sellerId })
     val db = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
     val S = LocalStrings.current
     // Show the local cache first so something appears even offline.
     var items by remember { mutableStateOf(loadCartCache(context, uid)) }
     var offline by remember { mutableStateOf(false) }
+    // Each seller's GCash number so the prompt says where the money goes.
+    val sellerGcash = rememberSellerGcash(items.map { it.sellerId })
 
     DisposableEffect(Unit) {
         val reg = db.collection("carts").document(uid).collection("items")
