@@ -10,10 +10,10 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -228,7 +228,7 @@ class SmokeTest {
         )
 
         assertTrue(
-            "Seeded listing detail did not open: ${screenSummary()}",
+            "Seeded listing detail did not open: ${screenSummary()} | ${seedCardDiagnostics()}",
             openFirstSeedDetail()
         )
         composeRule.onNodeWithText("↗").performClick()
@@ -312,7 +312,8 @@ class SmokeTest {
             awaitSeed()
         )
         assertTrue(
-            "Seeded listing has no add-to-cart action: ${screenSummary()}",
+            "Seeded listing has no add-to-cart action: ${screenSummary()} | " +
+                seedCardDiagnostics(),
             openFirstSeedDetail()
         )
         composeRule.onNodeWithText("Add to cart", substring = true).performClick()
@@ -426,27 +427,31 @@ class SmokeTest {
      *
      * The card is addressed by the exact tag `ListingCard` puts on itself
      * (`listing_card_<id>` in Extras.kt), with the ids read from Firestore, so no
-     * text matching or screen coordinate is involved. The click is delivered as
-     * the node's own `OnClick` semantics action instead of a tap: a tap is
-     * hit-tested against the real layout, where the card's favourite icon, its
-     * "Add to Cart" button or the sticky chrome can swallow it.
+     * text matching or screen coordinate is involved. It looks at every node that
+     * carries the tag, and invokes the card's own `OnClick` action instead of
+     * tapping: no hit-testing, so the favourite icon, the card's "Add to Cart"
+     * button and overlapping chrome cannot swallow the click, and a card the feed
+     * has not composed does not have to be scrolled to first.
      */
     private fun openFirstSeedDetail(timeoutMs: Long = 25_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         var sweeps = 0
         while (System.currentTimeMillis() < deadline) {
             for (id in seedListingIds()) {
-                val card = composeRule.onNodeWithTag(CARD_TAG_PREFIX + id)
-                val clicked = runCatching {
-                    card.performScrollTo()
+                val cards = runCatching {
+                    composeRule.onAllNodesWithTag(CARD_TAG_PREFIX + id).fetchSemanticsNodes()
+                }.getOrDefault(emptyList())
+                for (index in cards.indices) {
+                    val card = composeRule.onAllNodesWithTag(CARD_TAG_PREFIX + id)[index]
+                    val clicked = runCatching {
+                        card.performSemanticsAction(SemanticsActions.OnClick)
+                    }.isSuccess
+                    if (!clicked) continue
+                    if (awaitCondition(6_000) { hasText("Add to cart", substring = true) }) return true
+                    // The detail did not open; get back to the feed before retrying.
+                    runCatching { device.pressBack() }
                     composeRule.waitForIdle()
-                    card.performSemanticsAction(SemanticsActions.OnClick)
-                }.isSuccess
-                if (!clicked) continue
-                if (awaitCondition(6_000) { hasText("Add to cart", substring = true) }) return true
-                // The detail did not open; get back to the feed before retrying.
-                runCatching { device.pressBack() }
-                composeRule.waitForIdle()
+                }
             }
             // Cards below the fold are not composed, so walk the feed down while
             // the listings listener delivers; a visible seed is not enough.
@@ -454,6 +459,21 @@ class SmokeTest {
             if (sweeps > 6) Thread.sleep(500) else awaitSeed(5_000)
         }
         return false
+    }
+
+    /**
+     * How the card lookup saw the screen, quoted when it fails so a miss says
+     * whether the seed ids, the tags or both were missing.
+     */
+    private fun seedCardDiagnostics(): String {
+        val ids = seedListingIds()
+        val tags = ids.joinToString { id ->
+            val count = runCatching {
+                composeRule.onAllNodesWithTag(CARD_TAG_PREFIX + id).fetchSemanticsNodes().size
+            }.getOrDefault(-1)
+            "$id=$count"
+        }
+        return "seedIds=${ids.size} tagged=$tags"
     }
 
     /**
