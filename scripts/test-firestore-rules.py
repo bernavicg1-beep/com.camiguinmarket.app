@@ -343,6 +343,23 @@ check("mod: admins are readable by signed-in users", "GET", "/admins/admin1", 20
 check("mod: cannot write admins from the app", "POST", "/admins", 403,
       uid="u1", body={"fields": {"active": {"booleanValue": True}}}, doc_id="fake")
 
+# `admins` is written from the Firebase Console only, so the app must have no
+# write path at all: no self-promotion, no overwriting a marker, no deletion —
+# not even for someone who is already an admin. Otherwise a signed-in user
+# could grant themselves moderation powers (or lock every admin out).
+check("admin: a user cannot create a marker for themselves", "POST", "/admins", 403,
+      uid="u3", doc_id="u3", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: a user cannot create a marker for someone else", "POST", "/admins", 403,
+      uid="u3", doc_id="admin2", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: a user cannot overwrite an existing marker", "PATCH", "/admins/admin1", 403,
+      uid="u3", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: a user cannot delete an existing marker", "DELETE", "/admins/admin1", 403,
+      uid="u3")
+check("admin: an admin cannot add another admin from the app", "POST", "/admins", 403,
+      uid="admin1", doc_id="admin2", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: an admin cannot revoke their own marker from the app", "DELETE",
+      "/admins/admin1", 403, uid="admin1")
+
 check("mod: u2 listing for moderation", "POST", "/listings", 200,
       uid="u2", body=app_listing("u2"), doc_id="mod1")
 check("mod: non-admin cannot delete someone else's listing", "DELETE", "/listings/mod1", 403,
