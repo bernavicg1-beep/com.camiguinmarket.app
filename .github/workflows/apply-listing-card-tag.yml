@@ -1,0 +1,38 @@
+name: Apply listing card test tag
+
+# One-shot helper: the contents API has to replace a whole file and Extras.kt is
+# ~123 KB, so this job applies the checked-in patch and then removes itself.
+on:
+  push:
+    branches: [fix/checkout-rules-and-trust]
+    paths:
+      - '.github/patches/listing-card-tag.patch'
+      - '.github/workflows/apply-listing-card-tag.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/checkout-rules-and-trust
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: |
+          set -euo pipefail
+          git apply -p1 --verbose .github/patches/listing-card-tag.patch
+
+      - name: Commit, push and clean up
+        run: |
+          set -euo pipefail
+          git config user.name "bernavicg1-beep"
+          git config user.email "bernavicg1-beep@users.noreply.github.com"
+          git rm --quiet .github/patches/listing-card-tag.patch .github/workflows/apply-listing-card-tag.yml
+          git add -A
+          git diff --cached --stat
+          git commit -m "Tag listing cards for the smoke tests and open the detail by tag"
+          git push origin HEAD:refs/heads/fix/checkout-rules-and-trust
