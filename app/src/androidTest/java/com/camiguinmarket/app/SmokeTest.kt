@@ -6,7 +6,9 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -425,24 +427,27 @@ class SmokeTest {
      * Opens the first seeded listing's detail, then waits for the detail screen's
      * add-to-cart button.
      *
-     * The card is addressed by the exact tag `ListingCard` puts on itself
-     * (`listing_card_<id>` in Extras.kt), with the ids read from Firestore, so no
-     * text matching or screen coordinate is involved. It looks at every node that
-     * carries the tag, and invokes the card's own `OnClick` action instead of
-     * tapping: no hit-testing, so the favourite icon, the card's "Add to Cart"
-     * button and overlapping chrome cannot swallow the click, and a card the feed
-     * has not composed does not have to be scrolled to first.
+     * Home draws every listing twice. A listing whose `views` counter is above
+     * zero, and opening a listing increments it, is additionally rendered by the
+     * "🔥 Trending now" two-column grid, which uses `ListingTile`; only the
+     * `ListingCard` in "Featured Products" carries `listing_card_<id>`
+     * (Extras.kt). The grid sits above that list, and `awaitSeed()` returns as
+     * soon as a seed title is visible, which stops on the grid: the title is on
+     * screen while no tag is composed yet, which is exactly what a bare tag
+     * lookup reports. So the feed is walked down until the tagged card composes,
+     * and a seed that only the grid shows is matched by its title plus the card's
+     * own click action.
+     *
+     * The card is invoked through its own `OnClick` action instead of a tap, so
+     * no hit-testing: the favourite icon, the card's "Add to Cart" button and
+     * overlapping chrome cannot swallow the click.
      */
     private fun openFirstSeedDetail(timeoutMs: Long = 25_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
-        var sweeps = 0
+        var scrolls = 0
         while (System.currentTimeMillis() < deadline) {
-            for (id in seedListingIds()) {
-                val cards = runCatching {
-                    composeRule.onAllNodesWithTag(CARD_TAG_PREFIX + id).fetchSemanticsNodes()
-                }.getOrDefault(emptyList())
-                for (index in cards.indices) {
-                    val card = composeRule.onAllNodesWithTag(CARD_TAG_PREFIX + id)[index]
+            for ((id, title) in seedRows()) {
+                for (card in seedCardNodes(id, title)) {
                     val clicked = runCatching {
                         card.performSemanticsAction(SemanticsActions.OnClick)
                     }.isSuccess
@@ -453,34 +458,81 @@ class SmokeTest {
                     composeRule.waitForIdle()
                 }
             }
-            // Cards below the fold are not composed, so walk the feed down while
-            // the listings listener delivers; a visible seed is not enough.
-            sweeps += 1
-            if (sweeps > 6) Thread.sleep(500) else awaitSeed(5_000)
+            // The title is already visible in the grid above, so waiting for it
+            // again never scrolls: walk down until the tagged card is composed.
+            if (scrolls >= 12) Thread.sleep(500) else scrollFeedDown()
+            scrolls += 1
         }
         return false
     }
 
     /**
-     * How the card lookup saw the screen, quoted when it fails so a miss says
-     * whether the seed ids, the tags or both were missing.
+     * Every node the feed renders for one seeded listing: the tagged `ListingCard`
+     * in either semantics tree first, then the `ListingTile` of the trending grid,
+     * which has no tag and is matched by its exact title plus its click action.
      */
-    private fun seedCardDiagnostics(): String {
-        val ids = seedListingIds()
-        val tags = ids.joinToString { id ->
-            val count = runCatching {
-                composeRule.onAllNodesWithTag(CARD_TAG_PREFIX + id).fetchSemanticsNodes().size
-            }.getOrDefault(-1)
-            "$id=$count"
+    private fun seedCardNodes(id: String, title: String): List<SemanticsNodeInteraction> {
+        val byTag = listOf(false, true).flatMap { unmerged ->
+            nodesWithTag(CARD_TAG_PREFIX + id, unmerged)
         }
-        return "seedIds=${ids.size} tagged=$tags"
+        if (byTag.isNotEmpty()) return byTag
+        return nodesWithTitle(title)
+    }
+
+    private fun nodesWithTag(tag: String, unmerged: Boolean): List<SemanticsNodeInteraction> {
+        val count = runCatching {
+            composeRule.onAllNodesWithTag(tag, useUnmergedTree = unmerged)
+                .fetchSemanticsNodes().size
+        }.getOrDefault(0)
+        return (0 until count).map { index ->
+            composeRule.onAllNodesWithTag(tag, useUnmergedTree = unmerged)[index]
+        }
+    }
+
+    private fun nodesWithTitle(title: String): List<SemanticsNodeInteraction> {
+        // The class has its own `hasText` helper, so the matcher is qualified.
+        val matcher = androidx.compose.ui.test.hasText(title) and hasClickAction()
+        val count = runCatching {
+            composeRule.onAllNodes(matcher).fetchSemanticsNodes().size
+        }.getOrDefault(0)
+        return (0 until count).map { index -> composeRule.onAllNodes(matcher)[index] }
+    }
+
+    /** One swipe up the feed, so the cards below the fold get composed. */
+    private fun scrollFeedDown() {
+        runCatching {
+            device.swipe(
+                device.displayWidth / 2,
+                device.displayHeight * 3 / 4,
+                device.displayWidth / 2,
+                device.displayHeight / 4,
+                20
+            )
+        }
+        composeRule.waitForIdle()
     }
 
     /**
-     * Ids of the seeded listings, newest first, read straight from Firestore so
-     * the card lookup can use the exact `listing_card_<id>` tag.
+     * How the card lookup saw the screen, quoted when it fails so a miss says
+     * whether the tags were composed or only the grid's untagged tile matched.
      */
-    private fun seedListingIds(timeoutMs: Long = 20_000): List<String> = runCatching {
+    private fun seedCardDiagnostics(): String {
+        val seeds = seedRows()
+        val perSeed = seeds.take(8).joinToString { (id, title) ->
+            val merged = nodesWithTag(CARD_TAG_PREFIX + id, false).size
+            val unmerged = nodesWithTag(CARD_TAG_PREFIX + id, true).size
+            val tile = nodesWithTitle(title).size
+            "$id: tag=$merged/$unmerged tile=$tile"
+        }
+        return "seedIds=${seeds.size} $perSeed"
+    }
+
+    /**
+     * Ids and titles of the seeded listings, newest first, read straight from
+     * Firestore: the id addresses the `listing_card_<id>` tag, the title the
+     * trending grid's untagged tile.
+     */
+    private fun seedRows(timeoutMs: Long = 20_000): List<Pair<String, String>> = runCatching {
         val snap = Tasks.await(
             FirebaseFirestore.getInstance().collection("listings")
                 .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
@@ -488,9 +540,10 @@ class SmokeTest {
             timeoutMs,
             TimeUnit.MILLISECONDS
         )
-        snap.documents
-            .filter { doc -> doc.getString("title")?.startsWith(SEED_PREFIX) == true }
-            .map { it.id }
+        snap.documents.mapNotNull { doc ->
+            val title = doc.getString("title")
+            if (title?.startsWith(SEED_PREFIX) == true) doc.id to title else null
+        }
     }.getOrDefault(emptyList())
 
     /**
