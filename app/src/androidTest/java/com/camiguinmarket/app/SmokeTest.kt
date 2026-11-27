@@ -172,7 +172,13 @@ class SmokeTest {
                 ).fetchSemanticsNodes().isNotEmpty()
             }
             // ...and the feed must be left untouched until a real fix arrives.
-            assertTrue("Seeded listings disappeared without a location fix", seedVisible())
+            // Tapping a radius re-renders the feed, which resets its scroll, so
+            // the seed has to be waited for again instead of sampled once.
+            assertTrue(
+                "Seeded listings disappeared without a location fix: " +
+                    screenSummary() + " | " + listingDiagnostics(),
+                awaitSeed(10_000)
+            )
 
             composeRule.onNodeWithText("5 km").performClick()
             composeRule.waitForIdle()
