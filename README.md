@@ -78,17 +78,45 @@ These features have their own Firestore collections: `carts/{uid}/items`,
 `favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, and
 `chats/{chatId}/messages`.
 
+### Creating the first admin
+
+The app has no way to grant the role to itself: `admins` is write-blocked in the
+rules (`allow write: if false`), so every admin marker is created in the Firebase
+Console. To create the first one:
+
+1. Sign in to the app once with the account that should be the admin, so it
+exists under **Authentication → Users**.
+2. Firebase Console → **Firestore Database** → **Start collection** named
+`admins` (skip if it already exists).
+3. **Add document** → document ID = that user's `uid` (shown in the
+Authentication tab) → field `active` (boolean) = `true` → **Save**.
+4. Reopen the app (or wait a moment — Profile listens live): the **Moderation**
+and **Seller verification** rows appear under Profile. Delete the document to
+revoke admin.
+
+What those two rows unlock:
+
+- **Moderation** — every listing in the market with a **Delete** action (the
+seller is notified), plus the **Reports** tab: a reported listing can be deleted
+(which resolves the report) or dismissed, and only the reporter and an admin can
+read a report. Rules also let an admin delete any listing, not just their own.
+- **Seller verification** — sellers searchable by name or uid with their
+phone-verified / community-verified badges, the pending community-verification
+**Requests**, and **Verify** / **Revoke** actions. Verification is soft: it adds
+trust badges and a low-rating flag, it never blocks posting or buying.
+
+Without the marker neither row is rendered, `ModerationScreen` and
+`AdminVerificationScreen` refuse to show their contents, and every admin action
+is checked again by `isAdmin()` in `firestore.rules`.
+
 ### Moderation
 
 When an `admins/{uid}` document exists in Firestore, Profile shows the
 **Moderation** screen: all listings, and a moderator can delete any listing
 (the seller is notified).
 
-**How to make a moderator:** Firebase Console → Firestore → **Start collection**
-`admins` → document ID = the user's `uid` (visible in the Authentication tab) →
-field `active` (boolean) = `true`. There is no UI for this in the app because not
-just anyone should be able to create a moderator; `admins` is blocked by the rules
-(`allow write: if false`).
+**How to make a moderator:** see **Creating the first admin** above — the same
+`admins/{uid}` document is the only switch, and the app cannot write it.
 
 ### Seller verification (admin/community)
 
