@@ -13,8 +13,12 @@ credential is read from ``FIREBASE_SERVICE_ACCOUNT`` (the JSON itself, or a path
 to it) and is never printed.
 
 Each workflow job exports ``SMOKE_SEED_SUFFIX`` so its ids and seller id are its
-own. Without that, parallel jobs overwrite each other's documents and one job's
-cleanup deletes the listings another job is still testing against.
+own. The suffix carries the job, the run id and the attempt, and a digest of
+that whole value, so two overlapping runs can never share document ids: without
+that, parallel runs overwrite each other's documents and one run's cleanup
+deletes the listings another run is still testing against. ``cleanup`` only ever
+deletes documents whose id ends with this run's suffix and whose seller id is
+this run's exact seller id.
 
 Usage:
   scripts/seed-smoke-listings.sh seed      # write, then report what is readable
@@ -26,6 +30,7 @@ Exit codes: 0 ok, 1 missing/invalid credential when SMOKE_SEED_REQUIRED=1,
 """
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -43,8 +48,26 @@ SELLER_NAME = "Smoke Seed Seller"
 CONTACT = "09171234567"
 CATEGORY = "Food"
 
+def strict_slug(raw: str) -> str:
+    """A short suffix that stays unique after shortening.
+
+    Truncating the raw suffix (job + run) at a fixed length dropped the run
+    number for the longer job names, so two overlapping runs of the same job
+    produced the same document ids and the same seller id: the newer run
+    overwrote the older one's seeds, and the older run's cleanup then deleted
+    the newer run's documents while it was still testing against them. The
+    digest of the whole raw value keeps two runs distinct even when the readable
+    part has to be cut short.
+    """
+    clean = re.sub(r"[^a-z0-9]+", "-", raw.strip().lower()).strip("-")
+    if not clean:
+        return ""
+    digest = hashlib.sha1(clean.encode()).hexdigest()[:8]
+    return f"{clean[:24].strip('-')}-{digest}"
+
+
 _RAW_SUFFIX = os.environ.get("SMOKE_SEED_SUFFIX", "")
-SUFFIX = re.sub(r"[^a-z0-9]+", "-", _RAW_SUFFIX.strip().lower()).strip("-")[:24]
+SUFFIX = strict_slug(_RAW_SUFFIX)
 SELLER_ID = f"smoke-seed-seller-{SUFFIX}" if SUFFIX else "smoke-seed-seller"
 # Every smoke seller shares this prefix, which is what the cleanup sweep uses.
 STALE_SELLER_PREFIX = "smoke-seed-seller"
@@ -204,15 +227,19 @@ def verify(token: str, project: str, label: str) -> int:
         print(f"::warning::Could not verify seeded listings ({label}): {err}")
         return 0
     titles = []
+    owners: dict[str, int] = {}
     for row in rows:
         document = row.get("document") or {}
-        title = ((document.get("fields") or {}).get("title") or {}).get("stringValue")
+        fields = document.get("fields") or {}
+        title = (fields.get("title") or {}).get("stringValue")
+        seller = (fields.get("sellerId") or {}).get("stringValue") or "?"
         if title:
             titles.append(title)
+            owners[seller] = owners.get(seller, 0) + 1
     seeded = [title for title in titles if title.startswith(TITLE_PREFIX)]
     print(
         f"verify({label}): project={project} seller={SELLER_ID} "
-        f"total={len(titles)} seeded={len(seeded)} titles={seeded}"
+        f"total={len(titles)} seeded={len(seeded)} owners={owners} titles={seeded}"
     )
     return 0
 
@@ -226,11 +253,42 @@ def delete_doc(token: str, url: str) -> None:
             raise
 
 
-def delete_stale_seeds(token: str, base: str) -> None:
-    """Removes smoke listings left behind by earlier runs or cancelled jobs.
+def own_listing_ids(token: str, base: str) -> set[str]:
+    """Document ids that belong to this run only.
 
-    Every run seeds under its own suffix, so a run that never reached cleanup
-    would otherwise leave its documents in the project forever.
+    The seller id carries the run's suffix, so this exact-equality query cannot
+    return another job's seeds. Each document is still re-checked against the
+    suffix by [cleanup] before it is deleted.
+    """
+    query = {
+        "structuredQuery": {
+            "from": [{"collectionId": "listings"}],
+            "where": {"fieldFilter": {
+                "field": {"fieldPath": "sellerId"},
+                "op": "EQUAL",
+                "value": {"stringValue": SELLER_ID}}},
+            "limit": 100,
+        }
+    }
+    try:
+        with request(token, f"{base}:runQuery", "POST", query) as resp:
+            rows = json.load(resp)
+    except (urllib.error.HTTPError, urllib.error.URLError) as err:
+        print(f"::warning::Could not list this run's seeded listings: {err}")
+        return set()
+    return {
+        document["name"].rsplit("/", 1)[-1]
+        for document in (row.get("document") or {} for row in rows)
+        if document.get("name")
+    }
+
+
+def sweep_leftovers(token: str, base: str) -> None:
+    """Removes smoke listings left behind by runs that never reached cleanup.
+
+    A seed is only swept when it belongs to a *different* seller and is older
+    than [STALE_AFTER_MS] (2 h, while a job is capped at 30 min), so a parallel
+    job or an overlapping run of this job keeps its fixtures for its whole run.
     """
     query = {
         "structuredQuery": {
@@ -257,29 +315,48 @@ def delete_stale_seeds(token: str, base: str) -> None:
     except (urllib.error.HTTPError, urllib.error.URLError) as err:
         print(f"::warning::Could not sweep stale smoke listings: {err}")
         return
-    # Only old documents: parallel jobs' seeds are minutes old and still in use.
     cutoff = int(time.time() * 1000) - STALE_AFTER_MS
     removed = 0
+    kept = 0
     for row in rows:
         document = row.get("document") or {}
         fields = document.get("fields") or {}
+        seller = (fields.get("sellerId") or {}).get("stringValue") or ""
         title = (fields.get("title") or {}).get("stringValue") or ""
         created = int((fields.get("createdAt") or {}).get("integerValue") or 0)
-        if document.get("name") and title.startswith(TITLE_PREFIX) and 0 < created < cutoff:
-            delete_doc(token, f"https://firestore.googleapis.com/v1/{document['name']}")
-            removed += 1
+        if not document.get("name") or not title.startswith(TITLE_PREFIX):
+            continue
+        # Never touch this run's own documents, and never touch a seed another
+        # run is young enough to still be using.
+        if seller == SELLER_ID or not 0 < created < cutoff:
+            kept += 1
+            continue
+        delete_doc(token, f"https://firestore.googleapis.com/v1/{document['name']}")
+        removed += 1
     if removed:
-        print(f"Removed {removed} stale smoke listing(s) from earlier runs.")
+        print(f"Removed {removed} stale smoke listing(s) from earlier runs ({kept} kept).")
+    else:
+        print(f"No stale smoke listings to remove ({kept} kept).")
 
 
 def cleanup(token: str, project: str) -> int:
     base = FIRESTORE.format(project=project)
-    for name in LISTINGS:
-        identifier = doc_id(name)
+    # This run's documents only: the derived ids plus whatever the seller id
+    # query returns. A parallel job has a different suffix, so its seeds are
+    # never in this set, and the suffix check below refuses anything that is not
+    # provably ours.
+    targets = {doc_id(name) for name in LISTINGS} | own_listing_ids(token, base)
+    removed = 0
+    for identifier in sorted(targets):
+        if SUFFIX and not identifier.endswith(f"-{SUFFIX}"):
+            print(f"::warning::Skipping listings/{identifier}: it belongs to another run")
+            continue
         delete_doc(token, f"{base}/listings/{identifier}")
+        removed += 1
         print(f"removed listings/{identifier}")
+    print(f"Removed {removed} seeded listing(s) for seller {SELLER_ID}.")
 
-    delete_stale_seeds(token, base)
+    sweep_leftovers(token, base)
 
     # Orders written by the cart test point at the seeded listings; remove them
     # so repeated runs do not accumulate junk in the project.
@@ -294,8 +371,11 @@ def cleanup(token: str, project: str) -> int:
             rows = json.load(resp)
         removed = 0
         for row in rows:
-            document = row.get("document")
-            if document and document.get("name"):
+            document = row.get("document") or {}
+            seller = (((document.get("fields") or {}).get("sellerId") or {})
+                      .get("stringValue"))
+            # Belt and braces, as for the listings: only this run's orders go.
+            if document.get("name") and seller == SELLER_ID:
                 delete_doc(token, f"https://firestore.googleapis.com/v1/{document['name']}")
                 removed += 1
         print(f"Removed {removed} seeded order(s).")
@@ -303,7 +383,6 @@ def cleanup(token: str, project: str) -> int:
         # Cleanup must never hide the test result; report and carry on.
         print(f"::warning::Could not remove seeded orders: {err}")
 
-    print(f"Removed {len(LISTINGS)} seeded listings.")
     return 0
 
 
