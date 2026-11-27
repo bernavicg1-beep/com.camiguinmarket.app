@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
@@ -422,8 +423,12 @@ class SmokeTest {
      * The card is located by semantics ([seedCardNode]), so the tap lands on the
      * card rather than on a screen coordinate; the card is scrolled into view
      * first because the seeds sit below the hero, categories and trending row.
+     *
+     * The tap is placed a quarter of the way down the card, over its title, not
+     * at the card's centre: the centre of a short card can fall on the card's own
+     * "Add to Cart" button, which adds the item instead of opening the detail.
      */
-    private fun openFirstSeedDetail(timeoutMs: Long = 20_000): Boolean {
+    private fun openFirstSeedDetail(timeoutMs: Long = 25_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (!seedVisible() && !awaitSeed(5_000)) return false
@@ -431,9 +436,10 @@ class SmokeTest {
             if (card != null) {
                 val tapped = runCatching {
                     card.performScrollTo()
-                    card.performClick()
+                    composeRule.waitForIdle()
+                    card.performTouchInput { click(percentOffset(0.5f, 0.25f)) }
                 }.isSuccess
-                if (tapped && awaitCondition(8_000) {
+                if (tapped && awaitCondition(6_000) {
                         hasText("Add to cart", substring = true)
                     }
                 ) return true
