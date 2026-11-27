@@ -1,0 +1,164 @@
+diff --git a/README.md b/README.md
+index 358a13c..7d442f7 100644
+--- a/README.md
++++ b/README.md
+@@ -142,9 +142,9 @@ exists under **Authentication → Users**.
+ `admins` (skip if it already exists).
+ 3. **Add document** → document ID = that user's `uid` (shown in the
+ Authentication tab) → field `active` (boolean) = `true` → **Save**.
+-4. Reopen the app (or wait a moment — Profile listens live): the **Moderation**
+-and **Seller verification** rows appear under Profile. Delete the document to
+-revoke admin.
++4. Reopen the app (or wait a moment — Profile listens live): the **Admin
++dashboard**, **Moderation** and **Seller verification** rows appear under Profile.
++Delete the document to revoke admin.
+ 
+ What those two rows unlock:
+ 
+@@ -170,6 +170,23 @@ When an `admins/{uid}` document exists in Firestore, Profile shows the
+ **How to make a moderator:** see **Creating the first admin** above — the same
+ `admins/{uid}` document is the only switch, and the app cannot write it.
+ 
++### Admin dashboard
++
++The **Admin dashboard** row in Profile (admins only) is the overview: how many
++listings and sellers the market has, how many reports are open, how many
++verification requests are pending, and one tap to each tool (Moderation, Seller
++verification, Announcements). The counts come from live listeners, so they
++update as things happen.
++
++### Announcements
++
++Admins post an announcement from **Admin dashboard → Announcements** (title and
++message) and can hide, show or delete it afterwards. Active announcements appear
++as cards at the top of Home for every signed-in user. In the rules the
++`announcements` collection is readable by any signed-in user and writable only
++by an admin (`isAdmin()`), with the title capped at 80 characters and the
++message at 500.
++
+ ### Seller verification (admin/community)
+ 
+ Moderators also get **Seller verification** in Profile. It lists sellers
+diff --git a/app/src/main/java/com/camiguinmarket/app/Extras.kt b/app/src/main/java/com/camiguinmarket/app/Extras.kt
+index 854edc8..f2442f0 100644
+--- a/app/src/main/java/com/camiguinmarket/app/Extras.kt
++++ b/app/src/main/java/com/camiguinmarket/app/Extras.kt
+@@ -1877,6 +1877,7 @@ fun ProfileScreen(
+     onListingStats: () -> Unit,
+     onBlocked: () -> Unit = {},
+     onVerification: () -> Unit = {},
++    onAdmin: () -> Unit = {},
+     onLogout: () -> Unit,
+     onDeleteAccount: () -> Unit
+ ) {
+@@ -1953,6 +1954,8 @@ fun ProfileScreen(
+                 ProfileRow(Icons.Filled.Close, "Blocked sellers", onBlocked)
+                 ProfileRow(Icons.Filled.Storefront, S.listingStats, onListingStats)
+                 if (isAdmin) {
++                    ProfileDivider()
++                    ProfileRow(Icons.Filled.Security, "Admin dashboard", onAdmin)
+                     ProfileDivider()
+                     ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
+                     ProfileDivider()
+@@ -2596,6 +2599,7 @@ fun HomeTab(
+         Modifier.fillMaxSize().padding(horizontal = 12.dp),
+         verticalArrangement = Arrangement.spacedBy(8.dp)
+     ) {
++        item { AnnouncementsBanner() }
+         item {
+             val ctx = LocalContext.current
+             var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }
+diff --git a/app/src/main/java/com/camiguinmarket/app/MainActivity.kt b/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+index 6da95ee..54e484b 100644
+--- a/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
++++ b/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+@@ -941,6 +941,13 @@ fun MarketScreen(
+ 
+                 "moderation" -> ModerationScreen(uid, isAdmin)
+ 
++                "admin" -> AdminScreen(
++                    uid = uid,
++                    isAdmin = isAdmin,
++                    onModeration = { overlay = "moderation" },
++                    onVerification = { overlay = "verification" }
++                )
++
+                 "reviews" -> reviewsSeller?.let { (sid, sname) ->
+                     ReviewsScreen(sid, sname)
+                 }
+@@ -1144,6 +1151,7 @@ fun MarketScreen(
+                         onSavedSearches = { overlay = "saved" },
+                         onBlocked = { overlay = "blocked" },
+                         onVerification = { overlay = "verification" },
++                        onAdmin = { overlay = "admin" },
+                         onListingStats = { overlay = "stats" },
+                         onLogout = onLogout,
+                         onDeleteAccount = { showDeleteAccount = true }
+diff --git a/firestore.rules b/firestore.rules
+index e34d263..b6e5408 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -334,6 +334,24 @@ service cloud.firestore {
+       allow delete: if false;
+     }
+ 
++    // Announcements: admins post them, every signed-in user reads them.
++    // Home shows the active ones; nobody else can write.
++    match /announcements/{announcementId} {
++      allow read: if request.auth != null;
++
++      allow create: if isAdmin()
++        && request.resource.data.title is string
++        && request.resource.data.title.size() > 0
++        && request.resource.data.title.size() <= 80
++        && request.resource.data.message is string
++        && request.resource.data.message.size() > 0
++        && request.resource.data.message.size() <= 500
++        && request.resource.data.active is bool
++        && request.resource.data.createdAt is number;
++
++      allow update, delete: if isAdmin();
++    }
++
+     // Default deny for every other path.
+     match /{document=**} {
+       allow read, write: if false;
+diff --git a/scripts/test-firestore-rules.py b/scripts/test-firestore-rules.py
+index 47ab7d6..d85dd42 100644
+--- a/scripts/test-firestore-rules.py
++++ b/scripts/test-firestore-rules.py
+@@ -713,6 +713,34 @@ check("vr: cannot be deleted (even by admin)", "DELETE", "/verificationRequests/
+       uid="admin1")
+ 
+ 
++# --- announcements (admin dashboard) ----------------------------------------
++ann_doc = lambda title="Market day", message="Buy local this Saturday.": {"fields": {
++    "title": {"stringValue": title},
++    "message": {"stringValue": message},
++    "authorUid": {"stringValue": "admin1"},
++    "authorName": {"stringValue": "Admin"},
++    "active": {"booleanValue": True},
++    "createdAt": {"integerValue": "1"},
++}}
++
++check("ann: admin posts an announcement", "POST", "/announcements", 200,
++      uid="admin1", body=ann_doc(), doc_id="ann1")
++check("ann: a normal user cannot post", "POST", "/announcements", 403, uid="u1",
++      body=ann_doc(), doc_id="ann2")
++check("ann: an empty title is rejected", "POST", "/announcements", 403, uid="admin1",
++      body=ann_doc(title=""), doc_id="ann3")
++check("ann: an over-long message is rejected", "POST", "/announcements", 403, uid="admin1",
++      body=ann_doc(message="x" * 501), doc_id="ann4")
++check("ann: any signed-in user reads them", "GET", "/announcements/ann1", 200, uid="u1")
++check("ann: anonymous cannot read them", "GET", "/announcements/ann1", 403)
++check("ann: a normal user cannot hide one", "PATCH", "/announcements/ann1", 403, uid="u1",
++      body={"fields": {"active": {"booleanValue": False}}})
++check("ann: a normal user cannot delete one", "DELETE", "/announcements/ann1", 403, uid="u1")
++check("ann: the admin can hide one", "PATCH", "/announcements/ann1", 200, uid="admin1",
++      body={"fields": {"active": {"booleanValue": False}}})
++check("ann: the admin can delete one", "DELETE", "/announcements/ann1", 200, uid="admin1")
++
++
+ def main():
+     failures = 0
+     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")
