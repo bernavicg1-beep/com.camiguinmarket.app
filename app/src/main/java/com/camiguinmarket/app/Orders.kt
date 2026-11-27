@@ -802,7 +802,7 @@ fun OrderDetailScreen(
     val isSeller = order.sellerId == uid
     val otherId = if (isSeller) order.buyerId else order.sellerId
     val otherName = chatPartnerName(if (isSeller) order.buyerName else order.sellerName)
-    val sellerGcash = rememberSellerGcash(listOf(order.sellerId))[order.sellerId]
+    val sellerGcash = rememberSellerGcash(if (order.isGcash) listOf(order.sellerId) else emptyList())[order.sellerId]
 
     Column(
         Modifier.fillMaxSize().padding(14.dp),

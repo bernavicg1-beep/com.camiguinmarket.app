@@ -1304,7 +1304,7 @@ fun CartScreen(
     var items by remember { mutableStateOf(loadCartCache(context, uid)) }
     var offline by remember { mutableStateOf(false) }
     // Each seller's GCash number so the prompt says where the money goes.
-    val sellerGcash = rememberSellerGcash(items.map { it.sellerId })
+    val sellerGcash = rememberSellerGcash(if (paymentMethod == "gcash") items.map { it.sellerId } else emptyList())
 
     DisposableEffect(Unit) {
         val reg = db.collection("carts").document(uid).collection("items")
@@ -2320,8 +2320,6 @@ fun ContactLinksSection(uid: String) {
     var busy by remember { mutableStateOf(false) }
     // Store info: the GCash number buyers pay into (empty when not set).
     var gcashNumber by remember { mutableStateOf("") }
-    var gcashInfo by remember { mutableStateOf<String?>(null) }
-    var gcashBusy by remember { mutableStateOf(false) }
     var fbBusy by remember { mutableStateOf(false) }
     var fbInfo by remember { mutableStateOf<String?>(null) }
     var tgToken by remember { mutableStateOf<String?>(null) }
@@ -2411,34 +2409,6 @@ fun ContactLinksSection(uid: String) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(6.dp))
-            OutlinedButton(
-                onClick = {
-                    val number = gcashNumber.trim()
-                    gcashInfo = null
-                    if (number.isNotEmpty() && !Regex("^09\\d{9}$").matches(number)) {
-                        gcashInfo = "Use the 11-digit mobile number that starts with 09, e.g. 09171234567."
-                    } else {
-                        gcashBusy = true
-                        db.collection("users").document(uid)
-                            .set(mapOf("gcashNumber" to number), SetOptions.merge())
-                            .addOnSuccessListener {
-                                gcashBusy = false
-                                gcashInfo = if (number.isEmpty()) "GCash number cleared." else "GCash number saved."
-                            }
-                            .addOnFailureListener { e ->
-                                gcashBusy = false
-                                gcashInfo = e.localizedMessage ?: "Failed to save the GCash number."
-                            }
-                    }
-                },
-                enabled = !gcashBusy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (gcashBusy) "Saving…" else "Save GCash number") }
-            gcashInfo?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.labelSmall)
-            }
             Spacer(Modifier.height(8.dp))
             if (fbAvailable) {
                 OutlinedButton(
@@ -2529,12 +2499,18 @@ fun ContactLinksSection(uid: String) {
             Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {
+                    val gcash = gcashNumber.trim()
+                    if (gcash.isNotEmpty() && !Regex("^09\\d{9}$").matches(gcash)) {
+                        info = "GCash number must be an 11-digit mobile starting with 09, e.g. 09171234567."
+                        return@Button
+                    }
                     busy = true
                     db.collection("users").document(uid).set(
                         mapOf(
                             "telegram" to normalizeTelegramLink(telegram),
                             "messenger" to normalizeMessengerLink(messenger),
-                            "whatsapp" to normalizeWhatsAppLink(whatsapp)
+                            "whatsapp" to normalizeWhatsAppLink(whatsapp),
+                            "gcashNumber" to gcash
                         ),
                         SetOptions.merge()
                     ).addOnSuccessListener {

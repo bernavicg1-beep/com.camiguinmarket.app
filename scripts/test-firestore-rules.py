@@ -164,6 +164,21 @@ check("gcash: the seller can clear the number", "PATCH", "/users/u2", 200, uid="
       body={"fields": {"gcashNumber": {"stringValue": ""}}})
 check("gcash: any signed-in buyer reads the seller's number", "GET", "/users/u2", 200, uid="u1")
 
+# --- store info: contact links (Telegram / Messenger / WhatsApp) --------------
+# The "Save links" button writes these three together; the rules must accept
+# them (they were previously rejected because they were not in the allow-list).
+check("links: owner saves telegram/messenger/whatsapp", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"telegram": {"stringValue": "camiguin_market"},
+                       "messenger": {"stringValue": "CamiguinMarket"},
+                       "whatsapp": {"stringValue": "+639171234567"}}})
+check("links: a non-string value is rejected", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"telegram": {"booleanValue": True}}})
+check("links: another user cannot write them", "PATCH", "/users/u1", 403, uid="u2",
+      body={"fields": {"telegram": {"stringValue": "x"}}})
+check("links: telegramVerified/messengerVerified are booleans", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"telegramVerified": {"booleanValue": True},
+                       "messengerVerified": {"booleanValue": True}}})
+
 # --- checkout idempotency markers -------------------------------------------
 # checkoutCart() reads /checkouts/{id} before writing it; a missing document
 # must be readable (404) rather than denied (403).
