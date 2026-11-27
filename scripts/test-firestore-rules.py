@@ -713,6 +713,34 @@ check("vr: cannot be deleted (even by admin)", "DELETE", "/verificationRequests/
       uid="admin1")
 
 
+# --- announcements (admin dashboard) ----------------------------------------
+ann_doc = lambda title="Market day", message="Buy local this Saturday.": {"fields": {
+    "title": {"stringValue": title},
+    "message": {"stringValue": message},
+    "authorUid": {"stringValue": "admin1"},
+    "authorName": {"stringValue": "Admin"},
+    "active": {"booleanValue": True},
+    "createdAt": {"integerValue": "1"},
+}}
+
+check("ann: admin posts an announcement", "POST", "/announcements", 200,
+      uid="admin1", body=ann_doc(), doc_id="ann1")
+check("ann: a normal user cannot post", "POST", "/announcements", 403, uid="u1",
+      body=ann_doc(), doc_id="ann2")
+check("ann: an empty title is rejected", "POST", "/announcements", 403, uid="admin1",
+      body=ann_doc(title=""), doc_id="ann3")
+check("ann: an over-long message is rejected", "POST", "/announcements", 403, uid="admin1",
+      body=ann_doc(message="x" * 501), doc_id="ann4")
+check("ann: any signed-in user reads them", "GET", "/announcements/ann1", 200, uid="u1")
+check("ann: anonymous cannot read them", "GET", "/announcements/ann1", 403)
+check("ann: a normal user cannot hide one", "PATCH", "/announcements/ann1", 403, uid="u1",
+      body={"fields": {"active": {"booleanValue": False}}})
+check("ann: a normal user cannot delete one", "DELETE", "/announcements/ann1", 403, uid="u1")
+check("ann: the admin can hide one", "PATCH", "/announcements/ann1", 200, uid="admin1",
+      body={"fields": {"active": {"booleanValue": False}}})
+check("ann: the admin can delete one", "DELETE", "/announcements/ann1", 200, uid="admin1")
+
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

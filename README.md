@@ -142,9 +142,9 @@ exists under **Authentication → Users**.
 `admins` (skip if it already exists).
 3. **Add document** → document ID = that user's `uid` (shown in the
 Authentication tab) → field `active` (boolean) = `true` → **Save**.
-4. Reopen the app (or wait a moment — Profile listens live): the **Moderation**
-and **Seller verification** rows appear under Profile. Delete the document to
-revoke admin.
+4. Reopen the app (or wait a moment — Profile listens live): the **Admin
+dashboard**, **Moderation** and **Seller verification** rows appear under Profile.
+Delete the document to revoke admin.
 
 What those two rows unlock:
 
@@ -169,6 +169,23 @@ When an `admins/{uid}` document exists in Firestore, Profile shows the
 
 **How to make a moderator:** see **Creating the first admin** above — the same
 `admins/{uid}` document is the only switch, and the app cannot write it.
+
+### Admin dashboard
+
+The **Admin dashboard** row in Profile (admins only) is the overview: how many
+listings and sellers the market has, how many reports are open, how many
+verification requests are pending, and one tap to each tool (Moderation, Seller
+verification, Announcements). The counts come from live listeners, so they
+update as things happen.
+
+### Announcements
+
+Admins post an announcement from **Admin dashboard → Announcements** (title and
+message) and can hide, show or delete it afterwards. Active announcements appear
+as cards at the top of Home for every signed-in user. In the rules the
+`announcements` collection is readable by any signed-in user and writable only
+by an admin (`isAdmin()`), with the title capped at 80 characters and the
+message at 500.
 
 ### Seller verification (admin/community)
 

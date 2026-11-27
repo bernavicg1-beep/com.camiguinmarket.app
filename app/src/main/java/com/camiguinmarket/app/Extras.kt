@@ -1877,6 +1877,7 @@ fun ProfileScreen(
     onListingStats: () -> Unit,
     onBlocked: () -> Unit = {},
     onVerification: () -> Unit = {},
+    onAdmin: () -> Unit = {},
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -1953,6 +1954,8 @@ fun ProfileScreen(
                 ProfileRow(Icons.Filled.Close, "Blocked sellers", onBlocked)
                 ProfileRow(Icons.Filled.Storefront, S.listingStats, onListingStats)
                 if (isAdmin) {
+                    ProfileDivider()
+                    ProfileRow(Icons.Filled.Security, "Admin dashboard", onAdmin)
                     ProfileDivider()
                     ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
                     ProfileDivider()
@@ -2596,6 +2599,7 @@ fun HomeTab(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        item { AnnouncementsBanner() }
         item {
             val ctx = LocalContext.current
             var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }

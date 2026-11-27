@@ -941,6 +941,13 @@ fun MarketScreen(
 
                 "moderation" -> ModerationScreen(uid, isAdmin)
 
+                "admin" -> AdminScreen(
+                    uid = uid,
+                    isAdmin = isAdmin,
+                    onModeration = { overlay = "moderation" },
+                    onVerification = { overlay = "verification" }
+                )
+
                 "reviews" -> reviewsSeller?.let { (sid, sname) ->
                     ReviewsScreen(sid, sname)
                 }
@@ -1144,6 +1151,7 @@ fun MarketScreen(
                         onSavedSearches = { overlay = "saved" },
                         onBlocked = { overlay = "blocked" },
                         onVerification = { overlay = "verification" },
+                        onAdmin = { overlay = "admin" },
                         onListingStats = { overlay = "stats" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }
