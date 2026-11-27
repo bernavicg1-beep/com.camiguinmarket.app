@@ -1,0 +1,36 @@
+name: Apply card lookup fix
+
+# One-shot helper: the contents API replaces a whole file, so this job applies the
+# checked-in patch, checks the result and pushes. The caller removes the helper.
+on:
+  push:
+    branches: [fix/checkout-rules-and-trust]
+    paths:
+      - '.github/patches/card-lookup.patch'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/checkout-rules-and-trust
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: |
+          set -euo pipefail
+          git apply -p1 --verbose .github/patches/card-lookup.patch
+          test "$(git hash-object app/src/androidTest/java/com/camiguinmarket/app/SmokeTest.kt)" = "f89dfca3f973c75cc016f4aa4a0c4c35d201c320"
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "bernavicg1-beep"
+          git config user.email "bernavicg1-beep@users.noreply.github.com"
+          git add app/src/androidTest/java/com/camiguinmarket/app/SmokeTest.kt
+          git commit -m "Open the seed detail through the card's click action"
+          git push origin HEAD:refs/heads/fix/checkout-rules-and-trust
