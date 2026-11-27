@@ -1,0 +1,26 @@
+name: Apply smoke coverage patch
+
+# One-shot helper: applies .github/patches/smoke-coverage.patch, commits the
+# result, then removes itself and the patch so main keeps only the change.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Apply the patch and commit
+        run: |
+          set -euo pipefail
+          git apply --recount --whitespace=nowarn .github/patches/smoke-coverage.patch
+          rm -rf .github/patches .github/workflows/apply-smoke-coverage.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: exercise GCash checkout, the admin dashboard and the Profile admin entry in the smoke suite"
+          git push origin HEAD:main
