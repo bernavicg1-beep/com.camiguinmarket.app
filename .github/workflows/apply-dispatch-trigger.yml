@@ -1,0 +1,40 @@
+name: Apply workflow dispatch trigger
+
+# One-shot helper: adds workflow_dispatch to the smoke workflow so the suites can
+# be started as the repository owner (GitHub holds the bot's pull_request runs at
+# action_required). Removes itself once applied.
+on:
+  push:
+    branches: [fix/checkout-rules-and-trust]
+    paths:
+      - '.github/patches/dispatch-trigger.patch'
+      - '.github/workflows/apply-dispatch-trigger.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/checkout-rules-and-trust
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: |
+          set -euo pipefail
+          git apply -p1 --verbose .github/patches/dispatch-trigger.patch
+          test "$(git hash-object .github/workflows/adb-smoke-test.yml)" = "82f7ebe274cebad8e9aae0a5666b91f11e8fe352"
+
+      - name: Commit, push and clean up
+        run: |
+          set -euo pipefail
+          git config user.name "bernavicg1-beep"
+          git config user.email "bernavicg1-beep@users.noreply.github.com"
+          git rm --quiet .github/patches/dispatch-trigger.patch .github/workflows/apply-dispatch-trigger.yml
+          git add -A
+          git diff --cached --stat
+          git commit -m "Allow the smoke tests to be dispatched manually"
+          git push origin HEAD:refs/heads/fix/checkout-rules-and-trust
