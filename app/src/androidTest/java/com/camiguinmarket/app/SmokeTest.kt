@@ -115,17 +115,14 @@ class SmokeTest {
         // The profile row shows the language that is currently selected and
         // flips between the two when tapped, so normalise to English first.
         if (hasText("Cebuano")) {
-            composeRule.onNodeWithText("Cebuano").performScrollTo().performClick()
-            composeRule.waitUntil(5_000) { prefs().getString("lang", "en") == "en" }
+            tapLanguageToggle("Cebuano", expected = "en")
         }
 
-        composeRule.onNodeWithText("English").performScrollTo().performClick()
-        composeRule.waitUntil(5_000) { prefs().getString("lang", "en") == "ceb" }
+        tapLanguageToggle("English", expected = "ceb")
         composeRule.onNodeWithText("Pinulongan").assertExists()
         composeRule.onNodeWithText("Cebuano").performScrollTo().assertExists()
 
-        composeRule.onNodeWithText("Cebuano").performScrollTo().performClick()
-        composeRule.waitUntil(5_000) { prefs().getString("lang", "en") == "en" }
+        tapLanguageToggle("Cebuano", expected = "en")
         composeRule.onNodeWithText("Language").assertExists()
     }
 
@@ -183,7 +180,7 @@ class SmokeTest {
             // the seed has to be waited for again instead of sampled once.
             assertTrue(
                 "Seeded listings disappeared without a location fix: " +
-                    screenSummary() + " | " + listingDiagnostics(),
+                screenSummary() + " | " + listingDiagnostics(),
                 awaitSeed(10_000)
             )
 
@@ -650,6 +647,33 @@ class SmokeTest {
 
     private fun prefs() = context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
 
+    /**
+     * Taps the language toggle while it is labelled [label] and waits for the
+     * stored preference to become [expected].
+     *
+     * The tap sometimes lands before the profile row has settled after the
+     * previous switch, so it is retried once. The retry is guarded by a read of
+     * `ui_prefs.lang`: a tap that did register is never repeated, so the
+     * language cannot double-toggle and leave the labels in the wrong language.
+     */
+    private fun tapLanguageToggle(label: String, expected: String) {
+        repeat(2) { attempt ->
+            composeRule.onNodeWithText(label).performScrollTo().performClick()
+            val timeoutMs = if (attempt == 0) 2_000L else 5_000L
+            if (awaitCondition(timeoutMs) { prefs().getString("lang", "en") == expected }) {
+                // The labels follow the same state, so let them recompose
+                // before the caller asserts on them.
+                composeRule.waitForIdle()
+                return
+            }
+        }
+        assertEquals(
+            "Tapping \"$label\" never stored lang=$expected",
+            expected,
+            prefs().getString("lang", "en")
+        )
+    }
+
     private fun hasText(text: String, substring: Boolean = false): Boolean =
         composeRule.onAllNodesWithText(text, substring = substring)
             .fetchSemanticsNodes().isNotEmpty()
@@ -714,6 +738,7 @@ class SmokeTest {
     private fun openFirstSeedDetail(timeoutMs: Long = 25_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         var scrolls = 0
+
         while (System.currentTimeMillis() < deadline) {
             for ((id, title) in seedRows()) {
                 for (card in seedCardNodes(id, title)) {
