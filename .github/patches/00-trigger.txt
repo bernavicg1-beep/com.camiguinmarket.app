@@ -1,0 +1,1 @@
+One-shot trigger for the patch-applying workflow; it deletes itself.

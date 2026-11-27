@@ -1,6 +1,9 @@
 name: Apply the GCash payments patch
 on:
-  workflow_dispatch:
+  push:
+    branches: [feature/com-spec]
+    paths:
+      - ".github/patches/00-trigger.txt"
 
 permissions:
   contents: write
