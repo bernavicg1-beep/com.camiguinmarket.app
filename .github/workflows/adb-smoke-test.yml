@@ -84,12 +84,14 @@ jobs:
 
       # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
       # so the test account gets a real "Add to cart" action. The suffix (job +
-      # run) keeps this run's documents private: parallel jobs and overlapping
-      # runs would otherwise overwrite each other and delete each other's seeds.
+      # run id + attempt) keeps this run's documents private: parallel jobs and
+      # overlapping runs would otherwise overwrite each other and delete each
+      # other's seeds. The seeder adds a digest of the suffix, so shortening the
+      # id cannot make two runs share one document.
       - name: Seed smoke listings
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           SMOKE_SEED_REQUIRED: "1"
         run: bash scripts/seed-smoke-listings.sh seed
 
@@ -110,14 +112,14 @@ jobs:
         if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/seed-smoke-listings.sh verify
 
       - name: Remove seeded listings
         if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
@@ -225,12 +227,14 @@ jobs:
 
       # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
       # so the test account gets a real "Add to cart" action. The suffix (job +
-      # run) keeps this run's documents private: parallel jobs and overlapping
-      # runs would otherwise overwrite each other and delete each other's seeds.
+      # run id + attempt) keeps this run's documents private: parallel jobs and
+      # overlapping runs would otherwise overwrite each other and delete each
+      # other's seeds. The seeder adds a digest of the suffix, so shortening the
+      # id cannot make two runs share one document.
       - name: Seed smoke listings
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           SMOKE_SEED_REQUIRED: "1"
         run: bash scripts/seed-smoke-listings.sh seed
 
@@ -251,14 +255,14 @@ jobs:
         if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/seed-smoke-listings.sh verify
 
       - name: Remove seeded listings
         if: always()
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
@@ -308,13 +312,15 @@ jobs:
 
       # The listings belong to a synthetic seller (scripts/seed-smoke-listings.sh)
       # so the test account gets a real "Add to cart" action. The suffix (job +
-      # run) keeps this run's documents private: parallel jobs and overlapping
-      # runs would otherwise overwrite each other and delete each other's seeds.
+      # run id + attempt) keeps this run's documents private: parallel jobs and
+      # overlapping runs would otherwise overwrite each other and delete each
+      # other's seeds. The seeder adds a digest of the suffix, so shortening the
+      # id cannot make two runs share one document.
       - name: Seed smoke listings
         if: steps.creds.outputs.available == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           SMOKE_SEED_REQUIRED: "1"
         run: bash scripts/seed-smoke-listings.sh seed
 
@@ -343,14 +349,14 @@ jobs:
         if: always() && steps.creds.outputs.available == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/seed-smoke-listings.sh verify
 
       - name: Remove seeded listings
         if: always() && steps.creds.outputs.available == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_number }}
+          SMOKE_SEED_SUFFIX: ${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: bash scripts/seed-smoke-listings.sh cleanup
 
       - uses: actions/upload-artifact@v7
