@@ -1081,9 +1081,9 @@ fun MarketScreen(
                     MarketTab.Cart -> CartScreen(
                         uid = uid,
                         onBrowse = { tab = MarketTab.Home },
-                        onCheckout = { items, checkoutId ->
+                        onCheckout = { items, checkoutId, paymentMethod ->
                             requestNotificationPermission()
-                            checkoutCart(db, uid, displayName, items, checkoutId) { err ->
+                            checkoutCart(db, uid, displayName, items, checkoutId, paymentMethod) { err ->
                                 Toast.makeText(
                                     context,
                                     err ?: "Order placed ✅",

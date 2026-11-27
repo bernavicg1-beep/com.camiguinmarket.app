@@ -4,6 +4,22 @@ Android app (Kotlin + Jetpack Compose + Firebase) for buying and selling across
 Camiguin. The seller can drop a **pickup location on the map**, and the customer
 sees it, gets an **A→B route**, and can search for places.
 
+**Shop Local. Support Camiguin.**
+
+## Branding
+
+| Colour | Hex | Where |
+|---|---|---|
+| Navy Blue | `#0B1F3A` | Text, header top edge |
+| Ocean Blue | `#0F76C4` | Buttons, links, price highlights |
+| Orange | `#F47B20` | Small highlights, warnings, unread badges |
+| Green | `#1E8E4E` | Confirmed/paid states, `Done` |
+| Philippine peso | `₱` | Every price in the app |
+
+Defined once in `Extras.kt` (`BrandNavy`, `BrandBlue`, `BrandOrange`,
+`BrandGreen`, …) and used through `MaterialTheme` and the components, so the
+palette changes in one place.
+
 ## The map
 
 The app uses **Leaflet with OpenStreetMap tiles** inside a `WebView`, so there is
@@ -77,6 +93,33 @@ Icons are Material icons (`material-icons-extended`), no emoji.
 These features have their own Firestore collections: `carts/{uid}/items`,
 `favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, and
 `chats/{chatId}/messages`.
+
+### Payments (Cash and GCash)
+
+The Cart asks for the payment method before checkout and each order keeps it:
+
+| Field | Values |
+|---|---|
+| `paymentMethod` | `cash` or `gcash` |
+| `paymentStatus` | `cod` (cash), `unpaid`, `pending`, `paid` |
+| `paymentRef` | the GCash reference number the buyer types in |
+
+How a GCash order moves:
+
+1. Checkout with **GCash** → the order starts `unpaid`; the seller is notified.
+2. The buyer opens the order and presses **I paid via GCash**, pastes the GCash
+   reference → `pending` ("For verification"). Nothing is paid yet.
+3. The **seller** presses **GCash payment received** → `paid`. Only the seller's
+   write can do this, and only on a GCash order.
+4. `Done` stays disabled until the order is paid — "paid" always means the seller
+   verified the money, never that the buyer said so.
+
+Cash orders start as `cod` (paid on hand-over) and skip all of it. The rules
+enforce the same thing: the buyer cannot create an already-paid order, cannot mark
+it paid, and neither side can switch the payment method after checkout. Existing
+orders without these fields still work (the rules treat a missing method as
+unchanged). Each order card and the detail screen show the payment badge, and the
+seller's CSV export has `payment_method`, `payment_status`, `payment_ref` columns.
 
 ### Creating the first admin
 
@@ -337,7 +380,9 @@ RELEASE_KEY_PASSWORD=…
 - **notifications** — owner only can read; any signed-in user can create a
   notification for someone else, but `fromUid` must be themselves.
 - **orders** — the buyer creates; only the buyer and seller can read; the seller can
-  update the status; the buyer can cancel (`pending` → `cancelled`) only.
+  update the status and verify the GCash payment; the buyer can cancel (`pending` →
+  `cancelled`) or record the GCash reference (`unpaid` → `pending`) only. The payment
+  method cannot change after checkout, and a cash order cannot be marked `paid`.
 - **chats** — only the two participants can read/write; a message requires
   membership in the chat (checked with `get()`).
 - **savedSearches** — owner only.
