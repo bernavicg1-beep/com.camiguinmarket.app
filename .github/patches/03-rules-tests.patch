@@ -1,0 +1,67 @@
+diff --git a/scripts/test-firestore-rules.py b/scripts/test-firestore-rules.py
+index 58c7c45..f35ca16 100644
+--- a/scripts/test-firestore-rules.py
++++ b/scripts/test-firestore-rules.py
+@@ -287,7 +287,8 @@ check("chat: can read the messages", "GET", "/chats/u1_u2/messages", 200, uid="u
+ 
+ 
+ # --- orders ------------------------------------------------------------------
+-def order_doc(buyer, seller, status="pending"):
++def order_doc(buyer, seller, status="pending", method="cash", paid="cod", ref=""):
++    """Exact fields written by the app's `Order` data class at checkout."""
+     return {"fields": {
+         "buyerId": {"stringValue": buyer},
+         "buyerName": {"stringValue": "Nena"},
+@@ -297,6 +298,10 @@ def order_doc(buyer, seller, status="pending"):
+         "quantity": {"integerValue": "2"},
+         "total": {"doubleValue": 51.0},
+         "status": {"stringValue": status},
++        "paymentMethod": {"stringValue": method},
++        "paymentStatus": {"stringValue": paid},
++        "paymentRef": {"stringValue": ref},
++        "paidAt": {"integerValue": "0"},
+         "createdAt": {"integerValue": "1"},
+     }}
+ 
+@@ -326,6 +331,41 @@ check("order: outsider cannot cancel", "PATCH", "/orders/o3", 403,
+       uid="u3", body=order_doc("u1", "u2", status="cancelled"))
+ 
+ 
++# --- GCash payments ----------------------------------------------------------
++check("gcash: buyer can create an unpaid GCash order", "POST", "/orders", 200,
++      uid="u1", body=order_doc("u1", "u2", method="gcash", paid="unpaid"), doc_id="og1")
++check("gcash: buyer cannot create an already-paid order", "POST", "/orders", 403,
++      uid="u1", body=order_doc("u1", "u2", method="gcash", paid="paid"), doc_id="og2")
++check("gcash: a cash order must start as cod", "POST", "/orders", 403,
++      uid="u1", body=order_doc("u1", "u2", method="cash", paid="unpaid"), doc_id="og3")
++check("gcash: buyer records the reference (still not paid)", "PATCH", "/orders/og1", 200,
++      uid="u1", body=order_doc("u1", "u2", method="gcash", paid="pending", ref="1234567890"))
++check("gcash: buyer cannot mark the order paid", "PATCH", "/orders/og1", 403,
++      uid="u1",
++      body=order_doc("u1", "u2", method="gcash", paid="paid", ref="1234567890"))
++check("gcash: only the seller verifies the payment", "PATCH", "/orders/og1", 200,
++      uid="u2",
++      body=order_doc("u1", "u2", method="gcash", paid="paid", ref="1234567890"))
++check("gcash: the payment method cannot change after checkout", "PATCH", "/orders/og1", 403,
++      uid="u2", body=order_doc("u1", "u2", method="cash", paid="cod"))
++check("gcash: a cash order cannot be marked paid", "PATCH", "/orders/o1", 403,
++      uid="u2", body=order_doc("u1", "u2", status="confirmed", method="cash", paid="paid"))
++
++
++def legacy_order_doc(buyer, seller):
++    """An order from an app version released before GCash: no payment fields."""
++    body = order_doc(buyer, seller)
++    for field in ("paymentMethod", "paymentStatus", "paymentRef", "paidAt"):
++        body["fields"].pop(field, None)
++    return body
++
++
++check("gcash: an older app can still place an order", "POST", "/orders", 200,
++      uid="u1", body=legacy_order_doc("u1", "u2"), doc_id="olegacy")
++check("gcash: an older order can still change status", "PATCH", "/orders/olegacy", 200,
++      uid="u2", body=legacy_order_doc("u1", "u2"))
++
++
+ # --- moderation --------------------------------------------------------------
+ def seed(path, doc_id, body):
+     """Write through the emulator owner bypass (skips the rules)."""
