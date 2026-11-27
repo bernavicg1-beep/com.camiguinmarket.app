@@ -73,6 +73,13 @@ class SmokeTest {
 
         /** `ListingCard` tags itself `listing_card_<id>`; see Extras.kt. */
         private const val CARD_TAG_PREFIX = "listing_card_"
+
+        /**
+         * The synthetic seller's GCash number, written to `users/{sellerId}` by
+         * `scripts/seed-smoke-listings.sh`; the checkout prompt and the claim
+         * dialog both read it from there.
+         */
+        private const val SEED_SELLER_GCASH = "09170000001"
     }
 
     @Before
@@ -385,6 +392,262 @@ class SmokeTest {
         composeRule.onNodeWithText("I'm the Buyer").assertExists()
     }
 
+    // ---- GCash payments -------------------------------------------------
+
+    /**
+     * The GCash half of checkout, which the cash test never reaches: picking
+     * GCash shows the seller's number, the order is written unpaid, and the
+     * buyer's reference moves it to "for verification" without claiming to be
+     * paid (only the seller can do that).
+     */
+    @Test
+    fun gcashCheckoutRecordsUnpaidOrderAndBuyerClaim() {
+        val db = FirebaseFirestore.getInstance()
+        val buyer = uid()
+        val ordersBefore = buyerOrderIds(db, buyer)
+
+        openHome()
+        assertTrue(
+            "Seeded listing did not appear on Home: ${screenSummary()} | " +
+                listingDiagnostics(),
+            awaitSeed()
+        )
+        assertTrue(
+            "Seeded listing has no add-to-cart action: ${screenSummary()} | " +
+                seedCardDiagnostics(),
+            openFirstSeedDetail()
+        )
+        composeRule.onNodeWithText("Add to cart", substring = true).performClick()
+        composeRule.onNodeWithText("Cart").performClick()
+
+        assertTrue(
+            "Cart never showed the payment chooser: ${screenSummary()}",
+            awaitCondition(15_000) { hasText("Payment method") }
+        )
+        composeRule.onNodeWithText("GCash").performClick()
+        // The prompt reads users/{sellerId}.gcashNumber (rememberSellerGcash), so
+        // it has to name the seeded seller's number, not the cash copy.
+        assertTrue(
+            "Choosing GCash did not show the seller's number ($SEED_SELLER_GCASH): " +
+                screenSummary(),
+            awaitCondition(20_000) { hasText("GCash $SEED_SELLER_GCASH", substring = true) }
+        )
+
+        composeRule.onNodeWithText("Checkout", substring = true).performClick()
+
+        var orderId: String? = null
+        var method: String? = null
+        var payment: String? = null
+        val created = awaitCondition(40_000) {
+            val newIds = buyerOrderIds(db, buyer) - ordersBefore
+            val doc = newIds.firstOrNull()?.let { id ->
+                runCatching {
+                    Tasks.await(
+                        db.collection("orders").document(id).get(),
+                        15,
+                        TimeUnit.SECONDS
+                    )
+                }.getOrNull()
+            }
+            orderId = doc?.id
+            method = doc?.getString("paymentMethod")
+            payment = doc?.getString("paymentStatus")
+            doc != null
+        }
+        assertTrue(
+            "GCash checkout wrote no order document for $buyer: ${screenSummary()}",
+            created
+        )
+        assertEquals("GCash order paymentMethod", "gcash", method)
+        assertEquals("A GCash order must start unpaid", "unpaid", payment)
+
+        // Orders lists the newest order first, so the one just written is on top.
+        composeRule.onNodeWithText("Profile").performClick()
+        composeRule.onNodeWithText("Orders").performScrollTo().performClick()
+        assertTrue(
+            "The GCash order did not render as unpaid: ${screenSummary()}",
+            awaitCondition(25_000) { hasText("GCash \u2022 Unpaid") }
+        )
+        composeRule.onAllNodesWithText("I paid via GCash").onFirst()
+            .performScrollTo().performClick()
+        assertTrue(
+            "The GCash reference dialog did not open: ${screenSummary()}",
+            awaitCondition(10_000) { hasText("GCash reference") }
+        )
+        // The dialog repeats where the money goes, again from the store info.
+        assertTrue(
+            "The claim dialog did not name the seller's GCash number: ${screenSummary()}",
+            hasText(SEED_SELLER_GCASH, substring = true)
+        )
+        val reference = "SMOKE-GCASH-${System.currentTimeMillis()}"
+        composeRule.onAllNodes(hasSetTextAction() and hasAnyAncestor(isDialog())).onFirst()
+            .performTextReplacement(reference)
+        composeRule.onNodeWithText("Send").performClick()
+
+        var claimedStatus: String? = null
+        var claimedRef: String? = null
+        val claimed = awaitCondition(25_000) {
+            val doc = runCatching {
+                Tasks.await(
+                    db.collection("orders").document(orderId!!).get(),
+                    15,
+                    TimeUnit.SECONDS
+                )
+            }.getOrNull()
+            claimedStatus = doc?.getString("paymentStatus")
+            claimedRef = doc?.getString("paymentRef")
+            doc != null && claimedStatus == "pending" && claimedRef == reference
+        }
+        assertTrue(
+            "Claiming the GCash payment did not set paymentStatus=pending with the " +
+                "reference on order $orderId (saw paymentStatus=$claimedStatus, " +
+                "paymentRef=$claimedRef): ${screenSummary()}",
+            claimed
+        )
+        assertTrue(
+            "The order did not switch to \"GCash \u2022 For verification\" after the claim: " +
+                screenSummary(),
+            awaitCondition(20_000) { hasText("GCash \u2022 For verification") }
+        )
+    }
+
+    // ---- Admin dashboard and the Profile tidy-up ------------------------
+
+    /**
+     * The Profile cleanup kept one admin entry point (the dashboard) and moved
+     * moderation and seller verification into it, so the rows are asserted
+     * against the admins/{uid} document the app itself gates on: present for an
+     * admin, absent for everyone else.
+     */
+    @Test
+    fun profileShowsOneAdminEntryOnlyWithAdminDocument() {
+        openProfile()
+        val adminDocument = signedInIsAdmin()
+        // The app's `admins` listener is asynchronous, so wait for it to land.
+        val shown = awaitCondition(10_000) { hasText("Admin dashboard") }
+        if (!adminDocument) {
+            assertTrue(
+                "Profile shows an Admin dashboard row without admins/${uid()}: " +
+                    screenSummary(),
+                !shown
+            )
+            return
+        }
+        assertTrue(
+            "admins/${uid()} exists but Profile shows no Admin dashboard row: " +
+                screenSummary(),
+            shown
+        )
+        assertEquals(
+            "Profile must keep a single admin entry point",
+            1,
+            composeRule.onAllNodesWithText("Admin dashboard").fetchSemanticsNodes().size
+        )
+        assertEquals(
+            "Moderation is still listed on Profile instead of only in the dashboard",
+            0,
+            composeRule.onAllNodesWithText("Moderation").fetchSemanticsNodes().size
+        )
+        assertEquals(
+            "Seller verification is still listed on Profile instead of only in the dashboard",
+            0,
+            composeRule.onAllNodesWithText("Seller verification").fetchSemanticsNodes().size
+        )
+    }
+
+    /**
+     * The dashboard an admin actually gets: the moved tools, the counts, and an
+     * announcement that reaches Firestore and the Home banner the app reads.
+     *
+     * The test account can only be an admin when an `admins/{uid}` document was
+     * ordered from outside the app (the app cannot create one), so a missing one
+     * skips with a notice instead of failing the whole suite.
+     */
+    @Test
+    fun adminDashboardPostsAnnouncementAndHomeShowsIt() {
+        val db = FirebaseFirestore.getInstance()
+        val admin = signedInIsAdmin()
+        if (!admin) {
+            println(
+                "NOTICE: admins/${uid()} is missing, so the admin dashboard cannot be " +
+                    "exercised; grant admin to the smoke-test account to run this test"
+            )
+        }
+        assumeTrue(
+            "Grant admin to the smoke-test account (admins/${uid()}) to run this test",
+            admin
+        )
+
+        openProfile()
+        composeRule.onNodeWithText("Admin dashboard").performScrollTo().performClick()
+        assertTrue(
+            "The admin dashboard did not render its overview: ${screenSummary()}",
+            awaitCondition(15_000) { hasText("Overview") && hasText("Open reports") }
+        )
+        composeRule.onNodeWithText("Moderation").assertExists()
+        composeRule.onNodeWithText("Seller verification").assertExists()
+
+        // Matching "Announcements (" targets the section chip, not the action row.
+        composeRule.onAllNodesWithText("Announcements (", substring = true).onFirst()
+            .performClick()
+        assertTrue(
+            "The announcements section did not open: ${screenSummary()}",
+            awaitCondition(10_000) { hasText("Post announcement") }
+        )
+
+        val title = "Smoke announcement ${System.currentTimeMillis()}"
+        val message = "Posted by the emulator smoke suite and removed at the end of the run."
+        val fields = composeRule.onAllNodes(hasSetTextAction())
+        assertEquals(
+            "Expected a title and a message field, saw ${fields.fetchSemanticsNodes().size}",
+            2,
+            fields.fetchSemanticsNodes().size
+        )
+        fields[0].performTextReplacement(title)
+        fields[1].performTextReplacement(message)
+        composeRule.onNodeWithText("Post announcement").performClick()
+        assertTrue(
+            "Posting the announcement did not report success: ${screenSummary()}",
+            awaitCondition(20_000) { hasText("Announcement posted.") }
+        )
+
+        // The document really reached Firestore, not just the local list.
+        var announcementId: String? = null
+        val written = awaitCondition(20_000) {
+            announcementId = runCatching {
+                Tasks.await(
+                    db.collection("announcements").whereEqualTo("title", title).get(),
+                    15,
+                    TimeUnit.SECONDS
+                ).documents.firstOrNull()?.id
+            }.getOrNull()
+            announcementId != null
+        }
+        assertTrue("No announcements document was written for \"$title\"", written)
+
+        // ...and the Home banner every signed-in user sees picks it up.
+        composeRule.onNodeWithText("\u2190").performClick()
+        openHome()
+        assertTrue(
+            "The new announcement never appeared on Home: ${screenSummary()}",
+            awaitCondition(20_000) { hasText(title, substring = true) }
+        )
+
+        // Leave the project as it was found: the admin can delete the document.
+        val postedId = announcementId
+        runCatching {
+            Tasks.await(
+                db.collection("announcements").document(postedId!!).delete(),
+                20,
+                TimeUnit.SECONDS
+            )
+        }
+        assertTrue(
+            "The test announcement ($postedId) could not be deleted; it is still live on Home",
+            awaitCondition(20_000) { !hasText(title, substring = true) }
+        )
+    }
+
     private fun prefs() = context.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
 
     private fun hasText(text: String, substring: Boolean = false): Boolean =
@@ -654,6 +917,13 @@ class SmokeTest {
         requireNotNull(FirebaseAuth.getInstance().currentUser?.uid) {
             "No signed-in Firebase user; the smoke account must be signed in"
         }
+
+    /** Whether the signed-in account has the `admins/{uid}` document the app gates on. */
+    private fun signedInIsAdmin(): Boolean = Tasks.await(
+        FirebaseFirestore.getInstance().collection("admins").document(uid()).get(),
+        20,
+        TimeUnit.SECONDS
+    ).exists()
 
     /** Order document ids for the signed-in buyer, used to detect a new order. */
     private fun buyerOrderIds(db: FirebaseFirestore, buyer: String): Set<String> =

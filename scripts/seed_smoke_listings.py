@@ -20,6 +20,10 @@ deletes the listings another run is still testing against. ``cleanup`` only ever
 deletes documents whose id ends with this run's suffix and whose seller id is
 this run's exact seller id.
 
+Besides the listings, ``seed`` writes ``users/{SELLER_ID}`` with the seller's
+GCash number, so the GCash checkout prompt has somewhere to point the buyer;
+``cleanup`` deletes that document again.
+
 Usage:
   scripts/seed-smoke-listings.sh seed      # write, then report what is readable
   scripts/seed-smoke-listings.sh verify    # read-only: what does the project hold
@@ -46,6 +50,10 @@ import urllib.request
 TITLE_PREFIX = "Smoke seed"
 SELLER_NAME = "Smoke Seed Seller"
 CONTACT = "09171234567"
+# The synthetic seller's store info. The cart's GCash prompt and the buyer's
+# reference dialog read `users/{sellerId}.gcashNumber`, so seeding it lets the
+# smoke run prove the buyer is told where to send the money.
+SELLER_GCASH = "09170000001"
 CATEGORY = "Food"
 
 def strict_slug(raw: str) -> str:
@@ -206,6 +214,14 @@ def seed(token: str, project: str) -> int:
         if "createdAt" not in written_fields or "title" not in written_fields:
             print(f"::error::listing {identifier} was written without its fields")
             return 1
+    # Store info for the synthetic seller: a GCash number buyers can pay into.
+    seller_payload = {"fields": {
+        "name": {"stringValue": SELLER_NAME},
+        "gcashNumber": {"stringValue": SELLER_GCASH},
+    }}
+    with request(token, f"{base}/users/{SELLER_ID}", "PATCH", seller_payload) as resp:
+        json.load(resp)
+    print(f"seeded users/{SELLER_ID} gcashNumber={SELLER_GCASH}")
     print(f"Seeded {len(LISTINGS)} listings for seller {SELLER_ID} in project {project}.")
     return verify(token, project, "after-seed")
 
@@ -237,8 +253,17 @@ def verify(token: str, project: str, label: str) -> int:
             titles.append(title)
             owners[seller] = owners.get(seller, 0) + 1
     seeded = [title for title in titles if title.startswith(TITLE_PREFIX)]
+    # The GCash prompt is empty without this document, which would fail the
+    # GCash smoke test rather than silently pass, so report it here too.
+    try:
+        with request(token, f"{FIRESTORE.format(project=project)}/users/{SELLER_ID}") as resp:
+            seller_fields = (json.load(resp).get("fields") or {})
+        seller_gcash = (seller_fields.get("gcashNumber") or {}).get("stringValue") or "empty"
+    except (urllib.error.HTTPError, urllib.error.URLError) as err:
+        seller_gcash = f"unreadable ({err})"
     print(
         f"verify({label}): project={project} seller={SELLER_ID} "
+        f"sellerGcash={seller_gcash} "
         f"total={len(titles)} seeded={len(seeded)} owners={owners} titles={seeded}"
     )
     return 0
@@ -318,6 +343,7 @@ def sweep_leftovers(token: str, base: str) -> None:
     cutoff = int(time.time() * 1000) - STALE_AFTER_MS
     removed = 0
     kept = 0
+    swept_sellers: set[str] = set()
     for row in rows:
         document = row.get("document") or {}
         fields = document.get("fields") or {}
@@ -333,6 +359,10 @@ def sweep_leftovers(token: str, base: str) -> None:
             continue
         delete_doc(token, f"https://firestore.googleapis.com/v1/{document['name']}")
         removed += 1
+        # Its store-info document is smoke data too; nothing else uses that id.
+        if seller and seller not in swept_sellers:
+            swept_sellers.add(seller)
+            delete_doc(token, f"{base}/users/{seller}")
     if removed:
         print(f"Removed {removed} stale smoke listing(s) from earlier runs ({kept} kept).")
     else:
@@ -355,6 +385,10 @@ def cleanup(token: str, project: str) -> int:
         removed += 1
         print(f"removed listings/{identifier}")
     print(f"Removed {removed} seeded listing(s) for seller {SELLER_ID}.")
+
+    # The synthetic seller's store info goes with its listings.
+    delete_doc(token, f"{base}/users/{SELLER_ID}")
+    print(f"Removed users/{SELLER_ID} (synthetic seller store info).")
 
     sweep_leftovers(token, base)
 

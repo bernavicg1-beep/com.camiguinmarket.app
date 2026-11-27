@@ -591,8 +591,14 @@ need a signed-in test account, so add these repository secrets under
 
 Without them the smoke jobs fail fast with a clear error; the `fake-adb`
 self-test and the lint job still run without these secrets. The test account's
-data may be mutated by the smoke flows (listings, cart, orders), so use a
-dedicated account rather than a personal one.
+data may be mutated by the smoke flows (listings, cart, orders, and a temporary
+announcement that the run deletes again), so use a dedicated account rather
+than a personal one.
+
+The suite also covers GCash checkout and the admin dashboard. Dashboard access
+comes from the account's `admins/{uid}` document (see **Creating the first
+admin**); without it that test is skipped with a notice in the log, and the
+rest of the suite still fails loudly on its own assertions.
 
 ## Not tested yet
 
