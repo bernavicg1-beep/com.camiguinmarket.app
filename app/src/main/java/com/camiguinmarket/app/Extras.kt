@@ -61,6 +61,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -91,22 +92,25 @@ import com.google.firebase.firestore.Query
 // Design system from the mockup: blue theme, rounded cards, gold accent.
 // ---------------------------------------------------------------------------
 
-// Palette taken from the poster and the mockups: deep ocean blue header, white
-// cards on a pale blue page, gold as the small highlight colour.
-val BrandBlue = Color(0xFF1565C0)
-val BrandBlueDeep = Color(0xFF0E4FA8)
-val BrandBlueDark = Color(0xFF0B3F91)
-val BrandSky = Color(0xFFE8F1FD)
-val BrandGold = Color(0xFFF2A900)
-val BrandGreen = Color(0xFF1B7F5C)
-val BrandInk = Color(0xFF10233F)
+// Camiguin Market palette: navy for text and the header edge, ocean blue for the
+// actions, orange for the highlights, green for the confirmed/paid states, and
+// the Philippine peso for every price.
+val BrandNavy = Color(0xFF0B1F3A)
+val BrandBlue = Color(0xFF0F76C4)
+val BrandBlueDeep = Color(0xFF0B4F8A)
+val BrandBlueDark = Color(0xFF083A66)
+val BrandSky = Color(0xFFE8F3FC)
+val BrandOrange = Color(0xFFF47B20)
+val BrandGold = BrandOrange
+val BrandGreen = Color(0xFF1E8E4E)
+val BrandInk = BrandNavy
 val BrandMuted = Color(0xFF5B6B80)
-val BrandPage = Color(0xFFF5F8FD)
+val BrandPage = Color(0xFFF5F9FD)
 val BrandBadge = Color(0xFFE53935)
 
-/** Header gradient, from the darker top edge to the mid blue of the mockups. */
+/** Header gradient: navy at the top edge into ocean blue, like the mockups. */
 val BrandHeaderBrush: Brush =
-    Brush.verticalGradient(listOf(BrandBlueDeep, Color(0xFF1976D2)))
+    Brush.verticalGradient(listOf(BrandNavy, BrandBlue))
 
 val marketShapes = Shapes(
     small = RoundedCornerShape(10.dp),
@@ -1089,7 +1093,9 @@ fun ListingCard(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("listing_card_" + listing.id)
     ) {
         Row(Modifier.padding(12.dp)) {
             Box(
@@ -1284,13 +1290,21 @@ fun saveCartCache(context: Context, uid: String, items: List<CartItem>) {
 }
 
 @Composable
-fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>, String) -> Unit) {
+fun CartScreen(
+    uid: String,
+    onBrowse: () -> Unit,
+    onCheckout: (List<CartItem>, String, String) -> Unit
+) {
+    // Payment is chosen at checkout: "cash" (pay on pickup/delivery) or "gcash".
+    var paymentMethod by remember { mutableStateOf("cash") }
     val db = remember { FirebaseFirestore.getInstance() }
     val context = LocalContext.current
     val S = LocalStrings.current
     // Show the local cache first so something appears even offline.
     var items by remember { mutableStateOf(loadCartCache(context, uid)) }
     var offline by remember { mutableStateOf(false) }
+    // Each seller's GCash number so the prompt says where the money goes.
+    val sellerGcash = rememberSellerGcash(if (paymentMethod == "gcash") items.map { it.sellerId } else emptyList())
 
     DisposableEffect(Unit) {
         val reg = db.collection("carts").document(uid).collection("items")
@@ -1419,6 +1433,54 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>, S
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Payment method", style = MaterialTheme.typography.labelLarge, color = BrandMuted)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("cash" to "Cash", "gcash" to "GCash").forEach { (value, label) ->
+                            FilterChip(
+                                selected = paymentMethod == value,
+                                onClick = { paymentMethod = value },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (paymentMethod == "gcash") {
+                            "Send the total to the seller's GCash number, then add the reference in Orders. " +
+                                "The seller verifies it before the order is marked paid."
+                        } else {
+                            "Pay in cash when you get the order. The seller confirms it in Orders."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BrandMuted
+                    )
+                    if (paymentMethod == "gcash") {
+                        items.map { it.sellerId to it.sellerName }.distinct().forEach { (sid, sname) ->
+                            val number = sellerGcash[sid]
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                if (number.isNullOrBlank()) {
+                                    "$sname has not added a GCash number yet — ask in chat."
+                                } else {
+                                    "Send to $sname: GCash $number"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = BrandInk
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(S.total, style = MaterialTheme.typography.titleMedium, color = BrandMuted, modifier = Modifier.weight(1f))
                     Text(
@@ -1431,7 +1493,7 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>, S
             }
             Spacer(Modifier.height(10.dp))
             Button(
-                onClick = { checkingOut = true; onCheckout(items, checkoutId) },
+                onClick = { checkingOut = true; onCheckout(items, checkoutId, paymentMethod) },
                 enabled = !checkingOut,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -1444,6 +1506,12 @@ fun CartScreen(uid: String, onBrowse: () -> Unit, onCheckout: (List<CartItem>, S
             Text(
                 "Each seller receives their own order and notification.",
                 style = MaterialTheme.typography.labelSmall
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "Prices are in Philippine pesos (₱).",
+                style = MaterialTheme.typography.labelSmall,
+                color = BrandMuted
             )
         }
     }
@@ -1804,11 +1872,10 @@ fun ProfileScreen(
     onFavorites: () -> Unit,
     onOrders: () -> Unit,
     onInbox: () -> Unit,
-    onModeration: () -> Unit,
     onSavedSearches: () -> Unit,
     onListingStats: () -> Unit,
     onBlocked: () -> Unit = {},
-    onVerification: () -> Unit = {},
+    onAdmin: () -> Unit = {},
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
@@ -1886,9 +1953,7 @@ fun ProfileScreen(
                 ProfileRow(Icons.Filled.Storefront, S.listingStats, onListingStats)
                 if (isAdmin) {
                     ProfileDivider()
-                    ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
-                    ProfileDivider()
-                    ProfileRow(Icons.Filled.Security, S.adminVerification, onVerification)
+                    ProfileRow(Icons.Filled.Security, "Admin dashboard", onAdmin)
                 }
             }
         }
@@ -2031,8 +2096,18 @@ fun PhoneVerifySection(uid: String) {
         busy = true
         user.linkWithCredential(credential).addOnCompleteListener { t ->
             if (t.isSuccessful) {
-                saveVerified(user.phoneNumber ?: normalizePhone(phone))
-                info = "Phone number verified ✅"
+                // Refresh the ID token so the verified `phone_number` claim is
+                // present on the Firestore write the rules check.
+                user.getIdToken(true).addOnCompleteListener { tokenTask ->
+                    if (tokenTask.isSuccessful) {
+                        saveVerified(user.phoneNumber ?: normalizePhone(phone))
+                        info = "Phone number verified ✅"
+                    } else {
+                        busy = false
+                        info = tokenTask.exception?.localizedMessage
+                            ?: "Could not refresh the sign-in token."
+                    }
+                }
             } else {
                 busy = false
                 info = t.exception?.localizedMessage ?: "Could not verify this number."
@@ -2240,6 +2315,8 @@ fun ContactLinksSection(uid: String) {
     var whatsapp by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // Store info: the GCash number buyers pay into (empty when not set).
+    var gcashNumber by remember { mutableStateOf("") }
     var fbBusy by remember { mutableStateOf(false) }
     var fbInfo by remember { mutableStateOf<String?>(null) }
     var tgToken by remember { mutableStateOf<String?>(null) }
@@ -2294,6 +2371,7 @@ fun ContactLinksSection(uid: String) {
                 telegram = d.getString("telegram") ?: ""
                 messenger = d.getString("messenger") ?: ""
                 whatsapp = d.getString("whatsapp") ?: ""
+                gcashNumber = d.getString("gcashNumber") ?: ""
             }
         } catch (e: Exception) {
             info = e.localizedMessage ?: "Failed to load contact links."
@@ -2313,6 +2391,21 @@ fun ContactLinksSection(uid: String) {
             OutlinedTextField(messenger, { messenger = it }, label = { Text("Messenger username (or m.me link)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "GCash number (buyers send payments here)",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = gcashNumber,
+                onValueChange = { typed -> gcashNumber = typed.filter { it.isDigit() }.take(11) },
+                label = { Text("09XX XXX XXXX") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(8.dp))
             if (fbAvailable) {
                 OutlinedButton(
@@ -2403,12 +2496,18 @@ fun ContactLinksSection(uid: String) {
             Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {
+                    val gcash = gcashNumber.trim()
+                    if (gcash.isNotEmpty() && !Regex("^09\\d{9}$").matches(gcash)) {
+                        info = "GCash number must be an 11-digit mobile starting with 09, e.g. 09171234567."
+                        return@Button
+                    }
                     busy = true
                     db.collection("users").document(uid).set(
                         mapOf(
                             "telegram" to normalizeTelegramLink(telegram),
                             "messenger" to normalizeMessengerLink(messenger),
-                            "whatsapp" to normalizeWhatsAppLink(whatsapp)
+                            "whatsapp" to normalizeWhatsAppLink(whatsapp),
+                            "gcashNumber" to gcash
                         ),
                         SetOptions.merge()
                     ).addOnSuccessListener {
@@ -2494,6 +2593,7 @@ fun HomeTab(
         Modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        item { AnnouncementsBanner() }
         item {
             val ctx = LocalContext.current
             var recent by remember { mutableStateOf(loadRecentSearches(ctx)) }

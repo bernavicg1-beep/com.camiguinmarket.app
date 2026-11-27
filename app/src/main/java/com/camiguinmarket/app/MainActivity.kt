@@ -941,6 +941,13 @@ fun MarketScreen(
 
                 "moderation" -> ModerationScreen(uid, isAdmin)
 
+                "admin" -> AdminScreen(
+                    uid = uid,
+                    isAdmin = isAdmin,
+                    onModeration = { overlay = "moderation" },
+                    onVerification = { overlay = "verification" }
+                )
+
                 "reviews" -> reviewsSeller?.let { (sid, sname) ->
                     ReviewsScreen(sid, sname)
                 }
@@ -1081,9 +1088,9 @@ fun MarketScreen(
                     MarketTab.Cart -> CartScreen(
                         uid = uid,
                         onBrowse = { tab = MarketTab.Home },
-                        onCheckout = { items, checkoutId ->
+                        onCheckout = { items, checkoutId, paymentMethod ->
                             requestNotificationPermission()
-                            checkoutCart(db, uid, displayName, items, checkoutId) { err ->
+                            checkoutCart(db, uid, displayName, items, checkoutId, paymentMethod) { err ->
                                 Toast.makeText(
                                     context,
                                     err ?: "Order placed ✅",
@@ -1140,10 +1147,9 @@ fun MarketScreen(
                         onToggleLanguage = onToggleLanguage,
                         onOrders = { overlay = "orders" },
                         onInbox = { overlay = "inbox" },
-                        onModeration = { overlay = "moderation" },
                         onSavedSearches = { overlay = "saved" },
                         onBlocked = { overlay = "blocked" },
-                        onVerification = { overlay = "verification" },
+                        onAdmin = { overlay = "admin" },
                         onListingStats = { overlay = "stats" },
                         onLogout = onLogout,
                         onDeleteAccount = { showDeleteAccount = true }

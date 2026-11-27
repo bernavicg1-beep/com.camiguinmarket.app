@@ -33,25 +33,32 @@ def b64(obj):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def token(uid):
-    """Unsigned JWT that the emulator accepts as a signed-in user."""
+def token(uid, phone=None):
+    """Unsigned JWT that the emulator accepts as a signed-in user.
+
+    `phone` adds the `phone_number` claim Firebase Auth sets after a phone
+    number is verified, so the rules can trust the badge it backs.
+    """
     header = b64({"alg": "none", "typ": "JWT"})
-    payload = b64(
-        {
-            "sub": uid,
-            "user_id": uid,
-            "aud": PROJECT,
-            "iss": f"https://securetoken.google.com/{PROJECT}",
-            "iat": 0,
-            "exp": 9999999999,
-            "auth_time": 0,
-            "firebase": {"sign_in_provider": "password"},
-        }
-    )
+    claims = {
+        "sub": uid,
+        "user_id": uid,
+        "aud": PROJECT,
+        "iss": f"https://securetoken.google.com/{PROJECT}",
+        "iat": 0,
+        "exp": 9999999999,
+        "auth_time": 0,
+        "firebase": {"sign_in_provider": "password"},
+    }
+    if phone:
+        claims["phone_number"] = phone
+        claims["firebase"]["identities"] = {"phone": [phone]}
+    payload = b64(claims)
     return f"{header}.{payload}."
 
 
-def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=None):
+def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=None,
+            phone=None):
     params = []
     if doc_id:
         params.append("documentId=" + doc_id)
@@ -65,7 +72,7 @@ def request(method, path, uid=None, body=None, doc_id=None, order_by=None, mask=
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")
     if uid:
-        req.add_header("Authorization", "Bearer " + token(uid))
+        req.add_header("Authorization", "Bearer " + token(uid, phone))
     try:
         with urllib.request.urlopen(req) as resp:
             return resp.status
@@ -116,8 +123,24 @@ def check(name, method, path, expected, **kwargs):
 
 
 # --- phone number on the user profile ---------------------------------------
-check("owner: save a verified phone number", "PATCH", "/users/u1", 200, uid="u1",
+# The badge is only trusted when the ID token carries the verified
+# `phone_number` claim; a plain client write must not set it.
+check("owner: self-set phoneVerified without a verified phone", "PATCH", "/users/u1", 403,
+      uid="u1",
       body={"fields": {"phone": {"stringValue": "+639171234567"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: set phoneVerified with a verified phone claim", "PATCH", "/users/u1", 200,
+      uid="u1", phone="+639171234567",
+      body={"fields": {"phone": {"stringValue": "+639171234567"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: claim a phone number that was not verified", "PATCH", "/users/u1", 403,
+      uid="u1", phone="+639171234567",
+      body={"fields": {"phone": {"stringValue": "+639000000000"},
+                       "phoneVerified": {"booleanValue": True}}})
+check("owner: keep the verified phone while editing the profile", "PATCH", "/users/u1", 200,
+      uid="u1",
+      body={"fields": {"name": {"stringValue": "Nena"},
+                       "phone": {"stringValue": "+639171234567"},
                        "phoneVerified": {"booleanValue": True}}})
 check("owner: read their own profile document", "GET", "/users/u1", 200, uid="u1")
 check("other: write someone else's phone number", "PATCH", "/users/u1", 403, uid="u2",
@@ -126,6 +149,53 @@ check("other: write someone else's phone number", "PATCH", "/users/u1", 403, uid
 check("owner: store a field the rules do not allow", "PATCH", "/users/u1", 403, uid="u1",
       body={"fields": {"phone": {"stringValue": "+639171234567"},
                        "isAdmin": {"booleanValue": True}}})
+
+# --- store info: the seller's GCash number -----------------------------------
+# The seller saves it in their store info and any signed-in buyer may read it
+# (the profile read rule), which is how the payment prompt knows where the
+# money goes. Only a well-formed PH mobile is accepted.
+check("gcash: seller saves their GCash number", "PATCH", "/users/u2", 200, uid="u2",
+      body={"fields": {"gcashNumber": {"stringValue": "09171234567"}}})
+check("gcash: a spaced number is rejected", "PATCH", "/users/u2", 403, uid="u2",
+      body={"fields": {"gcashNumber": {"stringValue": "0917 123 4567"}}})
+check("gcash: a number that is not a PH mobile is rejected", "PATCH", "/users/u2", 403,
+      uid="u2", body={"fields": {"gcashNumber": {"stringValue": "12345"}}})
+check("gcash: the seller can clear the number", "PATCH", "/users/u2", 200, uid="u2",
+      body={"fields": {"gcashNumber": {"stringValue": ""}}})
+check("gcash: any signed-in buyer reads the seller's number", "GET", "/users/u2", 200, uid="u1")
+
+# --- store info: contact links (Telegram / Messenger / WhatsApp) --------------
+# The "Save links" button writes these three together; the rules must accept
+# them (they were previously rejected because they were not in the allow-list).
+check("links: owner saves telegram/messenger/whatsapp", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"telegram": {"stringValue": "camiguin_market"},
+                       "messenger": {"stringValue": "CamiguinMarket"},
+                       "whatsapp": {"stringValue": "+639171234567"}}})
+check("links: a non-string value is rejected", "PATCH", "/users/u1", 403, uid="u1",
+      body={"fields": {"telegram": {"booleanValue": True}}})
+check("links: another user cannot write them", "PATCH", "/users/u1", 403, uid="u2",
+      body={"fields": {"telegram": {"stringValue": "x"}}})
+check("links: telegramVerified/messengerVerified are booleans", "PATCH", "/users/u1", 200, uid="u1",
+      body={"fields": {"telegramVerified": {"booleanValue": True},
+                       "messengerVerified": {"booleanValue": True}}})
+
+# --- checkout idempotency markers -------------------------------------------
+# checkoutCart() reads /checkouts/{id} before writing it; a missing document
+# must be readable (404) rather than denied (403).
+check("checkout: owner can read a missing marker", "GET", "/checkouts/missing-checkout", 404,
+      uid="u1")
+check("checkout: owner can create their marker", "POST", "/checkouts", 200,
+      uid="u1", body={"fields": {"uid": {"stringValue": "u1"}}}, doc_id="checkout-a")
+check("checkout: owner can read their marker", "GET", "/checkouts/checkout-a", 200, uid="u1")
+check("checkout: another user cannot read the marker", "GET", "/checkouts/checkout-a", 403,
+      uid="u2")
+check("checkout: another user cannot create a marker for the owner", "POST", "/checkouts", 403,
+      uid="u2", body={"fields": {"uid": {"stringValue": "u1"}}}, doc_id="checkout-b")
+check("checkout: owner can update their marker", "PATCH", "/checkouts/checkout-a", 200,
+      uid="u1", body={"fields": {"uid": {"stringValue": "u1"}}})
+check("checkout: another user cannot update the marker", "PATCH", "/checkouts/checkout-a", 403,
+      uid="u2", body={"fields": {"uid": {"stringValue": "u2"}}})
+check("checkout: delete is denied", "DELETE", "/checkouts/checkout-a", 403, uid="u1")
 
 # --- anonymous ---------------------------------------------------------------
 check("anon: read the listing list", "GET", "/listings", 403)
@@ -246,7 +316,8 @@ check("chat: can read the messages", "GET", "/chats/u1_u2/messages", 200, uid="u
 
 
 # --- orders ------------------------------------------------------------------
-def order_doc(buyer, seller, status="pending"):
+def order_doc(buyer, seller, status="pending", method="cash", paid="cod", ref=""):
+    """Exact fields written by the app's `Order` data class at checkout."""
     return {"fields": {
         "buyerId": {"stringValue": buyer},
         "buyerName": {"stringValue": "Nena"},
@@ -256,6 +327,10 @@ def order_doc(buyer, seller, status="pending"):
         "quantity": {"integerValue": "2"},
         "total": {"doubleValue": 51.0},
         "status": {"stringValue": status},
+        "paymentMethod": {"stringValue": method},
+        "paymentStatus": {"stringValue": paid},
+        "paymentRef": {"stringValue": ref},
+        "paidAt": {"integerValue": "0"},
         "createdAt": {"integerValue": "1"},
     }}
 
@@ -285,6 +360,41 @@ check("order: outsider cannot cancel", "PATCH", "/orders/o3", 403,
       uid="u3", body=order_doc("u1", "u2", status="cancelled"))
 
 
+# --- GCash payments ----------------------------------------------------------
+check("gcash: buyer can create an unpaid GCash order", "POST", "/orders", 200,
+      uid="u1", body=order_doc("u1", "u2", method="gcash", paid="unpaid"), doc_id="og1")
+check("gcash: buyer cannot create an already-paid order", "POST", "/orders", 403,
+      uid="u1", body=order_doc("u1", "u2", method="gcash", paid="paid"), doc_id="og2")
+check("gcash: a cash order must start as cod", "POST", "/orders", 403,
+      uid="u1", body=order_doc("u1", "u2", method="cash", paid="unpaid"), doc_id="og3")
+check("gcash: buyer records the reference (still not paid)", "PATCH", "/orders/og1", 200,
+      uid="u1", body=order_doc("u1", "u2", method="gcash", paid="pending", ref="1234567890"))
+check("gcash: buyer cannot mark the order paid", "PATCH", "/orders/og1", 403,
+      uid="u1",
+      body=order_doc("u1", "u2", method="gcash", paid="paid", ref="1234567890"))
+check("gcash: only the seller verifies the payment", "PATCH", "/orders/og1", 200,
+      uid="u2",
+      body=order_doc("u1", "u2", method="gcash", paid="paid", ref="1234567890"))
+check("gcash: the payment method cannot change after checkout", "PATCH", "/orders/og1", 403,
+      uid="u2", body=order_doc("u1", "u2", method="cash", paid="cod"))
+check("gcash: a cash order cannot be marked paid", "PATCH", "/orders/o1", 403,
+      uid="u2", body=order_doc("u1", "u2", status="confirmed", method="cash", paid="paid"))
+
+
+def legacy_order_doc(buyer, seller):
+    """An order from an app version released before GCash: no payment fields."""
+    body = order_doc(buyer, seller)
+    for field in ("paymentMethod", "paymentStatus", "paymentRef", "paidAt"):
+        body["fields"].pop(field, None)
+    return body
+
+
+check("gcash: an older app can still place an order", "POST", "/orders", 200,
+      uid="u1", body=legacy_order_doc("u1", "u2"), doc_id="olegacy")
+check("gcash: an older order can still change status", "PATCH", "/orders/olegacy", 200,
+      uid="u2", body=legacy_order_doc("u1", "u2"))
+
+
 # --- moderation --------------------------------------------------------------
 def seed(path, doc_id, body):
     """Write through the emulator owner bypass (skips the rules)."""
@@ -301,6 +411,23 @@ seed("/admins", "admin1", {"fields": {"active": {"booleanValue": True}}})
 check("mod: admins are readable by signed-in users", "GET", "/admins/admin1", 200, uid="u1")
 check("mod: cannot write admins from the app", "POST", "/admins", 403,
       uid="u1", body={"fields": {"active": {"booleanValue": True}}}, doc_id="fake")
+
+# `admins` is written from the Firebase Console only, so the app must have no
+# write path at all: no self-promotion, no overwriting a marker, no deletion —
+# not even for someone who is already an admin. Otherwise a signed-in user
+# could grant themselves moderation powers (or lock every admin out).
+check("admin: a user cannot create a marker for themselves", "POST", "/admins", 403,
+      uid="u3", doc_id="u3", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: a user cannot create a marker for someone else", "POST", "/admins", 403,
+      uid="u3", doc_id="admin2", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: a user cannot overwrite an existing marker", "PATCH", "/admins/admin1", 403,
+      uid="u3", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: a user cannot delete an existing marker", "DELETE", "/admins/admin1", 403,
+      uid="u3")
+check("admin: an admin cannot add another admin from the app", "POST", "/admins", 403,
+      uid="admin1", doc_id="admin2", body={"fields": {"active": {"booleanValue": True}}})
+check("admin: an admin cannot revoke their own marker from the app", "DELETE",
+      "/admins/admin1", 403, uid="admin1")
 
 check("mod: u2 listing for moderation", "POST", "/listings", 200,
       uid="u2", body=app_listing("u2"), doc_id="mod1")
@@ -584,6 +711,34 @@ check("vr: admin can approve", "PATCH", "/verificationRequests/vr1", 200,
                                     "reviewedAt": {"integerValue": "2"}}})
 check("vr: cannot be deleted (even by admin)", "DELETE", "/verificationRequests/vr1", 403,
       uid="admin1")
+
+
+# --- announcements (admin dashboard) ----------------------------------------
+ann_doc = lambda title="Market day", message="Buy local this Saturday.": {"fields": {
+    "title": {"stringValue": title},
+    "message": {"stringValue": message},
+    "authorUid": {"stringValue": "admin1"},
+    "authorName": {"stringValue": "Admin"},
+    "active": {"booleanValue": True},
+    "createdAt": {"integerValue": "1"},
+}}
+
+check("ann: admin posts an announcement", "POST", "/announcements", 200,
+      uid="admin1", body=ann_doc(), doc_id="ann1")
+check("ann: a normal user cannot post", "POST", "/announcements", 403, uid="u1",
+      body=ann_doc(), doc_id="ann2")
+check("ann: an empty title is rejected", "POST", "/announcements", 403, uid="admin1",
+      body=ann_doc(title=""), doc_id="ann3")
+check("ann: an over-long message is rejected", "POST", "/announcements", 403, uid="admin1",
+      body=ann_doc(message="x" * 501), doc_id="ann4")
+check("ann: any signed-in user reads them", "GET", "/announcements/ann1", 200, uid="u1")
+check("ann: anonymous cannot read them", "GET", "/announcements/ann1", 403)
+check("ann: a normal user cannot hide one", "PATCH", "/announcements/ann1", 403, uid="u1",
+      body={"fields": {"active": {"booleanValue": False}}})
+check("ann: a normal user cannot delete one", "DELETE", "/announcements/ann1", 403, uid="u1")
+check("ann: the admin can hide one", "PATCH", "/announcements/ann1", 200, uid="admin1",
+      body={"fields": {"active": {"booleanValue": False}}})
+check("ann: the admin can delete one", "DELETE", "/announcements/ann1", 200, uid="admin1")
 
 
 def main():

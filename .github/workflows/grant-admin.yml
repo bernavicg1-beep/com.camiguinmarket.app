@@ -1,0 +1,52 @@
+name: Grant admin
+
+# Reads or writes admins/{uid} with the project's service account, so the admin
+# role can be granted without opening the Firebase Console. The app itself still
+# cannot write admins (firestore.rules: allow write: if false).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email the person signs in with'
+        required: true
+        type: string
+      mode:
+        description: 'check = only look the account up, grant = make it admin, revoke = remove'
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - grant
+          - revoke
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install the Admin SDK
+        run: |
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund firebase-admin@12
+
+      - name: Resolve the account and apply the marker
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EMAIL: ${{ inputs.email }}
+          MODE: ${{ inputs.mode }}
+        run: node .github/scripts/grant-admin.mjs
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: admin-result
+          path: admin-result.json

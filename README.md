@@ -4,6 +4,22 @@ Android app (Kotlin + Jetpack Compose + Firebase) for buying and selling across
 Camiguin. The seller can drop a **pickup location on the map**, and the customer
 sees it, gets an **A→B route**, and can search for places.
 
+**Shop Local. Support Camiguin.**
+
+## Branding
+
+| Colour | Hex | Where |
+|---|---|---|
+| Navy Blue | `#0B1F3A` | Text, header top edge |
+| Ocean Blue | `#0F76C4` | Buttons, links, price highlights |
+| Orange | `#F47B20` | Small highlights, warnings, unread badges |
+| Green | `#1E8E4E` | Confirmed/paid states, `Done` |
+| Philippine peso | `₱` | Every price in the app |
+
+Defined once in `Extras.kt` (`BrandNavy`, `BrandBlue`, `BrandOrange`,
+`BrandGreen`, …) and used through `MaterialTheme` and the components, so the
+palette changes in one place.
+
 ## The map
 
 The app uses **Leaflet with OpenStreetMap tiles** inside a `WebView`, so there is
@@ -78,21 +94,105 @@ These features have their own Firestore collections: `carts/{uid}/items`,
 `favorites/{uid}/items`, `notifications/{uid}/items`, `orders/{orderId}`, and
 `chats/{chatId}/messages`.
 
+### Payments (Cash and GCash)
+
+The Cart asks for the payment method before checkout and each order keeps it:
+
+| Field | Values |
+|---|---|
+| `paymentMethod` | `cash` or `gcash` |
+| `paymentStatus` | `cod` (cash), `unpaid`, `pending`, `paid` |
+| `paymentRef` | the GCash reference number the buyer types in |
+
+How a GCash order moves:
+
+1. Checkout with **GCash** → the order starts `unpaid`; the seller is notified.
+2. The buyer opens the order and presses **I paid via GCash**, pastes the GCash
+   reference → `pending` ("For verification"). Nothing is paid yet.
+3. The **seller** presses **GCash payment received** → `paid`. Only the seller's
+   write can do this, and only on a GCash order.
+4. `Done` stays disabled until the order is paid — "paid" always means the seller
+   verified the money, never that the buyer said so.
+
+**Where the money goes.** The seller saves their GCash number in *Profile →
+Contact links* (their store info). It is stored on the `users` document as
+`gcashNumber`, validated by the rules to an 11-digit mobile starting with `09`
+(empty clears it), and readable by any signed-in user. The buyer sees it in the
+Cart's GCash prompt (per seller), on the order's Payment card, and inside the
+**I paid via GCash** dialog next to the amount. A seller who has not saved one
+yet gets an "ask them in chat" note instead of a dead end, and nothing is marked
+paid until the seller confirms.
+
+Cash orders start as `cod` (paid on hand-over) and skip all of it. The rules
+enforce the same thing: the buyer cannot create an already-paid order, cannot mark
+it paid, and neither side can switch the payment method after checkout. Existing
+orders without these fields still work (the rules treat a missing method as
+unchanged). Each order card and the detail screen show the payment badge, and the
+seller's CSV export has `payment_method`, `payment_status`, `payment_ref` columns.
+
+### Creating the first admin
+
+The app has no way to grant the role to itself: `admins` is write-blocked in the
+rules (`allow write: if false`), so the marker is created either from the Firebase
+Console or by the **Grant admin** workflow (Actions → *Grant admin* → Run
+workflow → enter the email the person signs in with). The workflow looks the
+uid up in Firebase Auth and writes `admins/{uid}` with the project's service
+account; the app itself still cannot write it. To do it by hand:
+
+1. Sign in to the app once with the account that should be the admin, so it
+exists under **Authentication → Users**.
+2. Firebase Console → **Firestore Database** → **Start collection** named
+`admins` (skip if it already exists).
+3. **Add document** → document ID = that user's `uid` (shown in the
+Authentication tab) → field `active` (boolean) = `true` → **Save**.
+4. Reopen the app (or wait a moment — Profile listens live): the **Admin
+dashboard** row appears under Profile. Delete the document to revoke admin.
+
+Profile shows only that one row; everything else is reached from the dashboard.
+What the dashboard links to:
+
+- **Moderation** — every listing in the market with a **Delete** action (the
+seller is notified), plus the **Reports** tab: a reported listing can be deleted
+(which resolves the report) or dismissed, and only the reporter and an admin can
+read a report. Rules also let an admin delete any listing, not just their own.
+- **Seller verification** — sellers searchable by name or uid with their
+phone-verified / community-verified badges, the pending community-verification
+**Requests**, and **Verify** / **Revoke** actions. Verification is soft: it adds
+trust badges and a low-rating flag, it never blocks posting or buying.
+
+Without the marker neither row is rendered, `ModerationScreen` and
+`AdminVerificationScreen` refuse to show their contents, and every admin action
+is checked again by `isAdmin()` in `firestore.rules`.
+
 ### Moderation
 
-When an `admins/{uid}` document exists in Firestore, Profile shows the
-**Moderation** screen: all listings, and a moderator can delete any listing
-(the seller is notified).
+When an `admins/{uid}` document exists in Firestore, **Admin dashboard →
+Moderation** shows the screen: all listings, and a moderator can delete any
+listing (the seller is notified).
 
-**How to make a moderator:** Firebase Console → Firestore → **Start collection**
-`admins` → document ID = the user's `uid` (visible in the Authentication tab) →
-field `active` (boolean) = `true`. There is no UI for this in the app because not
-just anyone should be able to create a moderator; `admins` is blocked by the rules
-(`allow write: if false`).
+**How to make a moderator:** see **Creating the first admin** above — the same
+`admins/{uid}` document is the only switch, and the app cannot write it.
+
+### Admin dashboard
+
+The **Admin dashboard** row in Profile (admins only) is the overview: how many
+listings and sellers the market has, how many reports are open, how many
+verification requests are pending, and one tap to each tool (Moderation, Seller
+verification, Announcements). The counts come from live listeners, so they
+update as things happen.
+
+### Announcements
+
+Admins post an announcement from **Admin dashboard → Announcements** (title and
+message) and can hide, show or delete it afterwards. Active announcements appear
+as cards at the top of Home for every signed-in user. In the rules the
+`announcements` collection is readable by any signed-in user and writable only
+by an admin (`isAdmin()`), with the title capped at 80 characters and the
+message at 500.
 
 ### Seller verification (admin/community)
 
-Moderators also get **Seller verification** in Profile. It lists sellers
+**Admin dashboard → Seller verification** lists sellers
 (searchable by name or uid) with phone-verified / community-verified badges and
 lets the moderator **Verify** or **Revoke** a seller. Sellers can request
 community verification from their own Profile; the request appears under the
@@ -309,7 +409,9 @@ RELEASE_KEY_PASSWORD=…
 - **notifications** — owner only can read; any signed-in user can create a
   notification for someone else, but `fromUid` must be themselves.
 - **orders** — the buyer creates; only the buyer and seller can read; the seller can
-  update the status; the buyer can cancel (`pending` → `cancelled`) only.
+  update the status and verify the GCash payment; the buyer can cancel (`pending` →
+  `cancelled`) or record the GCash reference (`unpaid` → `pending`) only. The payment
+  method cannot change after checkout, and a cash order cannot be marked `paid`.
 - **chats** — only the two participants can read/write; a message requires
   membership in the chat (checked with `get()`).
 - **savedSearches** — owner only.
