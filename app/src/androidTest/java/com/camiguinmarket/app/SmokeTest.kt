@@ -660,7 +660,7 @@ class SmokeTest {
         repeat(2) { attempt ->
             if (attempt > 0) println(
                 "tapLanguageToggle retry: \"$label\" -> $expected "
-                    + "(lang=${prefs().getString(\"lang\", \"en\")})"
+                    + "(lang=${prefs().getString("lang", "en")})"
             )
             composeRule.onNodeWithText(label).performScrollTo().performClick()
             val timeoutMs = if (attempt == 0) 2_000L else 5_000L
