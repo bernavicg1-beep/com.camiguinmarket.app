@@ -133,8 +133,11 @@ seller's CSV export has `payment_method`, `payment_status`, `payment_ref` column
 ### Creating the first admin
 
 The app has no way to grant the role to itself: `admins` is write-blocked in the
-rules (`allow write: if false`), so every admin marker is created in the Firebase
-Console. To create the first one:
+rules (`allow write: if false`), so the marker is created either from the Firebase
+Console or by the **Grant admin** workflow (Actions → *Grant admin* → Run
+workflow → enter the email the person signs in with). The workflow looks the
+uid up in Firebase Auth and writes `admins/{uid}` with the project's service
+account; the app itself still cannot write it. To do it by hand:
 
 1. Sign in to the app once with the account that should be the admin, so it
 exists under **Authentication → Users**.
@@ -143,10 +146,10 @@ exists under **Authentication → Users**.
 3. **Add document** → document ID = that user's `uid` (shown in the
 Authentication tab) → field `active` (boolean) = `true` → **Save**.
 4. Reopen the app (or wait a moment — Profile listens live): the **Admin
-dashboard**, **Moderation** and **Seller verification** rows appear under Profile.
-Delete the document to revoke admin.
+dashboard** row appears under Profile. Delete the document to revoke admin.
 
-What those two rows unlock:
+Profile shows only that one row; everything else is reached from the dashboard.
+What the dashboard links to:
 
 - **Moderation** — every listing in the market with a **Delete** action (the
 seller is notified), plus the **Reports** tab: a reported listing can be deleted
@@ -163,9 +166,9 @@ is checked again by `isAdmin()` in `firestore.rules`.
 
 ### Moderation
 
-When an `admins/{uid}` document exists in Firestore, Profile shows the
-**Moderation** screen: all listings, and a moderator can delete any listing
-(the seller is notified).
+When an `admins/{uid}` document exists in Firestore, **Admin dashboard →
+Moderation** shows the screen: all listings, and a moderator can delete any
+listing (the seller is notified).
 
 **How to make a moderator:** see **Creating the first admin** above — the same
 `admins/{uid}` document is the only switch, and the app cannot write it.
@@ -189,7 +192,7 @@ message at 500.
 
 ### Seller verification (admin/community)
 
-Moderators also get **Seller verification** in Profile. It lists sellers
+**Admin dashboard → Seller verification** lists sellers
 (searchable by name or uid) with phone-verified / community-verified badges and
 lets the moderator **Verify** or **Revoke** a seller. Sellers can request
 community verification from their own Profile; the request appears under the

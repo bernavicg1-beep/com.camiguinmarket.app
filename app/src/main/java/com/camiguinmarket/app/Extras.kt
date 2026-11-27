@@ -1872,11 +1872,9 @@ fun ProfileScreen(
     onFavorites: () -> Unit,
     onOrders: () -> Unit,
     onInbox: () -> Unit,
-    onModeration: () -> Unit,
     onSavedSearches: () -> Unit,
     onListingStats: () -> Unit,
     onBlocked: () -> Unit = {},
-    onVerification: () -> Unit = {},
     onAdmin: () -> Unit = {},
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
@@ -1956,10 +1954,6 @@ fun ProfileScreen(
                 if (isAdmin) {
                     ProfileDivider()
                     ProfileRow(Icons.Filled.Security, "Admin dashboard", onAdmin)
-                    ProfileDivider()
-                    ProfileRow(Icons.Filled.Delete, S.moderation, onModeration)
-                    ProfileDivider()
-                    ProfileRow(Icons.Filled.Security, S.adminVerification, onVerification)
                 }
             }
         }
