@@ -5,13 +5,11 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,11 +29,11 @@ import org.junit.runner.RunWith
  * TEMPORARY diagnostic, not a behaviour test.
  *
  * It signs in, opens Home, waits for a seeded listing and then reports what the
- * semantics tree really contains around the seed cards: every test tag present
- * (merged and unmerged), the tags that start with `listing_card_`, the counts
- * for each seed's exact tag/title in both trees, and the tree lines around any
- * seed text or card tag. It then fails with that evidence so the run's failure
- * artifact carries it, because the plain lookup only ever reported `tagged=0`.
+ * semantics tree really holds: every node's own semantics (tag, text, actions)
+ * in both the merged and the unmerged tree, the tags that start with
+ * `listing_card_`, and the per-seed tag/title counts. It then fails with that
+ * evidence so the run's artifact carries it, because the plain lookup only ever
+ * reported `tagged=0` and could not say which part was missing.
  *
  * Delete this file once the card lookup in SmokeTest is fixed.
  */
@@ -57,6 +55,9 @@ class SeedCardProbeTest {
 
         /** `ListingCard` tags itself `listing_card_<id>`; see Extras.kt. */
         private const val CARD_TAG_PREFIX = "listing_card_"
+
+        /** Matches every node, so one call can dump the whole tree. */
+        private val EVERY_NODE = SemanticsMatcher("every node") { true }
     }
 
     @Before
@@ -89,12 +90,12 @@ class SeedCardProbeTest {
                     .append(" titleMerged=").append(countText(seed.title, false))
                     .append(" titleUnmerged=").append(countText(seed.title, true))
             }
-            append("\n--- merged tree around seed text / tags ---\n").append(treeLines(false))
-            append("\n--- unmerged tree around seed text / tags ---\n").append(treeLines(true))
+            append("\n--- merged nodes ---\n").append(nodeDump(false))
+            append("\n--- unmerged nodes ---\n").append(nodeDump(true))
         }
 
-        treeLines(false).lines().forEach { println("PROBE_MERGED $it") }
-        treeLines(true).lines().forEach { println("PROBE_UNMERGED $it") }
+        nodeDump(false).lines().forEach { println("PROBE_MERGED $it") }
+        nodeDump(true).lines().forEach { println("PROBE_UNMERGED $it") }
         throw AssertionError("SEED CARD PROBE: $evidence")
     }
 
@@ -119,24 +120,18 @@ class SeedCardProbeTest {
     }.getOrDefault(-1)
 
     /**
-     * The tree lines that mention a seed title, a card tag or any test tag, plus
-     * two lines of context so each match keeps its node header and actions.
+     * One line per node with its own semantics config, so a card that carries a
+     * tag, a title text or a click action is visible with the properties it
+     * actually has in that tree.
      */
-    private fun treeLines(unmerged: Boolean): String = runCatching {
-        val tree = composeRule.onRoot(useUnmergedTree = unmerged)
-            .printToString(maxDepth = Int.MAX_VALUE)
-        val lines = tree.lines()
-        val keep = sortedSetOf<Int>()
-        lines.forEachIndexed { index, line ->
-            val interesting = line.contains(SEED_PREFIX) ||
-                line.contains(CARD_TAG_PREFIX) ||
-                line.contains("TestTag")
-            if (interesting) {
-                for (i in (index - 2)..(index + 2)) if (i in lines.indices) keep.add(i)
-            }
+    private fun nodeDump(unmerged: Boolean): String = runCatching {
+        val nodes = composeRule.onAllNodes(EVERY_NODE, useUnmergedTree = unmerged)
+            .fetchSemanticsNodes()
+        nodes.joinToString("\n") { node ->
+            val config = node.config.toString().replace("\n", " ; ")
+            "#${node.id} ${node.boundsInRoot} $config".take(420)
         }
-        keep.take(160).joinToString("\n") { lines[it] }
-    }.getOrElse { "<tree unavailable: ${it::class.java.simpleName}: ${it.message}>" }
+    }.getOrElse { "<nodes unavailable: ${it::class.java.simpleName}: ${it.message}>" }
 
     private fun awaitSeed(timeoutMs: Long = 30_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
