@@ -1,8 +1,9 @@
 """In-app update prompt, admin PIN hash on admins/{uid}, remove the unused
-phone-verification section and the facebook-login dependency, and make the
-rules deploy fail loudly instead of silently skipping.
+phone-verification section and the facebook-login dependency.
+
+Workflow files are deliberately not touched: GITHUB_TOKEN cannot create or
+update them (the deploy guard lives in rules-deploy-guard.yml).
 """
-import re
 import sys
 
 EXTRAS = "app/src/main/java/com/camiguinmarket/app/Extras.kt"
@@ -11,7 +12,6 @@ ADMIN = "app/src/main/java/com/camiguinmarket/app/Admin.kt"
 GRADLE = "app/build.gradle.kts"
 MANIFEST = "app/src/main/AndroidManifest.xml"
 APPINFO = "app/src/main/res/values/app_info.xml"
-RULES_WF = ".github/workflows/firestore-rules.yml"
 HASH_TOOL = "scripts/admin-pin-hash.py"
 
 
@@ -251,44 +251,7 @@ info = read(APPINFO)
 kept = [ln for ln in info.splitlines(True) if "facebook_app_id" not in ln and "fb_login_protocol_scheme" not in ln]
 write(APPINFO, "".join(kept))
 
-# --- 6. rules deploy: never skip silently, and sweep drift every 6 hours -----
-w = read(RULES_WF)
-on_old = "  workflow_dispatch:\n\npermissions:"
-on_new = (
-    "  workflow_dispatch:\n"
-    "  # Drift sweep: a rules fix can never sit undeployed for long, even when the\n"
-    "  # commit that carried it came from the CI bot (bot pushes do not trigger\n"
-    "  # workflows).\n"
-    "  schedule:\n"
-    "    - cron: '17 */6 * * *'\n"
-    "\npermissions:"
-)
-if w.count(on_old) != 1:
-    sys.exit("rules workflow trigger anchor not found")
-w = w.replace(on_old, on_new, 1)
-
-if_old = "    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'"
-if_new = "    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'"
-if w.count(if_old) != 1:
-    sys.exit("deploy job condition not found")
-w = w.replace(if_old, if_new, 1)
-
-guard_anchor = "      - name: Install firebase-tools\n        if: steps.creds.outputs.method != 'none'"
-guard = '''      # A skipped deploy is how a rules fix sat undeployed before: fail the run
-      # instead of leaving production on stale rules.
-      - name: Require a deploy credential
-        if: steps.creds.outputs.method == 'none'
-        run: |
-          echo "::error::No Firebase credential: add FIREBASE_SERVICE_ACCOUNT (or FIREBASE_TOKEN) in Settings -> Secrets and variables -> Actions."
-          exit 1
-
-'''
-if w.count(guard_anchor) != 1:
-    sys.exit("firebase-tools step anchor not found")
-w = w.replace(guard_anchor, guard + guard_anchor, 1)
-write(RULES_WF, w)
-
-# --- 7. helper to compute the hash for the Console --------------------------
+# --- 6. helper to compute the hash for the Console --------------------------
 write(HASH_TOOL, '''#!/usr/bin/env python3
 """Print the SHA-256 hash to paste into admins/{uid}.pinHash.
 

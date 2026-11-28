@@ -1,0 +1,40 @@
+name: Rules deploy guard
+
+# "Firestore rules" deploys on a push to main. Pushes made by the CI bot do NOT
+# trigger workflows, which is how a rules fix once sat undeployed while the app
+# kept answering PERMISSION_DENIED. This guard re-dispatches that workflow on a
+# schedule, so drift cannot last longer than six hours, and it fails loudly when
+# the deploy credential disappears instead of silently skipping.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a deploy credential
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ] && [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::error::No Firebase credential: add FIREBASE_SERVICE_ACCOUNT in Settings -> Secrets and variables -> Actions, or rules can never be deployed."
+            exit 1
+          fi
+          echo "A deploy credential is configured."
+
+      # workflow_dispatch is the one event a GITHUB_TOKEN push cannot block, and
+      # the dispatched run validates, deploys and verifies the deployed rules.
+      - name: Trigger the Firestore rules workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run firestore-rules.yml --ref main --repo "$GITHUB_REPOSITORY"
+          echo "Dispatched firestore-rules.yml on main (validate + deploy + verify)."
