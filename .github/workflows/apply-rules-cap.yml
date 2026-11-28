@@ -1,0 +1,35 @@
+name: Apply rules cap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/patches/apply_rules_cap.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Apply rules cap
+        run: python3 .github/patches/apply_rules_cap.py
+
+      - name: Commit, clean up scaffolding and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_rules_cap.py \
+            .github/workflows/apply-rules-cap.yml \
+            .github/patches/adminloc.patch \
+            .github/patches/all.patch \
+            .github/workflows/apply-adminloc.yml
+          git add firestore.rules
+          git commit -m "fix(moderation): cap report reason at 80 chars; remove one-shot CI scaffolding"
+          git push origin main
