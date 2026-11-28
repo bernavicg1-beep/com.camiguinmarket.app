@@ -2819,8 +2819,15 @@ fun sha256Hex(value: String): String =
         .joinToString("") { "%02x".format(it) }
 
 @Composable
-fun AdminPinGate(uid: String, expectedHash: String?, onUnlocked: () -> Unit) {
+fun AdminPinGate(
+    uid: String,
+    expectedHash: String?,
+    serverError: String? = null,
+    onUnlocked: () -> Unit,
+    onSetPin: (String) -> Unit
+) {
     var pin by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val configured = !expectedHash.isNullOrBlank()
 
@@ -2832,44 +2839,63 @@ fun AdminPinGate(uid: String, expectedHash: String?, onUnlocked: () -> Unit) {
         Icon(Icons.Filled.Security, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(32.dp))
         Spacer(Modifier.height(8.dp))
         Text(
-            if (configured) "Enter admin PIN" else "Admin PIN not set",
+            if (configured) "Enter admin PIN" else "Set admin PIN",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(4.dp))
         Text(
             if (configured) "The admin dashboard is locked."
-            else "Add pinHash to admins/$uid in the Firebase Console (scripts/admin-pin-hash.py prints it).",
+            else "Choose a PIN for this admin account. It is stored in Firebase, so every install (a fresh one too) has to use it, and it can only be changed from the Console.",
             style = MaterialTheme.typography.bodySmall,
             color = BrandMuted,
             textAlign = TextAlign.Center
         )
-        if (configured) {
-            Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = pin,
+            onValueChange = { typed -> pin = typed.filter { it.isDigit() }.take(12) },
+            label = { Text(if (configured) "PIN" else "New PIN") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (!configured) {
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = pin,
-                onValueChange = { typed -> pin = typed.filter { it.isDigit() }.take(12) },
-                label = { Text("PIN") },
+                value = confirm,
+                onValueChange = { typed -> confirm = typed.filter { it.isDigit() }.take(12) },
+                label = { Text("Confirm PIN") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 modifier = Modifier.fillMaxWidth()
             )
-            error?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = {
-                    if (sha256Hex(pin.trim()) == expectedHash!!.trim().lowercase()) {
+        }
+        (error ?: serverError)?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = {
+                val typed = pin.trim()
+                if (configured) {
+                    if (sha256Hex(typed) == expectedHash!!.trim().lowercase()) {
                         onUnlocked()
                     } else {
                         error = "Wrong PIN."
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Unlock") }
-        }
+                } else if (typed.length < 4) {
+                    error = "Use at least 4 digits."
+                } else if (typed != confirm.trim()) {
+                    error = "The PINs do not match."
+                } else {
+                    error = null
+                    onSetPin(sha256Hex(typed))
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (configured) "Unlock" else "Save PIN") }
     }
 }
 

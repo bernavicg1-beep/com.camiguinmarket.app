@@ -129,13 +129,32 @@ fun AdminScreen(
             }
         onDispose { reg.remove() }
     }
+    var pinWriteError by remember { mutableStateOf<String?>(null) }
     var unlocked by remember { mutableStateOf(false) }
     if (!unlocked) {
         if (!pinLoaded) {
             Text("Loading…", Modifier.fillMaxSize().padding(16.dp))
             return
         }
-        AdminPinGate(uid = uid, expectedHash = pinHash, onUnlocked = { unlocked = true })
+        AdminPinGate(
+            uid = uid,
+            expectedHash = pinHash,
+            serverError = pinWriteError,
+            onUnlocked = { unlocked = true },
+            onSetPin = { hash ->
+                // The rules accept this once, on the admin's own document.
+                pinWriteError = null
+                adminDb.collection("admins").document(uid)
+                    .set(
+                        mapOf("pinHash" to hash),
+                        com.google.firebase.firestore.SetOptions.merge()
+                    )
+                    .addOnSuccessListener { unlocked = true }
+                    .addOnFailureListener {
+                        pinWriteError = "Could not save the PIN. Check your connection and try again."
+                    }
+            }
+        )
         return
     }
 

@@ -761,6 +761,31 @@ check("gcash: a verified seller cannot unverify themselves", "PATCH",
       "/users/verifiedseller", 403, uid="verifiedseller", mask="verified",
       body={"fields": {"verified": {"booleanValue": False}}})
 
+# --- admin PIN hash: settable once from the app, then frozen --------------
+# The PIN lives on admins/{uid}.pinHash, so a fresh install cannot pick its own.
+# The admin may add it once to their own document; after that only the Console
+# can change it, and nobody else can touch it.
+seed("/admins", "pinsetter", {"fields": {"active": {"booleanValue": True}}})
+check("pin: the admin can set their own PIN hash once", "PATCH", "/admins/pinsetter", 200
+      uid="pinsetter", mask="pinHash"
+      body={"fields": {"pinHash": {"stringValue": "a" * 64}}})
+check("pin: the PIN hash cannot be replaced from the app", "PATCH", "/admins/pinsetter", 403
+      uid="pinsetter", mask="pinHash"
+      body={"fields": {"pinHash": {"stringValue": "b" * 64}}})
+check("pin: another user cannot set the PIN hash", "PATCH", "/admins/pinsetter", 403
+      uid="u1", mask="pinHash"
+      body={"fields": {"pinHash": {"stringValue": "c" * 64}}})
+seed("/admins", "pinunset", {"fields": {"active": {"booleanValue": True}}})
+check("pin: a non-hash value is rejected", "PATCH", "/admins/pinunset", 403
+      uid="pinunset", mask="pinHash"
+      body={"fields": {"pinHash": {"stringValue": "1234"}}})
+check("pin: the PIN hash cannot be cleared", "PATCH", "/admins/pinunset", 403
+      uid="pinunset", mask="pinHash"
+      body={"fields": {"pinHash": {"nullValue": None}}})
+check("pin: setting the hash does not unlock other writes", "PATCH", "/admins/pinunset", 403
+      uid="pinunset", mask="active"
+      body={"fields": {"active": {"booleanValue": False}}})
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")
