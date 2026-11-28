@@ -32,7 +32,7 @@ internal fun evaluateSavedSearch(
     val matches = listings
         .asSequence()
         .filter { listing ->
-            !listing.isExpired(now) &&
+            !listing.isExpired(now) && !listing.isOutOfStock() &&
                 listing.createdAt > search.lastCheckedAt &&
                 listing.createdAt <= now &&
                 listing.sellerId != uid &&
