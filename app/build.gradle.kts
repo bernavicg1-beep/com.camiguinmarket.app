@@ -5,6 +5,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // Secrets (Workers URL, signing): put them in local.properties
@@ -29,8 +30,8 @@ val r2UploadUrl: String = secret("R2_UPLOAD_URL")
 // Keystore for the release APK. Without it the release APK is unsigned.
 val releaseKeystoreFile: String = secret("RELEASE_KEYSTORE_FILE")
 val releaseKeystorePassword: String = secret("RELEASE_KEYSTORE_PASSWORD")
-val releaseKeyAlias: String = secret("RELEASE_KEY_ALIAS")
-val releaseKeyPassword: String = secret("RELEASE_KEY_PASSWORD")
+val releaseKeyAlias: String = secret("KEY_ALIAS")
+val releaseKeyPassword: String = secret("KEY_PASSWORD")
 
 android {
     namespace = "com.camiguinmarket.app"
@@ -92,6 +93,8 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-crashlytics")
+    implementation("com.google.firebase:firebase-analytics")
 
     // Maps use osmdroid (OpenStreetMap) natively: pan/zoom/markers, no API key.
     implementation("org.osmdroid:osmdroid-android:6.1.18")
