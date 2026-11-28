@@ -1,1 +1,306 @@
-PLACEHOLDER
+package com.camiguinmarket.app
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import java.util.Locale
+import java.util.Date
+import java.text.SimpleDateFormat
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.google.firebase.firestore.FirebaseFirestore
+
+/**
+ * Seller rating after a `done` order (Firestore: ratings/{orderId}).
+ * The doc id is the order id, so a buyer cannot rate twice.
+ */
+data class Rating(
+    val id: String = "",
+    val orderId: String = "",
+    val sellerId: String = "",
+    val buyerId: String = "",
+    val buyerName: String = "",
+    val rating: Long = 5,
+    val comment: String = "",
+    val createdAt: Long = 0L
+)
+
+fun submitRating(
+    db: FirebaseFirestore,
+    order: Order,
+    stars: Int,
+    comment: String,
+    onResult: (String?) -> Unit
+) {
+    if (stars !in 1..5) {
+        onResult("Pick a star rating (1-5).")
+        return
+    }
+    val rating = Rating(
+        orderId = order.id,
+        sellerId = order.sellerId,
+        buyerId = order.buyerId,
+        buyerName = order.buyerName,
+        rating = stars.toLong(),
+        comment = comment.trim(),
+        createdAt = System.currentTimeMillis()
+    )
+    db.collection("ratings").document(order.id).set(rating)
+        .addOnSuccessListener {
+            notifyUser(
+                db = db,
+                toUid = order.sellerId,
+                fromUid = order.buyerId,
+                fromName = order.buyerName,
+                message = "${order.buyerName} rated $stars⭐ for the order: ${order.listingTitle}"
+                    .take(190)
+            )
+            onResult(null)
+        }
+        .addOnFailureListener { onResult(it.localizedMessage ?: "Rating failed.") }
+}
+
+@Composable
+fun StarRow(
+    stars: Int,
+    size: Int = 30,
+    onPick: ((Int) -> Unit)? = null
+) {
+    Row {
+        (1..5).forEach { i ->
+            Icon(
+                if (i <= stars) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                contentDescription = "$i stars",
+                tint = if (i <= stars) BrandGold else Color.Gray,
+                modifier = Modifier
+                    .size(size.dp)
+                    .then(
+                        if (onPick != null) Modifier.clickable { onPick(i) } else Modifier
+                    )
+            )
+        }
+    }
+}
+
+// Rating prompt is triggered once per `done` order: dialog state is keyed by
+// order.id and re-rating is blocked because ratings/{orderId} already exists.
+@Composable
+fun RatingDialog(order: Order, onClose: () -> Unit) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var stars by remember { mutableStateOf(5) }
+    var comment by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var alreadyRated by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(order.id) {
+        db.collection("ratings").document(order.id).get()
+            .addOnSuccessListener { alreadyRated = it.exists() }
+            .addOnFailureListener { alreadyRated = false }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!sending) onClose() },
+        title = { Text("Seller rating") },
+        text = {
+            Column {
+                Text(order.listingTitle, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Seller: ${order.sellerName}",
+                    style = MaterialTheme.typography.labelSmall
+                )
+                Spacer(Modifier.height(8.dp))
+                when (alreadyRated) {
+                    null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                    true -> Text("You already rated this order. Thanks!")
+                    false -> {
+                        StarRow(stars, size = 34) { stars = it }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            comment,
+                            { comment = it },
+                            label = { Text("Komentaryo (opsyonal)") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                error?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = Color(0xFFE53935), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        },
+        confirmButton = {
+            if (alreadyRated == false) {
+                TextButton(
+                    enabled = !sending,
+                    onClick = {
+                        sending = true
+                        error = null
+                        submitRating(db, order, stars, comment) { err ->
+                            sending = false
+                            if (err == null) onClose() else error = err
+                        }
+                    }
+                ) { Text("Send") }
+            } else {
+                TextButton(onClick = onClose) { Text("Close") }
+            }
+        },
+        dismissButton = {
+            if (alreadyRated == false) {
+                TextButton(onClick = onClose, enabled = !sending) { Text("No") }
+            }
+        }
+    )
+}
+
+/** Seller average rating: "⭐ 4.6 (12)". */
+@Composable
+fun SellerRatingSummary(sellerId: String) {
+    if (sellerId.isBlank()) return
+    val db = remember { FirebaseFirestore.getInstance() }
+    val reputation = loadSellerReputation(db, sellerId)
+    val rep = reputation.value
+    if (rep.count == 0) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("⭐ %.1f".format(rep.average), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(Modifier.width(4.dp))
+        Text("(${rep.count})", style = MaterialTheme.typography.labelSmall)
+        if (rep.belowThreshold) {
+            Spacer(Modifier.width(4.dp))
+            Text("⚠️ low", style = MaterialTheme.typography.labelSmall, color = Color(0xFFE53935))
+        }
+    }
+}
+
+/** Seller reviews: average + up to 3 latest comments. */
+@Composable
+fun SellerReviews(sellerId: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var reviews by remember { mutableStateOf<List<Rating>>(emptyList()) }
+
+    DisposableEffect(sellerId) {
+        val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
+            .addSnapshotListener { snap, _ ->
+                reviews = snap?.documents.orEmpty()
+                    .mapNotNull { d -> d.toObject(Rating::class.java)?.copy(id = d.id) }
+                    .sortedByDescending { it.createdAt }
+            }
+        onDispose { reg.remove() }
+    }
+
+    if (reviews.isEmpty()) {
+        Text("The seller has no reviews yet.", style = MaterialTheme.typography.labelSmall)
+        return
+    }
+
+    Column {
+        Text(
+            "Reviews (${reviews.size})",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+        reviews.filter { it.comment.isNotBlank() }.take(3).forEach { r ->
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StarRow(r.rating.toInt(), size = 14)
+                Spacer(Modifier.width(6.dp))
+                Text("— ${r.buyerName}", style = MaterialTheme.typography.labelSmall)
+            }
+            Text(r.comment, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** All seller reviews (opened from the listing detail). */
+@Composable
+fun ReviewsScreen(sellerId: String, sellerName: String) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    var reviews by remember { mutableStateOf<List<Rating>>(emptyList()) }
+
+    DisposableEffect(sellerId) {
+        val reg = db.collection("ratings").whereEqualTo("sellerId", sellerId)
+            .addSnapshotListener { snap, _ ->
+                reviews = snap?.documents.orEmpty()
+                    .mapNotNull { d -> d.toObject(Rating::class.java)?.copy(id = d.id) }
+                    .sortedByDescending { it.createdAt }
+            }
+        onDispose { reg.remove() }
+    }
+
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.Star,
+                contentDescription = null,
+                tint = BrandGold
+            )
+            Spacer(Modifier.width(6.dp))
+            Column {
+                Text(
+                    "Reviews",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(sellerName, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        if (reviews.isEmpty()) {
+            Text("The seller has no reviews yet.")
+            return@Column
+        }
+        val avg = reviews.map { it.rating }.average()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StarRow(avg.toInt(), size = 18)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "%.1f · ${reviews.size} reviews".format(avg),
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(reviews, key = { it.id }) { r ->
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StarRow(r.rating.toInt(), size = 14)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                r.buyerName,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+                                    .format(Date(r.createdAt)),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        if (r.comment.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(r.comment, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
