@@ -1,0 +1,34 @@
+name: Apply Orders fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/patches/apply_orders_fix.py'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Repair Orders.kt
+        run: python3 .github/patches/apply_orders_fix.py
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_orders_fix.py \
+            .github/workflows/apply-orders-fix.yml \
+            .github/workflows/debug-build.yml \
+            .github/workflows/trigger-build.txt
+          git add app/src/main/java/com/camiguinmarket/app/Orders.kt
+          git commit -m "fix: repair corrupted Orders.kt (duplicate declaration, stray line)"
+          git push origin main
