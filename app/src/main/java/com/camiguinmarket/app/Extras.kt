@@ -88,6 +88,8 @@ import java.util.concurrent.TimeUnit
 import java.util.Date
 import java.util.Locale
 import com.google.firebase.firestore.Query
+import androidx.compose.material.icons.filled.Refresh
+import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
 // Design system from the mockup: blue theme, rounded cards, gold accent.
@@ -1963,6 +1965,8 @@ fun ProfileScreen(
                     ProfileDivider()
                     ProfileRow(Icons.Filled.Security, "Admin dashboard", onAdmin)
                 }
+                ProfileDivider()
+                UpdateCheckRow()
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -2926,56 +2930,114 @@ internal fun isNewerVersion(latest: String, current: String): Boolean {
     return false
 }
 
-/** Latest GitHub release when it is newer than this build, otherwise null. */
-fun fetchAppUpdate(): AppUpdate? = try {
+/** Latest GitHub release when it is newer than this build; throws when offline. */
+private fun latestUpdateOrNull(): AppUpdate? {
     val conn = java.net.URL(RELEASES_API).openConnection() as java.net.HttpURLConnection
     conn.connectTimeout = 8000
     conn.readTimeout = 8000
     conn.setRequestProperty("Accept", "application/vnd.github+json")
     conn.setRequestProperty("User-Agent", "CamiguinMarket")
     try {
-        if (conn.responseCode == 200) {
-            val body = conn.inputStream.bufferedReader().use { it.readText() }
-            val o = JSONObject(body)
-            val tag = o.optString("tag_name")
-            val page = o.optString("html_url")
-            if (page.isNotBlank() && isNewerVersion(tag, BuildConfig.VERSION_NAME)) {
-                AppUpdate(tag.trim().removePrefix("v"), page)
-            } else null
+        if (conn.responseCode != 200) return null
+        val body = conn.inputStream.bufferedReader().use { it.readText() }
+        val o = JSONObject(body)
+        val tag = o.optString("tag_name")
+        val page = o.optString("html_url")
+        return if (page.isNotBlank() && isNewerVersion(tag, BuildConfig.VERSION_NAME)) {
+            AppUpdate(tag.trim().removePrefix("v"), page)
         } else null
     } finally {
         conn.disconnect()
     }
-} catch (e: Exception) {
-    null
 }
 
+/** Background check on launch: a failure (offline, rate limit) is silent. */
+fun fetchAppUpdate(): AppUpdate? = try { latestUpdateOrNull() } catch (e: Exception) { null }
+
+@Composable
+fun AppUpdateDialog(update: AppUpdate, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Update available") },
+        text = {
+            Text(
+                "Version ${update.version} is ready. Install it over this app and your listings, chats and settings stay."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.pageUrl)))
+                }
+            }) { Text("Get the update") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } }
+    )
+}
+
+/** Automatic check, once per launch. */
 @Composable
 fun AppUpdatePrompt() {
-    val context = LocalContext.current
     var update by remember { mutableStateOf<AppUpdate?>(null) }
     LaunchedEffect(Unit) {
         val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fetchAppUpdate() }
         if (found != null) update = found
     }
-    update?.let { u ->
-        AlertDialog(
-            onDismissRequest = { update = null },
-            title = { Text("Update available") },
-            text = {
-                Text(
-                    "Version ${u.version} is ready. Install it over this app and your listings, chats and settings stay."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    update = null
-                    runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u.pageUrl)))
+    update?.let { u -> AppUpdateDialog(u) { update = null } }
+}
+
+/** Profile row: check now instead of waiting for the launch prompt. */
+@Composable
+private fun UpdateCheckRow() {
+    var checking by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var update by remember { mutableStateOf<AppUpdate?>(null) }
+    val scope = rememberCoroutineScope()
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !checking) {
+                checking = true
+                status = null
+                scope.launch {
+                    val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching { latestUpdateOrNull() }
                     }
-                }) { Text("Get the update") }
-            },
-            dismissButton = { TextButton(onClick = { update = null }) { Text("Later") } }
-        )
+                    checking = false
+                    result
+                        .onSuccess { found ->
+                            if (found != null) update = found else status = "You're up to date."
+                        }
+                        .onFailure { status = "Could not reach GitHub. Check your connection." }
+                }
+            }
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(BrandSky),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Refresh, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Check for updates", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(
+                status ?: if (checking) "Checking…" else "Installed version ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
+                color = BrandMuted
+            )
+        }
+        if (checking) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
     }
+    update?.let { u -> AppUpdateDialog(u) { update = null } }
 }
