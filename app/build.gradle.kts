@@ -30,8 +30,8 @@ val r2UploadUrl: String = secret("R2_UPLOAD_URL")
 // Keystore for the release APK. Without it the release APK is unsigned.
 val releaseKeystoreFile: String = secret("RELEASE_KEYSTORE_FILE")
 val releaseKeystorePassword: String = secret("RELEASE_KEYSTORE_PASSWORD")
-val releaseKeyAlias: String = secret("KEY_ALIAS")
-val releaseKeyPassword: String = secret("KEY_PASSWORD")
+val releaseKeyAlias: String = secret("RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String = secret("RELEASE_KEY_PASSWORD")
 
 android {
     namespace = "com.camiguinmarket.app"
