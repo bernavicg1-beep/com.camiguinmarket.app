@@ -1,0 +1,31 @@
+name: Apply composable fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/patches/apply_composable_fix.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Apply fix
+        run: python3 .github/patches/apply_composable_fix.py
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_composable_fix.py .github/workflows/apply-composable-fix.yml
+          git add app/src/main/java/com/camiguinmarket/app/Extras.kt
+          git commit -m "fix(profile): remove duplicate @Composable annotation on GcashSection"
+          git push origin main
