@@ -4,7 +4,7 @@
  */
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-function json(body: unknown, status = 200): Response {
+export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -23,7 +23,7 @@ type PendingRow = {
 };
 
 /** The two database calls this function is allowed to make. */
-function pendingClient(supabase: ReturnType<typeof createClient>) {
+export function pendingClient(supabase: ReturnType<typeof createClient>) {
   return {
     async listPending(limit: number): Promise<PendingRow[]> {
       const { data, error } = await supabase
