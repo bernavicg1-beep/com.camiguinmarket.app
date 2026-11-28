@@ -876,6 +876,7 @@ fun MarketScreen(
                             "orders" -> "Orders"
                             "order" -> "Order Details"
                             "moderation" -> "Moderation"
+                            "admin" -> S.adminDashboard
                             "reviews" -> "Reviews"
                             "saved" -> "Saved searches"
                             "search" -> "Search"

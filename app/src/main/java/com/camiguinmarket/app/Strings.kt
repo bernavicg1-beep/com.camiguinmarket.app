@@ -131,6 +131,7 @@ interface Strings {
 
     // Secondary screens
     val moderation: String get() = "Moderation"
+    val adminDashboard: String get() = "Admin dashboard"
     val moderationNoAccess: String get() = "You don't have access to this screen. Only moderators can see it."
     val moderationListingsTotal: String get() = "%d listings in total. Pick the one to delete."
     val deleteListing: String get() = "Delete listing"
@@ -464,6 +465,7 @@ object CebStrings : Strings {
     override val sell = "Ibaligya"
 
     override val moderation = "Moderasyon"
+    override val adminDashboard = "Dashboard sa admin"
     override val moderationNoAccess = "Wala kay access sa kini nga screen. Para ra sa mga moderator."
     override val moderationListingsTotal = "%d ka listahan sa total. Pilii ang papason."
     override val deleteListing = "Papasa ang listahan"
