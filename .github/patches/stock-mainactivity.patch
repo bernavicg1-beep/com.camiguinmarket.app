@@ -1,0 +1,64 @@
+diff --git a/app/src/main/java/com/camiguinmarket/app/MainActivity.kt b/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+--- a/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
++++ b/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+@@ -111,13 +111,20 @@ data class Listing(
+     // Perishable listings leave the market once `expiresAt` passes.
+     // 0 means the listing never expires.
+     val isPerishable: Boolean = false,
+-    val expiresAt: Long = 0L
++    val expiresAt: Long = 0L,
++    // Stock on hand. -1 = unlimited (default for older listings), 0 = out of
++    // stock (hidden from the feed), >0 = tracked remaining units. Decremented
++    // inside the checkout batch so sellers cannot oversell.
++    val stock: Long = -1L
+ )
+ 
+ /** True once a perishable listing has reached its expiration time. */
+ fun Listing.isExpired(now: Long = System.currentTimeMillis()): Boolean =
+     isPerishable && expiresAt in 1..now
+ 
++/** True when a tracked listing has no units left. */
++fun Listing.isOutOfStock(): Boolean = stock == 0L
++
+ /** Price without a trailing ".00" when the amount is round. */
+ fun formatPrice(price: Double): String =
+     if (price % 1.0 == 0.0) "%.0f".format(price) else "%.2f".format(price)
+@@ -812,7 +819,7 @@ fun MarketScreen(
+                         d.toObject(Listing::class.java)?.let { l ->
+                             l.copy(id = d.id, category = normalizeCategory(l.category))
+                         }
+-                    }.filterNot { it.isExpired() }
++                    }.filterNot { it.isExpired() || it.isOutOfStock() }
+                     saveListingsCache(context, listings)
+                     offline = false
+                 } else {
+@@ -1631,6 +1639,7 @@ fun PostDialog(
+     // Perishable items must carry an expiration; the listing is hidden after it.
+     var isPerishable by remember { mutableStateOf(existing?.isPerishable ?: false) }
+     var expiresAt by remember { mutableStateOf(existing?.expiresAt ?: 0L) }
++    var stock by remember { mutableStateOf(existing?.let { if (it.stock < 0) "" else it.stock.toString() } ?: "") }
+ 
+     // Listing photo: picked from the gallery, uploaded to the Worker.
+     val context = LocalContext.current
+@@ -1681,7 +1690,8 @@ fun PostDialog(
+                 imageUrl = imageUrls.firstOrNull() ?: "",
+                 imageUrls = imageUrls,
+                 isPerishable = isPerishable,
+-                expiresAt = if (isPerishable) expiresAt else 0L
++                expiresAt = if (isPerishable) expiresAt else 0L,
++                stock = stock.toLongOrNull() ?: -1L
+             )
+         ).addOnSuccessListener {
+             // Replaced photos are no longer referenced: drop them from R2.
+@@ -1828,6 +1838,11 @@ fun PostDialog(
+                     contact, { contact = it }, label = { Text("Contact (cellphone)") },
+                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                 )
++                OutlinedTextField(
++                    stock, { stock = it.filter { c -> c.isDigit() } },
++                    label = { Text("Stock (blank = unlimited)") },
++                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
++                )
+                 Text("Category", style = MaterialTheme.typography.labelMedium)
+                 ChipRow(categories.drop(1), category) { category = it }
+                 Text("Town", style = MaterialTheme.typography.labelMedium)
