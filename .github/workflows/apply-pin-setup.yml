@@ -1,0 +1,36 @@
+name: Apply PIN setup
+
+on:
+  push:
+    paths:
+      - .github/patches/apply_pin_setup.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Apply
+        run: python3 .github/patches/apply_pin_setup.py
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_pin_setup.py .github/workflows/apply-pin-setup.yml
+          git add app/src/main/java/com/camiguinmarket/app/Extras.kt \
+            app/src/main/java/com/camiguinmarket/app/Admin.kt \
+            app/build.gradle.kts \
+            firestore.rules \
+            scripts/test-firestore-rules.py
+          git commit -m "feat(admin): set the PIN once from the app, bump to 0.42"
+          git push origin main
