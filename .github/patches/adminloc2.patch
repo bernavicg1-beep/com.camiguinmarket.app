@@ -1,1 +1,32 @@
-PLACEHOLDER
+diff --git a/app/src/main/java/com/camiguinmarket/app/MainActivity.kt b/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+index 1506019..bc290b9 100644
+--- a/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
++++ b/app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+@@ -876,6 +876,7 @@ fun MarketScreen(
+                             "orders" -> "Orders"
+                             "order" -> "Order Details"
+                             "moderation" -> "Moderation"
++                            "admin" -> S.adminDashboard
+                             "reviews" -> "Reviews"
+                             "saved" -> "Saved searches"
+                             "search" -> "Search"
+diff --git a/app/src/main/java/com/camiguinmarket/app/Strings.kt b/app/src/main/java/com/camiguinmarket/app/Strings.kt
+index 44b97a1..57f11e7 100644
+--- a/app/src/main/java/com/camiguinmarket/app/Strings.kt
++++ b/app/src/main/java/com/camiguinmarket/app/Strings.kt
+@@ -131,6 +131,7 @@ interface Strings {
+ 
+     // Secondary screens
+     val moderation: String get() = "Moderation"
++    val adminDashboard: String get() = "Admin dashboard"
+     val moderationNoAccess: String get() = "You don't have access to this screen. Only moderators can see it."
+     val moderationListingsTotal: String get() = "%d listings in total. Pick the one to delete."
+     val deleteListing: String get() = "Delete listing"
+@@ -464,6 +465,7 @@ object CebStrings : Strings {
+     override val sell = "Ibaligya"
+ 
+     override val moderation = "Moderasyon"
++    override val adminDashboard = "Dashboard sa admin"
+     override val moderationNoAccess = "Wala kay access sa kini nga screen. Para ra sa mga moderator."
+     val moderationListingsTotal: String get() = "%d ka listahan sa total. Pilii ang papason."
+     val deleteListing: String get() = "Papasa ang listahan"
