@@ -161,6 +161,6 @@ jobs:
         if: steps.secrets.outputs.available == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: CamiguinMarket-release-apk
+          name: CamiguinMarket-release-aab
           path: app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn
