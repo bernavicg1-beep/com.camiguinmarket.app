@@ -1,0 +1,32 @@
+name: Apply update button
+
+on:
+  push:
+    paths:
+      - .github/patches/apply_update_button.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Apply
+        run: python3 .github/patches/apply_update_button.py
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_update_button.py .github/workflows/apply-update-button.yml
+          git add app/src/main/java/com/camiguinmarket/app/Extras.kt app/build.gradle.kts
+          git commit -m "feat(app): manual Check for updates row, bump to 0.43"
+          git push origin main
