@@ -2855,7 +2855,7 @@ fun AdminPinGate(
         OutlinedTextField(
             value = pin,
             onValueChange = { typed -> pin = typed.filter { it.isDigit() }.take(12) },
-            label = { Text(if (configured) "PIN" else "New PIN") },
+            label = { Text(if (configured) "PIN" else "New PIN (6+ digits)") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             modifier = Modifier.fillMaxWidth()
@@ -2885,8 +2885,8 @@ fun AdminPinGate(
                     } else {
                         error = "Wrong PIN."
                     }
-                } else if (typed.length < 4) {
-                    error = "Use at least 4 digits."
+                } else if (typed.length < 6) {
+                    error = "Use at least 6 digits."
                 } else if (typed != confirm.trim()) {
                     error = "The PINs do not match."
                 } else {

@@ -9,6 +9,6 @@ import sys
 
 pin = sys.argv[1] if len(sys.argv) > 1 else getpass.getpass("Admin PIN: ")
 pin = pin.strip()
-if len(pin) < 4 or not pin.isdigit():
-    sys.exit("Use at least 4 digits.")
+if len(pin) < 6 or not pin.isdigit():
+    sys.exit("Use at least 6 digits.")
 print(hashlib.sha256(pin.encode()).hexdigest())
