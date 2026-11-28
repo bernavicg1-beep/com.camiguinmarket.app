@@ -98,7 +98,6 @@ dependencies {
 
     // Maps use osmdroid (OpenStreetMap) natively: pan/zoom/markers, no API key.
     implementation("org.osmdroid:osmdroid-android:6.1.18")
-    implementation("com.facebook.android:facebook-login:16.3.0")
 
     testImplementation("junit:junit:4.13.2")
 

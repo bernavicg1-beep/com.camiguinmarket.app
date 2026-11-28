@@ -116,10 +116,26 @@ fun AdminScreen(
         return
     }
 
-    // Local PIN on top of the admins/{uid} gate.
+    // PIN on top of the admins/{uid} gate: the hash lives in the document, so a
+    // fresh install cannot choose its own PIN.
+    val adminDb = remember { FirebaseFirestore.getInstance() }
+    var pinHash by remember { mutableStateOf<String?>(null) }
+    var pinLoaded by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        val reg = adminDb.collection("admins").document(uid)
+            .addSnapshotListener { snap, _ ->
+                pinHash = snap?.getString("pinHash")
+                pinLoaded = true
+            }
+        onDispose { reg.remove() }
+    }
     var unlocked by remember { mutableStateOf(false) }
     if (!unlocked) {
-        AdminPinGate(onUnlocked = { unlocked = true })
+        if (!pinLoaded) {
+            Text("Loading…", Modifier.fillMaxSize().padding(16.dp))
+            return
+        }
+        AdminPinGate(uid = uid, expectedHash = pinHash, onUnlocked = { unlocked = true })
         return
     }
 

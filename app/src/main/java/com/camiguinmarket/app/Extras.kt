@@ -72,6 +72,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.camiguinmarket.app.BuildConfig
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.ContextWrapper
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.PhoneAuthCredential
@@ -2063,202 +2064,6 @@ private fun ProfileDivider() {
     )
 }
 
-/**
- * Phone number with SMS verification. The number is stored on the user
- * document only after Firebase confirms the 6-digit code sent by text.
- */
-@Composable
-fun PhoneVerifySection(uid: String) {
-    val S = LocalStrings.current
-    val context = LocalContext.current
-    val auth = FirebaseAuth.getInstance()
-    val db = remember { FirebaseFirestore.getInstance() }
-    var savedPhone by remember { mutableStateOf<String?>(null) }
-    var verified by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
-    var phone by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    var verificationId by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var info by remember { mutableStateOf<String?>(null) }
-
-    fun saveVerified(number: String) {
-        db.collection("users").document(uid)
-            .set(mapOf("phone" to number, "phoneVerified" to true), SetOptions.merge())
-        savedPhone = number
-        verified = true
-        editing = false
-        verificationId = null
-        code = ""
-        busy = false
-    }
-
-    fun linkWith(credential: PhoneAuthCredential) {
-        val user = auth.currentUser
-        if (user == null) {
-            busy = false
-            info = "You are not signed in."
-            return
-        }
-        busy = true
-        user.linkWithCredential(credential).addOnCompleteListener { t ->
-            if (t.isSuccessful) {
-                // Refresh the ID token so the verified `phone_number` claim is
-                // present on the Firestore write the rules check.
-                user.getIdToken(true).addOnCompleteListener { tokenTask ->
-                    if (tokenTask.isSuccessful) {
-                        saveVerified(user.phoneNumber ?: normalizePhone(phone))
-                        info = "Phone number verified ✅"
-                    } else {
-                        busy = false
-                        info = tokenTask.exception?.localizedMessage
-                            ?: "Could not refresh the sign-in token."
-                    }
-                }
-            } else {
-                busy = false
-                info = t.exception?.localizedMessage ?: "Could not verify this number."
-            }
-        }
-    }
-
-    fun sendCode() {
-        val activity = context.findActivity()
-        if (activity == null) {
-            info = "SMS verification is not available here."
-            return
-        }
-        val number = normalizePhone(phone)
-        busy = true
-        info = null
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                linkWith(credential)
-            }
-
-            override fun onVerificationFailed(e: FirebaseException) {
-                busy = false
-                info = e.localizedMessage ?: "Verification failed."
-            }
-
-            override fun onCodeSent(id: String, token: PhoneAuthProvider.ForceResendingToken) {
-                busy = false
-                verificationId = id
-                info = "Code sent to $number"
-            }
-        }
-        PhoneAuthProvider.verifyPhoneNumber(
-            PhoneAuthOptions.newBuilder(auth)
-                .setPhoneNumber(number)
-                .setTimeout(60L, TimeUnit.SECONDS)
-                .setActivity(activity)
-                .setCallbacks(callbacks)
-                .build()
-        )
-    }
-
-    LaunchedEffect(uid) {
-        try {
-            db.collection("users").document(uid).get().addOnSuccessListener { d ->
-                savedPhone = d.getString("phone")
-                verified = d.getBoolean("phoneVerified") ?: false
-                if (!verified) editing = true
-            }
-        } catch (e: Exception) {
-            info = e.localizedMessage ?: "Failed to load phone info."
-        }
-    }
-
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "Phone number",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.weight(1f))
-                if (verified) Text("Verified ✅", style = MaterialTheme.typography.labelSmall)
-            }
-            Spacer(Modifier.height(6.dp))
-
-            if (verified && !editing) {
-                Text(savedPhone ?: "", style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = {
-                    phone = savedPhone ?: ""
-                    editing = true
-                    info = null
-                    verificationId = null
-                }) { Text("Change number") }
-            } else {
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Phone number") },
-                    placeholder = { Text("09XX XXX XXXX") },
-                    singleLine = true,
-                    enabled = !busy,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Phone,
-                        imeAction = ImeAction.Done
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = !busy && phone.count { it.isDigit() } >= 10,
-                        onClick = { sendCode() }
-                    ) {
-                        Text(if (verificationId == null) S.sendCode else S.resendCode)
-                    }
-                    if (verified) {
-                        TextButton(onClick = { editing = false; info = null }) { Text(S.cancel) }
-                    }
-                }
-                if (verificationId != null) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { input -> code = input.filter { it.isDigit() }.take(6) },
-                        label = { Text("6-digit code") },
-                        singleLine = true,
-                        enabled = !busy,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.NumberPassword,
-                            imeAction = ImeAction.Done
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        enabled = !busy && code.length == 6,
-                        onClick = {
-                            val id = verificationId
-                            if (id == null) {
-                                info = "Tap \"Send code\" first."
-                            } else {
-                                linkWith(PhoneAuthProvider.getCredential(id, code))
-                            }
-                        }
-                    ) { Text(if (busy) "Verifying…" else "Verify code") }
-                }
-            }
-
-            info?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it, style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
-}
-
 /** Converts 09XXXXXXXXX / 9XXXXXXXXX into +63 E.164 form. */
 fun normalizePhone(raw: String): String {
     val trimmed = raw.trim()
@@ -2465,16 +2270,6 @@ fun ContactLinksSection(uid: String) {
             }
         }
     }
-}
-
-/** The hosting Activity for the Firebase phone verification callbacks. */
-fun Context.findActivity(): Activity? {
-    var ctx = this
-    while (ctx is ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
 }
 
 @Composable
@@ -3013,28 +2808,21 @@ fun renderShareCard(listing: Listing): android.graphics.Bitmap {
 }
 
 // ---------------------------------------------------------------------------
-// Admin PIN: a local second lock in front of the admin dashboard. The real
-// gate is the `admins/{uid}` document (written from the Console only); this PIN
-// keeps the dashboard closed on this device even for someone holding the phone.
-// Only the hash is stored.
+// Admin PIN: a second lock in front of the admin dashboard. The hash lives on
+// admins/{uid} (written from the Console only), so a fresh install cannot pick
+// its own PIN — it has to use the one the owner stored.
 // ---------------------------------------------------------------------------
 
-private fun adminLockPrefs(context: Context) =
-    context.getSharedPreferences("admin_lock", Context.MODE_PRIVATE)
-
-private fun pinHash(pin: String): String =
+fun sha256Hex(value: String): String =
     java.security.MessageDigest.getInstance("SHA-256")
-        .digest(pin.toByteArray())
+        .digest(value.toByteArray())
         .joinToString("") { "%02x".format(it) }
 
 @Composable
-fun AdminPinGate(onUnlocked: () -> Unit) {
-    val context = LocalContext.current
-    val prefs = remember { adminLockPrefs(context) }
-    val stored = remember { prefs.getString("hash", null) }
-    var first by remember { mutableStateOf("") }
-    var second by remember { mutableStateOf("") }
+fun AdminPinGate(uid: String, expectedHash: String?, onUnlocked: () -> Unit) {
+    var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val configured = !expectedHash.isNullOrBlank()
 
     Column(
         Modifier.fillMaxSize().padding(16.dp),
@@ -3044,61 +2832,124 @@ fun AdminPinGate(onUnlocked: () -> Unit) {
         Icon(Icons.Filled.Security, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(32.dp))
         Spacer(Modifier.height(8.dp))
         Text(
-            if (stored == null) "Set an admin PIN" else "Enter admin PIN",
+            if (configured) "Enter admin PIN" else "Admin PIN not set",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            if (stored == null) "Only this phone will be able to open the admin dashboard."
-            else "The admin dashboard is locked on this device.",
+            if (configured) "The admin dashboard is locked."
+            else "Add pinHash to admins/$uid in the Firebase Console (scripts/admin-pin-hash.py prints it).",
             style = MaterialTheme.typography.bodySmall,
             color = BrandMuted,
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = first,
-            onValueChange = { typed -> first = typed.filter { it.isDigit() }.take(12) },
-            label = { Text("PIN") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            modifier = Modifier.fillMaxWidth()
-        )
-        if (stored == null) {
-            Spacer(Modifier.height(8.dp))
+        if (configured) {
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
-                value = second,
-                onValueChange = { typed -> second = typed.filter { it.isDigit() }.take(12) },
-                label = { Text("Confirm PIN") },
+                value = pin,
+                onValueChange = { typed -> pin = typed.filter { it.isDigit() }.take(12) },
+                label = { Text("PIN") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 modifier = Modifier.fillMaxWidth()
             )
-        }
-        error?.let {
-            Spacer(Modifier.height(6.dp))
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-        }
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = {
-                if (stored == null) {
-                    if (first.length < 4) {
-                        error = "Use at least 4 digits."
-                    } else if (first != second) {
-                        error = "The PINs do not match."
-                    } else {
-                        prefs.edit().putString("hash", pinHash(first)).apply()
+            error?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    if (sha256Hex(pin.trim()) == expectedHash!!.trim().lowercase()) {
                         onUnlocked()
+                    } else {
+                        error = "Wrong PIN."
                     }
-                } else if (pinHash(first) == stored) {
-                    onUnlocked()
-                } else {
-                    error = "Wrong PIN."
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Unlock") }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// In-app update: installing the new APK over this one keeps every listing,
+// chat and setting (a reinstall would start from scratch).
+// ---------------------------------------------------------------------------
+
+data class AppUpdate(val version: String, val pageUrl: String)
+
+private const val RELEASES_API =
+    "https://api.github.com/repos/bernavicg1-beep/com.camiguinmarket.app/releases/latest"
+
+private fun versionParts(value: String): List<Int> =
+    value.trim().removePrefix("v").removePrefix("V")
+        .split('.', '-', '+')
+        .mapNotNull { it.toIntOrNull() }
+
+internal fun isNewerVersion(latest: String, current: String): Boolean {
+    val a = versionParts(latest)
+    val b = versionParts(current)
+    if (a.isEmpty()) return false
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(i) { 0 }
+        val y = b.getOrElse(i) { 0 }
+        if (x != y) return x > y
+    }
+    return false
+}
+
+/** Latest GitHub release when it is newer than this build, otherwise null. */
+fun fetchAppUpdate(): AppUpdate? = try {
+    val conn = java.net.URL(RELEASES_API).openConnection() as java.net.HttpURLConnection
+    conn.connectTimeout = 8000
+    conn.readTimeout = 8000
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    conn.setRequestProperty("User-Agent", "CamiguinMarket")
+    try {
+        if (conn.responseCode == 200) {
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            val o = JSONObject(body)
+            val tag = o.optString("tag_name")
+            val page = o.optString("html_url")
+            if (page.isNotBlank() && isNewerVersion(tag, BuildConfig.VERSION_NAME)) {
+                AppUpdate(tag.trim().removePrefix("v"), page)
+            } else null
+        } else null
+    } finally {
+        conn.disconnect()
+    }
+} catch (e: Exception) {
+    null
+}
+
+@Composable
+fun AppUpdatePrompt() {
+    val context = LocalContext.current
+    var update by remember { mutableStateOf<AppUpdate?>(null) }
+    LaunchedEffect(Unit) {
+        val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fetchAppUpdate() }
+        if (found != null) update = found
+    }
+    update?.let { u ->
+        AlertDialog(
+            onDismissRequest = { update = null },
+            title = { Text("Update available") },
+            text = {
+                Text(
+                    "Version ${u.version} is ready. Install it over this app and your listings, chats and settings stay."
+                )
             },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (stored == null) "Save PIN" else "Unlock") }
+            confirmButton = {
+                TextButton(onClick = {
+                    update = null
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u.pageUrl)))
+                    }
+                }) { Text("Get the update") }
+            },
+            dismissButton = { TextButton(onClick = { update = null }) { Text("Later") } }
+        )
     }
 }

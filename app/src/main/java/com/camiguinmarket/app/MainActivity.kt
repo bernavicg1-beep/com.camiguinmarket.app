@@ -639,6 +639,9 @@ fun MarketScreen(
         )
     }
 
+    // In-app update: install over this build instead of reinstalling.
+    AppUpdatePrompt()
+
     // Navigation and the new features (mockup): tabs, cart, favorites, notifications, chat.
     var tab by remember { mutableStateOf(MarketTab.Home) }
     var overlay by remember { mutableStateOf<String?>(null) }
