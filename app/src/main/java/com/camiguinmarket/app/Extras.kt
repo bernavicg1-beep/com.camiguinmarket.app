@@ -2314,7 +2314,6 @@ fun normalizeWhatsAppLink(input: String): String {
 }
 
 @Composable
-@Composable
 fun GcashSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
     var gcashNumber by remember { mutableStateOf("") }
