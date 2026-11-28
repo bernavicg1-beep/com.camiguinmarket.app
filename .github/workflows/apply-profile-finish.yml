@@ -1,0 +1,35 @@
+name: Apply profile finish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/patches/apply_profile_finish.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply
+        run: python3 .github/patches/apply_profile_finish.py
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_profile_finish.py .github/workflows/apply-profile-finish.yml
+          git add app/src/main/java/com/camiguinmarket/app/Extras.kt \
+            app/src/main/java/com/camiguinmarket/app/MainActivity.kt \
+            app/src/main/java/com/camiguinmarket/app/Admin.kt \
+            scripts/test-firestore-rules.py
+          git commit -m "feat(profile): restore contact links, add admin PIN gate, drop orphan verify route + GCash regression test"
+          git push origin main
