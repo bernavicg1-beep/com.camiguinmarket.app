@@ -741,6 +741,26 @@ check("ann: the admin can hide one", "PATCH", "/announcements/ann1", 200, uid="a
 check("ann: the admin can delete one", "DELETE", "/announcements/ann1", 200, uid="admin1")
 
 
+# --- regression: a verified seller can still save their GCash number ---------
+# The owner branch used to compare every key of the merged document, so the
+# `verified` fields an admin writes made every profile save answer
+# PERMISSION_DENIED. Saving only `gcashNumber` (an updateMask, like the app's
+# set(merge)) must succeed for a verified seller, and the owner still must not
+# be able to change the verification fields themselves.
+seed("/users", "verifiedseller", {"fields": {
+    "uid": {"stringValue": "verifiedseller"},
+    "name": {"stringValue": "Verified Seller"},
+    "verified": {"booleanValue": True},
+    "verifiedBy": {"stringValue": "admin:admin1"},
+    "verifiedAt": {"integerValue": "1"},
+}})
+check("gcash: a verified seller can still save their number", "PATCH",
+      "/users/verifiedseller", 200, uid="verifiedseller", mask="gcashNumber",
+      body={"fields": {"gcashNumber": {"stringValue": "09171234567"}}})
+check("gcash: a verified seller cannot unverify themselves", "PATCH",
+      "/users/verifiedseller", 403, uid="verifiedseller", mask="verified",
+      body={"fields": {"verified": {"booleanValue": False}}})
+
 def main():
     failures = 0
     print(f"Firestore emulator: {HOST}  (project: {PROJECT})")

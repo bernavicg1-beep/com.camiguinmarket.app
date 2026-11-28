@@ -972,23 +972,6 @@ fun MarketScreen(
 
                 "verification" -> AdminVerificationScreen(uid, isAdmin) { overlay = null }
 
-                "verify" -> Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = { overlay = null }) { Text("← Back") }
-                        Text(
-                            "Phone verification",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    PhoneVerifySection(uid)
-                }
-
                 "order" -> orderDetail?.let { order ->
                     OrderDetailScreen(
                         order = order,

@@ -116,6 +116,13 @@ fun AdminScreen(
         return
     }
 
+    // Local PIN on top of the admins/{uid} gate.
+    var unlocked by remember { mutableStateOf(false) }
+    if (!unlocked) {
+        AdminPinGate(onUnlocked = { unlocked = true })
+        return
+    }
+
     val db = remember { FirebaseFirestore.getInstance() }
     var section by remember { mutableStateOf("overview") }
     var listings by remember { mutableStateOf(0) }

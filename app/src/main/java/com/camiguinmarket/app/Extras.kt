@@ -1921,7 +1921,7 @@ fun ProfileScreen(
         Spacer(Modifier.height(12.dp))
         RequestVerificationSection(uid)
         Spacer(Modifier.height(12.dp))
-        GcashSection(uid)
+        ContactLinksSection(uid)
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2314,15 +2314,28 @@ fun normalizeWhatsAppLink(input: String): String {
 }
 
 @Composable
-fun GcashSection(uid: String) {
+fun ContactLinksSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
-    var gcashNumber by remember { mutableStateOf("") }
+    var telegram by remember { mutableStateOf("") }
+    var messenger by remember { mutableStateOf("") }
+    var whatsapp by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-
+    // Store info: the GCash number buyers pay into (empty when not set).
+    var gcashNumber by remember { mutableStateOf("") }
+    var tgToken by remember { mutableStateOf<String?>(null) }
+    var tgDialogOpen by remember { mutableStateOf(false) }
+    var tgInfo by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(uid) {
-        db.collection("users").document(uid).get().addOnSuccessListener { d ->
-            gcashNumber = d.getString("gcashNumber") ?: ""
+        try {
+            db.collection("users").document(uid).get().addOnSuccessListener { d ->
+                telegram = d.getString("telegram") ?: ""
+                messenger = d.getString("messenger") ?: ""
+                whatsapp = d.getString("whatsapp") ?: ""
+                gcashNumber = d.getString("gcashNumber") ?: ""
+            }
+        } catch (e: Exception) {
+            info = e.localizedMessage ?: "Failed to load contact links."
         }
     }
 
@@ -2332,6 +2345,14 @@ fun GcashSection(uid: String) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Text("Contact links (optional)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(telegram, { telegram = it }, label = { Text("Telegram username (or t.me link)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(messenger, { messenger = it }, label = { Text("Messenger username (or m.me link)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
             Text(
                 "GCash number (buyers send payments here)",
                 style = MaterialTheme.typography.labelLarge,
@@ -2347,16 +2368,85 @@ fun GcashSection(uid: String) {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    tgInfo = null
+                    val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                    if (u == null) {
+                        tgInfo = "Sign in to your account first."
+                    } else {
+                        u.getIdToken(true)
+                            .addOnSuccessListener { res ->
+                                tgToken = res.token
+                                tgDialogOpen = true
+                            }
+                            .addOnFailureListener { e -> tgInfo = e.localizedMessage }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Connect Telegram") }
+            tgInfo?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.labelSmall)
+            }
+            if (tgDialogOpen && !tgToken.isNullOrBlank()) {
+                AlertDialog(
+                    onDismissRequest = { tgDialogOpen = false },
+                    title = { Text("Connect Telegram") },
+                    text = {
+                        AndroidView(
+                            factory = { c ->
+                                android.webkit.WebView(c).apply {
+                                    settings.javaScriptEnabled = true
+                                    addJavascriptInterface(object {
+                                        @android.webkit.JavascriptInterface
+                                        fun onVerified(username: String) {
+                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                if (username.isNotBlank()) {
+                                                    telegram = username
+                                                    db.collection("users").document(uid).set(
+                                                        mapOf("telegram" to username, "telegramVerified" to true),
+                                                        com.google.firebase.firestore.SetOptions.merge()
+                                                    )
+                                                    tgInfo = "Connected: $username"
+                                                }
+                                                tgDialogOpen = false
+                                            }
+                                        }
+                                        @android.webkit.JavascriptInterface
+                                        fun onError(msg: String) {
+                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                tgInfo = msg
+                                                tgDialogOpen = false
+                                            }
+                                        }
+                                    }, "Android")
+                                    webViewClient = object : android.webkit.WebViewClient() {}
+                                    loadUrl("${BuildConfig.R2_UPLOAD_URL}/telegram/login?token=${tgToken}")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(360.dp)
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { tgDialogOpen = false }) { Text("Close") } }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {
                     val gcash = gcashNumber.trim()
-                    if (gcash.isNotEmpty() && !Regex("^09[0-9]{9}$").matches(gcash)) {
+                    if (gcash.isNotEmpty() && !Regex("^09\\d{9}$").matches(gcash)) {
                         info = "GCash number must be an 11-digit mobile starting with 09, e.g. 09171234567."
                         return@Button
                     }
                     busy = true
                     db.collection("users").document(uid).set(
-                        mapOf("gcashNumber" to gcash),
+                        mapOf(
+                            "telegram" to normalizeTelegramLink(telegram),
+                            "messenger" to normalizeMessengerLink(messenger),
+                            "whatsapp" to normalizeWhatsAppLink(whatsapp),
+                            "gcashNumber" to gcash
+                        ),
                         SetOptions.merge()
                     ).addOnSuccessListener {
                         busy = false
@@ -2368,7 +2458,7 @@ fun GcashSection(uid: String) {
                 },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (busy) "Saving…" else "Save GCash number") }
+            ) { Text(if (busy) "Saving…" else "Save links") }
             info?.let {
                 Spacer(Modifier.height(4.dp))
                 Text(it, style = MaterialTheme.typography.labelSmall)
@@ -2920,4 +3010,95 @@ fun renderShareCard(listing: Listing): android.graphics.Bitmap {
     paint.color = android.graphics.Color.parseColor("#C3CFE0")
     canvas.drawText("Camiguin Market", 60f, height - 80f, paint)
     return bitmap
+}
+
+// ---------------------------------------------------------------------------
+// Admin PIN: a local second lock in front of the admin dashboard. The real
+// gate is the `admins/{uid}` document (written from the Console only); this PIN
+// keeps the dashboard closed on this device even for someone holding the phone.
+// Only the hash is stored.
+// ---------------------------------------------------------------------------
+
+private fun adminLockPrefs(context: Context) =
+    context.getSharedPreferences("admin_lock", Context.MODE_PRIVATE)
+
+private fun pinHash(pin: String): String =
+    java.security.MessageDigest.getInstance("SHA-256")
+        .digest(pin.toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
+@Composable
+fun AdminPinGate(onUnlocked: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { adminLockPrefs(context) }
+    val stored = remember { prefs.getString("hash", null) }
+    var first by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Filled.Security, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(32.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (stored == null) "Set an admin PIN" else "Enter admin PIN",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (stored == null) "Only this phone will be able to open the admin dashboard."
+            else "The admin dashboard is locked on this device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = BrandMuted,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = first,
+            onValueChange = { typed -> first = typed.filter { it.isDigit() }.take(12) },
+            label = { Text("PIN") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (stored == null) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = second,
+                onValueChange = { typed -> second = typed.filter { it.isDigit() }.take(12) },
+                label = { Text("Confirm PIN") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        error?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = {
+                if (stored == null) {
+                    if (first.length < 4) {
+                        error = "Use at least 4 digits."
+                    } else if (first != second) {
+                        error = "The PINs do not match."
+                    } else {
+                        prefs.edit().putString("hash", pinHash(first)).apply()
+                        onUnlocked()
+                    }
+                } else if (pinHash(first) == stored) {
+                    onUnlocked()
+                } else {
+                    error = "Wrong PIN."
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (stored == null) "Save PIN" else "Unlock") }
+    }
 }
