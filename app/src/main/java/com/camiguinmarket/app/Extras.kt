@@ -2977,13 +2977,31 @@ fun AppUpdateDialog(update: AppUpdate, onDismiss: () -> Unit) {
     )
 }
 
-/** Automatic check, once per launch. */
+/** Remembers which installed version already showed the launch prompt. */
+private fun updatePrefs(context: Context) =
+    context.getSharedPreferences("update_prompt", Context.MODE_PRIVATE)
+
+/**
+ * Automatic check on launch, but the prompt appears at most once per installed
+ * version: dismissing it with "Later" is remembered instead of nagging on every
+ * open. Profile -> Check for updates still checks whenever the user asks.
+ */
 @Composable
 fun AppUpdatePrompt() {
+    val context = LocalContext.current
     var update by remember { mutableStateOf<AppUpdate?>(null) }
     LaunchedEffect(Unit) {
+        if (updatePrefs(context).getString("version", null) == BuildConfig.VERSION_NAME) {
+            return@LaunchedEffect
+        }
         val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { fetchAppUpdate() }
-        if (found != null) update = found
+        if (found != null) {
+            // Stored before the dialog opens, so a dismissal is respected on the
+            // next launch. Installing the next build changes VERSION_NAME, and
+            // the newer release is announced again.
+            updatePrefs(context).edit().putString("version", BuildConfig.VERSION_NAME).apply()
+            update = found
+        }
     }
     update?.let { u -> AppUpdateDialog(u) { update = null } }
 }
