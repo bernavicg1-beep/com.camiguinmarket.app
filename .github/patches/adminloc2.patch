@@ -29,4 +29,4 @@ index 44b97a1..57f11e7 100644
 +    override val adminDashboard = "Dashboard sa admin"
      override val moderationNoAccess = "Wala kay access sa kini nga screen. Para ra sa mga moderator."
      override val moderationListingsTotal = "%d ka listahan sa total. Pilii ang papason."
-     val deleteListing: String get() = "Papasa ang listahan"
+     override val deleteListing = "Papasa ang listahan"
