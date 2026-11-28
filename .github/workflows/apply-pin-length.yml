@@ -1,0 +1,32 @@
+name: Apply PIN length
+
+on:
+  push:
+    paths:
+      - .github/patches/apply_pin_length.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Apply
+        run: python3 .github/patches/apply_pin_length.py
+
+      - name: Commit and push
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/patches/apply_pin_length.py .github/workflows/apply-pin-length.yml
+          git add app/src/main/java/com/camiguinmarket/app/Extras.kt scripts/admin-pin-hash.py
+          git commit -m "feat(admin): require a 6+ digit PIN"
+          git push origin main
