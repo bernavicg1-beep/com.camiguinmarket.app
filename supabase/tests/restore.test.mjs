@@ -36,12 +36,13 @@ assert.equal(row.notify_count, 0, "the warning count restarts");
 assert.equal(row.cleanup_cycle, 1, "the next lapse starts a new cycle");
 
 const logged = await one(
-  `select count(*)::int as n, min(detail) as detail from public.cleanup_audit_logs
+  `select count(*)::int as n, min(detail) as detail, min(cleanup_cycle) as cycle from public.cleanup_audit_logs
     where media_id = $1 and action = 'restored'`,
   [photo],
 );
 assert.equal(logged.n, 1, "the restore is in the history");
 assert.match(logged.detail, /listing restored to active/);
+assert.equal(logged.cycle, 1, "the trigger stamps the restored row with the new cycle");
 
 await scan();
 const after = await one(
