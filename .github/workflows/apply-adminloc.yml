@@ -14,7 +14,7 @@ jobs:
       - name: Apply the patch and commit
         run: |
           set -euo pipefail
-          git apply --recount --whitespace=nowarn .github/patches/adminloc.patch
+          git apply --whitespace=nowarn .github/patches/adminloc.patch
           rm -f .github/patches/adminloc.patch .github/workflows/apply-adminloc.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
