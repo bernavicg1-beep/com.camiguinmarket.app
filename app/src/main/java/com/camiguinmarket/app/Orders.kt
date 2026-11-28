@@ -87,63 +87,95 @@ fun checkoutCart(
         return
     }
     val checkoutRef = db.collection("checkouts").document(checkoutId)
-    checkoutRef.get()
-        .addOnSuccessListener { snap ->
-            if (snap.exists()) {
-                // Already processed (double-tap / retry): report success, no dupes.
-                onResult(null)
-                return@addOnSuccessListener
-            }
-            val batch = db.batch()
-            val orders = items.map { item ->
-                val ref = db.collection("orders").document()
-                val order = Order(
-                    buyerId = uid,
-                    buyerName = buyerName,
-                    sellerId = item.sellerId,
-                    sellerName = item.sellerName,
-                    listingId = item.listingId,
-                    listingTitle = item.title,
-                    imageUrl = item.imageUrl,
-                    price = item.price,
-                    quantity = item.quantity,
-                    total = item.price * item.quantity,
-                    town = item.town,
-                    contact = item.contact,
-                    status = "pending",
-                    paymentMethod = if (gcash) "gcash" else "cash",
-                    paymentStatus = if (gcash) "unpaid" else "cod",
-                    createdAt = System.currentTimeMillis()
-                )
-                batch.set(ref, order)
-                batch.delete(db.collection("carts").document(uid).collection("items").document(item.id))
-                order.copy(id = ref.id) to item
-            }
-            // Guard marker written in the same batch so a partial failure leaves
-            // no marker and the retry can safely re-run.
-            batch.set(checkoutRef, mapOf(
-                "uid" to uid,
-                "createdAt" to System.currentTimeMillis(),
-                "orderCount" to items.size
-            ))
-            batch.commit()
-                .addOnSuccessListener {
-                    orders.forEach { (order, item) ->
-                        notifyUser(
-                            db = db,
-                            toUid = order.sellerId,
-                            fromUid = uid,
-                            fromName = buyerName,
-                            message = "$buyerName mi-order: ${item.title} ×${item.quantity}" +
-                                if (gcash) " (GCash)" else " (cash)"
-                        )
-                        sendPush("order", orderId = order.id)
-                    }
-                    onResult(null)
-                }
-                .addOnFailureListener { onResult(it.localizedMessage ?: "Order failed.") }
+    // Run the whole checkout in one Firestore transaction so the stock read,
+    // sufficiency check and decrement are atomic: concurrent checkouts for the
+    // same listing serialize and retry with fresh stock instead of both writing
+    // a stale decremented value (oversell). The idempotency guard is read inside
+    // the transaction too.
+    db.runTransaction { tx ->
+        val checkoutSnap = tx.get(checkoutRef)
+        if (checkoutSnap.exists()) {
+            // Already processed (double-tap / retry): report success, no dupes.
+            return@runTransaction null
         }
-        .addOnFailureListener { onResult(it.localizedMessage ?: "Order failed.") }
+        val distinctListingIds = items.map { it.listingId }.distinct()
+        val stockById = mutableMapOf<String, Long>()
+        for (id in distinctListingIds) {
+            val snap = tx.get(db.collection("listings").document(id))
+            stockById[id] = snap.getLong("stock") ?: -1L
+        }
+        val qtyByListing = items.groupBy { it.listingId }
+            .mapValues { (_, v) -> v.sumOf { it.quantity } }
+        // Refuse if any tracked listing is short.
+        for (item in items) {
+            val s = stockById[item.listingId] ?: -1L
+            val need = qtyByListing[item.listingId] ?: item.quantity
+            if (s >= 0L && s < need) {
+                throw Exception("Not enough stock for ${item.title}.")
+            }
+        }
+        val orders = mutableListOf<Pair<Order, CartItem>>()
+        for (item in items) {
+            val ref = db.collection("orders").document()
+            val order = Order(
+                buyerId = uid,
+                buyerName = buyerName,
+                sellerId = item.sellerId,
+                sellerName = item.sellerName,
+                listingId = item.listingId,
+                listingTitle = item.title,
+                imageUrl = item.imageUrl,
+                price = item.price,
+                quantity = item.quantity,
+                total = item.price * item.quantity,
+                town = item.town,
+                contact = item.contact,
+                status = "pending",
+                paymentMethod = if (gcash) "gcash" else "cash",
+                paymentStatus = if (gcash) "unpaid" else "cod",
+                createdAt = System.currentTimeMillis()
+            )
+            tx.set(ref, order)
+            tx.delete(db.collection("carts").document(uid).collection("items").document(item.id))
+            orders.add(order.copy(id = ref.id) to item)
+        }
+        // Decrement stock once per distinct listing. Use FieldValue.increment so
+        // the decrement is applied server-side against the committed value.
+        val decremented = mutableSetOf<String>()
+        for (item in items) {
+            if (decremented.contains(item.listingId)) continue
+            val s = stockById[item.listingId] ?: -1L
+            if (s >= 0L) {
+                val need = qtyByListing[item.listingId] ?: item.quantity
+                tx.update(
+                    db.collection("listings").document(item.listingId),
+                    "stock", com.google.firebase.firestore.FieldValue.increment(-need)
+                )
+            }
+            decremented.add(item.listingId)
+        }
+        // Guard marker written in the same transaction.
+        tx.set(checkoutRef, mapOf(
+            "uid" to uid,
+            "createdAt" to System.currentTimeMillis(),
+            "orderCount" to items.size
+        ))
+        orders
+    }.addOnSuccessListener { result ->
+        val orders = result as? List<Pair<Order, CartItem>> ?: emptyList()
+        orders.forEach { (order, item) ->
+            notifyUser(
+                db = db,
+                toUid = order.sellerId,
+                fromUid = uid,
+                fromName = buyerName,
+                message = "$buyerName mi-order: ${item.title} ×${item.quantity}" +
+                    if (gcash) " (GCash)" else " (cash)"
+            )
+            sendPush("order", orderId = order.id)
+        }
+        onResult(null)
+    }.addOnFailureListener { onResult(it.localizedMessage ?: "Order failed.") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -433,7 +465,13 @@ fun shareSalesCsv(context: Context, orders: List<Order>) {
 
     val file = File(context.cacheDir, "sales.csv")
     file.writeText(lines.joinToString("\n"))
-    val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+    val file = File(context.cacheDir, "sales.csv")
+    file.writeText(lines.joinToString("\n"))
+    val uri = FileProvider.getUriForFile(
+        context,
+        context.packageName + ".fileprovider",
+        file
+    )
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/csv"
         putExtra(Intent.EXTRA_STREAM, uri)
@@ -526,6 +564,7 @@ fun confirmGcashPayment(db: FirebaseFirestore, order: Order) {
         fromUid = order.sellerId,
         fromName = order.sellerName,
         message = "${order.sellerName} confirmed your GCash payment: ${order.listingTitle}".take(190)
+
     )
 }
 
@@ -943,7 +982,7 @@ fun OrderDetailScreen(
         ) {
             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (isSeller) "Chat with buyer" else "Chat with seller")
+            Text(if (isSeller) "Chat with seller" else "Chat with seller")
         }
     }
 }
@@ -1077,3 +1116,5 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
         }
     }
 }
+
+[read_files: showing lines 561-1111 of 1111.]
