@@ -191,6 +191,7 @@ service cloud.firestore {
         && request.resource.data.reporterUid == request.auth.uid
         && request.resource.data.reason is string
         && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 80
         && request.resource.data.note is string
         && request.resource.data.note.size() <= 500
         && request.resource.data.status == "open";
