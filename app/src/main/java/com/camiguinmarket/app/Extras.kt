@@ -1919,11 +1919,9 @@ fun ProfileScreen(
         Text(displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(email, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
-        PhoneVerifySection(uid)
-        Spacer(Modifier.height(12.dp))
         RequestVerificationSection(uid)
         Spacer(Modifier.height(12.dp))
-        ContactLinksSection(uid)
+        GcashSection(uid)
         Spacer(Modifier.height(16.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2316,74 +2314,16 @@ fun normalizeWhatsAppLink(input: String): String {
 }
 
 @Composable
-fun ContactLinksSection(uid: String) {
+@Composable
+fun GcashSection(uid: String) {
     val db = remember { FirebaseFirestore.getInstance() }
-    val ctx = LocalContext.current
-    var telegram by remember { mutableStateOf("") }
-    var messenger by remember { mutableStateOf("") }
-    var whatsapp by remember { mutableStateOf("") }
+    var gcashNumber by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    // Store info: the GCash number buyers pay into (empty when not set).
-    var gcashNumber by remember { mutableStateOf("") }
-    var fbBusy by remember { mutableStateOf(false) }
-    var fbInfo by remember { mutableStateOf<String?>(null) }
-    var tgToken by remember { mutableStateOf<String?>(null) }
-    var tgDialogOpen by remember { mutableStateOf(false) }
-    var tgInfo by remember { mutableStateOf<String?>(null) }
-    val fbAvailable = remember { runCatching { com.facebook.FacebookSdk.isInitialized() }.getOrDefault(false) }
-    val callbackManager = if (fbAvailable) remember { com.facebook.CallbackManager.Factory.create() } else null
-    if (fbAvailable && callbackManager != null) {
-        DisposableEffect(Unit) {
-        com.facebook.login.LoginManager.getInstance().registerCallback(
-            callbackManager!!,
-            object : com.facebook.FacebookCallback<com.facebook.login.LoginResult> {
-                override fun onSuccess(result: com.facebook.login.LoginResult) {
-                    val token = result.accessToken
-                    val request = com.facebook.GraphRequest.newMeRequest(token) { obj, _ ->
-                        val name = obj?.optString("name")?.takeIf { it.isNotBlank() }
-                            ?: obj?.optString("id")
-                        if (!name.isNullOrBlank()) {
-                            messenger = name
-                            db.collection("users").document(uid).set(
-                                mapOf("messenger" to name, "messengerVerified" to true),
-                                com.google.firebase.firestore.SetOptions.merge()
-                            )
-                            fbInfo = "Connected: $name"
-                        } else {
-                            fbInfo = "Facebook login succeeded but no name returned."
-                        }
-                        fbBusy = false
-                    }
-                    val params = android.os.Bundle()
-                    params.putString("fields", "id,name")
-                    request.parameters = params
-                    request.executeAsync()
-                }
-                override fun onCancel() {
-                    fbBusy = false
-                    fbInfo = "Facebook login cancelled."
-                }
-                override fun onError(error: com.facebook.FacebookException) {
-                    fbBusy = false
-                    fbInfo = error.localizedMessage ?: "Facebook login failed."
-                }
-            }
-        )
-        onDispose { com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager!!) }
-    }
-    }
 
     LaunchedEffect(uid) {
-        try {
-            db.collection("users").document(uid).get().addOnSuccessListener { d ->
-                telegram = d.getString("telegram") ?: ""
-                messenger = d.getString("messenger") ?: ""
-                whatsapp = d.getString("whatsapp") ?: ""
-                gcashNumber = d.getString("gcashNumber") ?: ""
-            }
-        } catch (e: Exception) {
-            info = e.localizedMessage ?: "Failed to load contact links."
+        db.collection("users").document(uid).get().addOnSuccessListener { d ->
+            gcashNumber = d.getString("gcashNumber") ?: ""
         }
     }
 
@@ -2393,14 +2333,6 @@ fun ContactLinksSection(uid: String) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Text("Contact links (optional)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(telegram, { telegram = it }, label = { Text("Telegram username (or t.me link)") }, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(messenger, { messenger = it }, label = { Text("Messenger username (or m.me link)") }, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(whatsapp, { whatsapp = it }, label = { Text("WhatsApp number with country code (or wa.me link)") }, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
             Text(
                 "GCash number (buyers send payments here)",
                 style = MaterialTheme.typography.labelLarge,
@@ -2416,108 +2348,16 @@ fun ContactLinksSection(uid: String) {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
-            if (fbAvailable) {
-                OutlinedButton(
-                    onClick = {
-                        fbBusy = true
-                        fbInfo = null
-                        val act = ctx as? android.app.Activity
-                        if (act == null) {
-                            fbBusy = false
-                            fbInfo = "Cannot open Facebook login."
-                        } else {
-                            com.facebook.login.LoginManager.getInstance()
-                                .logInWithReadPermissions(act, listOf("public_profile"))
-                        }
-                    },
-                    enabled = !fbBusy,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(if (fbBusy) "Connecting…" else "Connect Facebook (Messenger)") }
-                fbInfo?.let {
-                    Spacer(Modifier.height(4.dp))
-                    Text(it, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    tgInfo = null
-                    val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
-                    if (u == null) {
-                        tgInfo = "Sign in to your account first."
-                    } else {
-                        u.getIdToken(true)
-                            .addOnSuccessListener { res ->
-                                tgToken = res.token
-                                tgDialogOpen = true
-                            }
-                            .addOnFailureListener { e -> tgInfo = e.localizedMessage }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Connect Telegram") }
-            tgInfo?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.labelSmall)
-            }
-            if (tgDialogOpen && !tgToken.isNullOrBlank()) {
-                AlertDialog(
-                    onDismissRequest = { tgDialogOpen = false },
-                    title = { Text("Connect Telegram") },
-                    text = {
-                        AndroidView(
-                            factory = { c ->
-                                android.webkit.WebView(c).apply {
-                                    settings.javaScriptEnabled = true
-                                    addJavascriptInterface(object {
-                                        @android.webkit.JavascriptInterface
-                                        fun onVerified(username: String) {
-                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                                if (username.isNotBlank()) {
-                                                    telegram = username
-                                                    db.collection("users").document(uid).set(
-                                                        mapOf("telegram" to username, "telegramVerified" to true),
-                                                        com.google.firebase.firestore.SetOptions.merge()
-                                                    )
-                                                    tgInfo = "Connected: $username"
-                                                }
-                                                tgDialogOpen = false
-                                            }
-                                        }
-                                        @android.webkit.JavascriptInterface
-                                        fun onError(msg: String) {
-                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                                tgInfo = msg
-                                                tgDialogOpen = false
-                                            }
-                                        }
-                                    }, "Android")
-                                    webViewClient = object : android.webkit.WebViewClient() {}
-                                    loadUrl("${BuildConfig.R2_UPLOAD_URL}/telegram/login?token=${tgToken}")
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(360.dp)
-                        )
-                    },
-                    confirmButton = { TextButton(onClick = { tgDialogOpen = false }) { Text("Close") } }
-                )
-            }
-            Spacer(Modifier.height(8.dp))
             Button(
                 onClick = {
                     val gcash = gcashNumber.trim()
-                    if (gcash.isNotEmpty() && !Regex("^09\\d{9}$").matches(gcash)) {
+                    if (gcash.isNotEmpty() && !Regex("^09[0-9]{9}$").matches(gcash)) {
                         info = "GCash number must be an 11-digit mobile starting with 09, e.g. 09171234567."
                         return@Button
                     }
                     busy = true
                     db.collection("users").document(uid).set(
-                        mapOf(
-                            "telegram" to normalizeTelegramLink(telegram),
-                            "messenger" to normalizeMessengerLink(messenger),
-                            "whatsapp" to normalizeWhatsAppLink(whatsapp),
-                            "gcashNumber" to gcash
-                        ),
+                        mapOf("gcashNumber" to gcash),
                         SetOptions.merge()
                     ).addOnSuccessListener {
                         busy = false
@@ -2529,7 +2369,7 @@ fun ContactLinksSection(uid: String) {
                 },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (busy) "Saving…" else "Save links") }
+            ) { Text(if (busy) "Saving…" else "Save GCash number") }
             info?.let {
                 Spacer(Modifier.height(4.dp))
                 Text(it, style = MaterialTheme.typography.labelSmall)
