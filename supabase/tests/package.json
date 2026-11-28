@@ -2,9 +2,9 @@
   "name": "camiguin-market-supabase-tests",
   "private": true,
   "type": "module",
-  "description": "Runs the Supabase cleanup migrations against PGlite, checks RLS + the cleanup engine, and the restore path.",
+  "description": "Runs the Supabase cleanup migrations against PGlite (RLS, the cleanup engine, the restore path) and the cleanup-provider Edge Function logic against fake providers.",
   "scripts": {
-    "test": "node cleanup.test.mjs && node restore.test.mjs && node restore-relapse.test.mjs"
+    "test": "node cleanup.test.mjs && node restore.test.mjs && node restore-relapse.test.mjs && node edge-requests.test.mjs && node edge-outcomes.test.mjs && node edge-refusals.test.mjs && node edge-pass.test.mjs && node edge-concurrency.test.mjs && node edge-auth.test.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.0"
