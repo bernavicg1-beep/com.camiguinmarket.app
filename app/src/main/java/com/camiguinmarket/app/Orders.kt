@@ -465,8 +465,6 @@ fun shareSalesCsv(context: Context, orders: List<Order>) {
 
     val file = File(context.cacheDir, "sales.csv")
     file.writeText(lines.joinToString("\n"))
-    val file = File(context.cacheDir, "sales.csv")
-    file.writeText(lines.joinToString("\n"))
     val uri = FileProvider.getUriForFile(
         context,
         context.packageName + ".fileprovider",
@@ -982,7 +980,7 @@ fun OrderDetailScreen(
         ) {
             Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (isSeller) "Chat with seller" else "Chat with seller")
+            Text(if (isSeller) "Chat with buyer" else "Chat with seller")
         }
     }
 }
@@ -1116,5 +1114,3 @@ fun InboxScreen(uid: String, onOpen: (ChatThread) -> Unit) {
         }
     }
 }
-
-[read_files: showing lines 561-1111 of 1111.]
