@@ -1,0 +1,45 @@
+name: Apply stock feature patches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/patches/stock-mainactivity.patch'
+      - '.github/patches/stock-extras.patch'
+      - '.github/workflows/apply-stock.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Restore corrupted MainActivity.kt
+        run: |
+          set -euo pipefail
+          git checkout 227be6daa59e1cbbb89137029092bbadd0f27971 -- app/src/main/java/com/camiguinmarket/app/MainActivity.kt
+
+      - name: Apply patches
+        run: |
+          set -euo pipefail
+          for p in .github/patches/stock-mainactivity.patch .github/patches/stock-extras.patch; do
+            echo "applying $p"
+            git apply -p1 --verbose "$p"
+          done
+
+      - name: Commit, push and clean up
+        run: |
+          set -euo pipefail
+          git config user.name "bernavicg1-beep"
+          git config user.email "bernavicg1-beep@users.noreply.github.com"
+          git rm -r --quiet .github/patches/stock-mainactivity.patch .github/patches/stock-extras.patch
+          git rm --quiet .github/workflows/apply-stock.yml
+          git add -A
+          git diff --cached --stat
+          git commit -m "feat: stock field on listings (re-push corrupted MainActivity, add Extras stock)"
+          git push origin HEAD:refs/heads/main
