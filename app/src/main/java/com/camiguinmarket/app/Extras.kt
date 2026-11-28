@@ -355,9 +355,18 @@ fun addToCart(
     val ref = db.collection("carts").document(uid).collection("items").document(listing.id)
     val listingRef = db.collection("listings").document(listing.id)
     db.runTransaction { tx ->
-        val snap = tx.get(ref)
-        if (snap.exists()) {
-            tx.update(ref, "quantity", (snap.getLong("quantity") ?: 1L) + 1L)
+        val listingSnap = tx.get(listingRef)
+        val stock = listingSnap.getLong("stock") ?: -1L
+        val cartSnap = tx.get(ref)
+        val currentQty = if (cartSnap.exists()) (cartSnap.getLong("quantity") ?: 1L) else 0L
+        if (stock == 0L) {
+            throw Exception("Out of stock.")
+        }
+        if (stock > 0L && currentQty + 1L > stock) {
+            throw Exception("Only $stock left in stock.")
+        }
+        if (cartSnap.exists()) {
+            tx.update(ref, "quantity", (cartSnap.getLong("quantity") ?: 1L) + 1L)
         } else {
             tx.set(
                 ref,
@@ -3007,7 +3016,8 @@ fun loadListingsCache(context: Context): List<Listing> {
                 views = o.optLong("views"),
                 cartAdds = o.optLong("cartAdds"),
                 isPerishable = o.optBoolean("isPerishable"),
-                expiresAt = o.optLong("expiresAt")
+                expiresAt = o.optLong("expiresAt"),
+                stock = if (o.has("stock")) o.optLong("stock") else -1L
             )
         }
     }.getOrDefault(emptyList())
@@ -3036,6 +3046,7 @@ fun saveListingsCache(context: Context, items: List<Listing>) {
                 put("cartAdds", l.cartAdds)
                 put("isPerishable", l.isPerishable)
                 put("expiresAt", l.expiresAt)
+                put("stock", l.stock)
             }
         )
     }
