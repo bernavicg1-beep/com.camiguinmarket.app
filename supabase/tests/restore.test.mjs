@@ -1,73 +1,54 @@
-/**
- * The restore path of the storage cleanup: a listing that comes back from the
- * trash keeps its photos.
- *
- * Applies every migration to a real PostgreSQL (PGlite, the WASM build) and
- * checks the trigger in isolation, so it fails if the grace reset, the warning
- * withdrawal or the cycle bump regress. No project, network or credentials.
- *
- *   cd supabase/tests && npm install && npm test
- */
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+// The fix under test: a listing that comes back from the trash keeps its photos.
 import assert from "node:assert/strict";
-import { PGlite } from "@electric-sql/pglite";
+import { asSeller, db, one, owner, photo, product } from "./restore-harness.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const dir = join(here, "..", "migrations");
-const SELLER = "00000000-0000-4000-8000-00000000000b";
+const scan = () => db.query("select public.cleanup_scan('cron', null)");
+const notify = () => db.query("select public.cleanup_notify('cron', null)");
 
-const db = await PGlite.create();
+await asSeller();
+await db.query("update public.products set deleted_at = now() where id = $1", [product]);
+await owner();
+await scan();
+await notify();
 
-// Supabase's own auth schema and roles, stubbed exactly as cleanup.test.mjs does.
-await db.exec(`
-  create role anon nologin;
-  create role authenticated nologin;
-  create role service_role nologin bypassrls;
-  create schema auth;
-  create table auth.users (id uuid primary key, email text, raw_app_meta_data jsonb);
-  create function auth.jwt() returns jsonb language sql stable as $$
-    select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
-  $$;
-  create function auth.uid() returns uuid language sql stable as $$
-    select nullif(auth.jwt() ->> 'sub', '')::uuid
-  $$;
-  grant usage on schema auth to anon, authenticated;
-  grant execute on function auth.jwt() to anon, authenticated;
-  grant execute on function auth.uid() to anon, authenticated;
-`);
+const flagged = await one(
+  `select reason, delete_after, notified_at
+     from public.media_cleanup_candidates where media_id = $1`,
+  [photo],
+);
+assert.equal(flagged.reason, "orphan", "a soft-deleted listing orphans its media");
+assert.ok(flagged.delete_after, "the grace clock started");
+assert.ok(flagged.notified_at, "the seller was warned");
 
-// Every migration, in order: this suite must run the schema the app really gets.
-for (const file of (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort()) {
-  await db.exec(await readFile(join(dir, file), "utf8"));
-}
+// The seller changes their mind and puts the listing back.
+await asSeller();
+await db.query("update public.products set deleted_at = null, status = 'active' where id = $1", [
+  product,
+]);
+await owner();
 
-let passes = 0;
-let failures = 0;
+const row = await one("select * from public.product_media where id = $1", [photo]);
+assert.equal(row.orphaned_at, null, "no longer an orphan");
+assert.equal(row.grace_until, null, "no grace running");
+assert.equal(row.delete_after, null, "no deletion scheduled");
+assert.equal(row.notified_at, null, "the warning was withdrawn");
+assert.equal(row.notify_count, 0, "the warning count restarts");
+assert.equal(row.cleanup_cycle, 1, "the next lapse starts a new cycle");
 
-async function test(name, fn) {
-  try {
-    await fn();
-    passes += 1;
-    console.log(`ok   ${name}`);
-  } catch (error) {
-    failures += 1;
-    console.log(`FAIL ${name}\n     ${error.message.split("\n")[0]}`);
-  }
-}
+const logged = await one(
+  `select count(*)::int as n, min(detail) as detail from public.cleanup_audit_logs
+    where media_id = $1 and action = 'restored'`,
+  [photo],
+);
+assert.equal(logged.n, 1, "the restore is in the history");
+assert.match(logged.detail, /listing restored to active/);
 
-async function owner() {
-  await db.exec("reset role; set request.jwt.claims = ''");
-}
+await scan();
+const after = await one(
+  "select reason from public.media_cleanup_candidates where media_id = $1",
+  [photo],
+);
+assert.equal(after.reason, null, "a later scan keeps the restored file");
 
-/** Signed in as the seller, with RLS in force — a restore is the seller's action. */
-async function asSeller() {
-  const claims = JSON.stringify({ sub: SELLER, role: "authenticated" });
-  await db.exec(`reset role; set request.jwt.claims = '${claims}'; set role authenticated`);
-}
-
-async function one(sql, params) {
-  const { rows } = await db.query(sql, params);
-  return rows[0];
-}
+console.log("ok   restoring a soft-deleted listing resets the grace on its media");
+await db.close();
